@@ -329,7 +329,7 @@ Implementation sequence considering dependencies:
 8. ✅ **Issue 4** - Bulk assignees/milestone (Phase 2) - depends on #2
 9. **Issue 14** - Label caching (Phase 3) - optimization
 10. **Issue 5** - Confirmation prompts (Phase 3) - depends on #3
-11. **Issue 6** - Epic create (Phase 2) - depends on #3
+11. ⏳ **Issue 6** - Epic create (Phase 2) - depends on #3
 12. **Issue 7** - Epic status (Phase 3) - independent
 13. **Issue 8** - Epic add (Phase 3) - depends on #6
 
