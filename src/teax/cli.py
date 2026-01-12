@@ -62,9 +62,7 @@ def parse_issue_spec(spec: str) -> list[int]:
             except ValueError as e:
                 raise click.BadParameter(f"Invalid number in range: {part}") from e
             if start > end:
-                raise click.BadParameter(
-                    f"Range start must be <= end: {part}"
-                )
+                raise click.BadParameter(f"Range start must be <= end: {part}")
             result.update(range(start, end + 1))
         else:
             # Handle single number
@@ -426,6 +424,86 @@ def issue_labels(ctx: click.Context, issue_num: int, repo: str) -> None:
             output.print_labels(labels)
     except Exception as e:
         err_console.print(f"[red]Error:[/red] {e}")
+        sys.exit(1)
+
+
+@issue.command("bulk")
+@click.argument("issues", type=str)
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--add-labels", help="Labels to add (comma-separated)")
+@click.option("--rm-labels", help="Labels to remove (comma-separated)")
+@click.option("--set-labels", help="Replace all labels (comma-separated)")
+@click.pass_context
+def issue_bulk(
+    ctx: click.Context,
+    issues: str,
+    repo: str,
+    add_labels: str | None,
+    rm_labels: str | None,
+    set_labels: str | None,
+) -> None:
+    """Apply changes to multiple issues.
+
+    ISSUES can be:
+      - Single: 17
+      - Range: 17-23
+      - List: 17,18,19
+      - Mixed: 17-19,25,30-32
+
+    Examples:
+        teax issue bulk 17-23 --repo owner/repo --add-labels "epic/foo"
+        teax issue bulk "17,18,25-30" --repo owner/repo --rm-labels "triage"
+    """
+    owner, repo_name = parse_repo(repo)
+    issue_nums = parse_issue_spec(issues)
+
+    if not any([add_labels, rm_labels, set_labels]):
+        console.print("[yellow]No changes specified[/yellow]")
+        return
+
+    success_count = 0
+    error_count = 0
+    errors: list[tuple[int, str]] = []
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            for issue_num in issue_nums:
+                try:
+                    # Handle labels
+                    if set_labels is not None:
+                        labels = [s.strip() for s in set_labels.split(",") if s.strip()]
+                        client.set_issue_labels(owner, repo_name, issue_num, labels)
+
+                    if add_labels is not None:
+                        labels = [s.strip() for s in add_labels.split(",") if s.strip()]
+                        client.add_issue_labels(owner, repo_name, issue_num, labels)
+
+                    if rm_labels is not None:
+                        labels = [s.strip() for s in rm_labels.split(",") if s.strip()]
+                        for label in labels:
+                            client.remove_issue_label(
+                                owner, repo_name, issue_num, label
+                            )
+
+                    console.print(f"  [green]✓[/green] #{issue_num}")
+                    success_count += 1
+
+                except Exception as e:
+                    console.print(f"  [red]✗[/red] #{issue_num}: {e}")
+                    errors.append((issue_num, str(e)))
+                    error_count += 1
+
+    except Exception as e:
+        err_console.print(f"[red]Error:[/red] {e}")
+        sys.exit(1)
+
+    # Print summary
+    console.print()
+    console.print(
+        f"[bold]Summary:[/bold] {success_count} succeeded, {error_count} failed"
+    )
+
+    if error_count > 0:
         sys.exit(1)
 
 

@@ -167,10 +167,10 @@ This plan addresses code quality issues discovered during review (low test cover
 **Solution:** Add `teax issue bulk` command.
 
 **Acceptance Criteria:**
-- [ ] `--issues` accepts range spec
-- [ ] `--add-labels`, `--rm-labels`, `--set-labels` work
-- [ ] Shows progress and summary
-- [ ] Non-zero exit on failures
+- [x] `--issues` accepts range spec
+- [x] `--add-labels`, `--rm-labels`, `--set-labels` work
+- [x] Shows progress and summary
+- [x] Non-zero exit on failures
 
 **Implementation:**
 1. Add `bulk` command to issue group
@@ -325,7 +325,7 @@ Implementation sequence considering dependencies:
 4. ✅ **Issue 13** - get_login_by_name test (Phase 2) - no dependencies
 5. ✅ **Issue 9** - API client tests (Phase 2) - no dependencies
 6. ✅ **Issue 2** - Range parsing utility (Phase 2) - foundation for bulk
-7. **Issue 3** - Bulk labels (Phase 2) - depends on #2
+7. ✅ **Issue 3** - Bulk labels (Phase 2) - depends on #2
 8. **Issue 4** - Bulk assignees/milestone (Phase 2) - depends on #2
 9. **Issue 14** - Label caching (Phase 3) - optimization
 10. **Issue 5** - Confirmation prompts (Phase 3) - depends on #3

@@ -70,6 +70,24 @@ def test_issue_help(runner: CliRunner):
     assert result.exit_code == 0
     assert "edit" in result.output
     assert "labels" in result.output
+    assert "bulk" in result.output
+
+
+def test_issue_bulk_help(runner: CliRunner):
+    """Test issue bulk help."""
+    result = runner.invoke(main, ["issue", "bulk", "--help"])
+    assert result.exit_code == 0
+    assert "--add-labels" in result.output
+    assert "--rm-labels" in result.output
+    assert "--set-labels" in result.output
+    assert "ISSUES" in result.output
+
+
+def test_issue_bulk_no_changes(runner: CliRunner):
+    """Test issue bulk with no changes specified."""
+    result = runner.invoke(main, ["issue", "bulk", "17", "--repo", "owner/repo"])
+    assert result.exit_code == 0
+    assert "No changes specified" in result.output
 
 
 def test_deps_add_requires_on_or_blocks(runner: CliRunner):
