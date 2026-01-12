@@ -771,5 +771,125 @@ def epic_status(
         sys.exit(1)
 
 
+def _append_children_to_body(body: str, new_children: list[int]) -> str:
+    """Append new child issues to epic body.
+
+    Finds the "## Child Issues" section and appends new checklist items.
+    If no section found, creates one.
+
+    Args:
+        body: Existing epic body
+        new_children: Issue numbers to add
+
+    Returns:
+        Updated body text
+    """
+    import re
+
+    # Build new checklist items
+    new_items = "\n".join(f"- [ ] #{n}" for n in new_children)
+
+    # Look for ## Child Issues section
+    pattern = r"(## Child Issues\s*\n)"
+    match = re.search(pattern, body)
+
+    if match:
+        # Find where to insert (after existing checklist items or placeholder)
+        section_start = match.end()
+        # Find the next section (## or ---) or end of string
+        next_section = re.search(r"\n(##|---)", body[section_start:])
+        if next_section:
+            insert_pos = section_start + next_section.start()
+        else:
+            insert_pos = len(body)
+
+        # Check if there's placeholder text to remove
+        placeholder = "_No child issues yet."
+        placeholder_match = re.search(
+            re.escape(placeholder) + r"[^\n]*\n?",
+            body[section_start:insert_pos],
+        )
+        if placeholder_match:
+            # Remove placeholder and insert new items
+            pl_start = section_start + placeholder_match.start()
+            pl_end = section_start + placeholder_match.end()
+            return body[:pl_start] + new_items + "\n" + body[pl_end:]
+
+        # Insert before next section, ensuring newline separation
+        return body[:insert_pos].rstrip() + "\n" + new_items + "\n" + body[insert_pos:]
+    else:
+        # No section found, append at end
+        return body.rstrip() + "\n\n## Child Issues\n\n" + new_items + "\n"
+
+
+@epic.command("add")
+@click.argument("epic_issue", type=int)
+@click.argument("children", type=int, nargs=-1, required=True)
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.pass_context
+def epic_add(
+    ctx: click.Context,
+    epic_issue: int,
+    children: tuple[int, ...],
+    repo: str,
+) -> None:
+    """Add issues to an existing epic.
+
+    Appends child issues to the epic's checklist and applies the epic's label
+    to each child issue.
+
+    EPIC_ISSUE is the epic issue number.
+    CHILDREN are the issue numbers to add to the epic.
+
+    Examples:
+        teax epic add 25 17 18 19 --repo owner/repo
+        teax epic add 100 42 -r homelab/project
+    """
+    owner, repo_name = parse_repo(repo)
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            # Fetch the epic issue
+            epic = client.get_issue(owner, repo_name, epic_issue)
+
+            # Find the epic label from the issue's labels
+            epic_label = None
+            for label in epic.labels:
+                if label.name.startswith("epic/"):
+                    epic_label = label.name
+                    break
+
+            if not epic_label:
+                console.print(
+                    f"[yellow]Warning:[/yellow] No epic/* label found on #{epic_issue}"
+                )
+
+            # Update the epic body with new children
+            new_body = _append_children_to_body(epic.body, list(children))
+            client.edit_issue(owner, repo_name, epic_issue, body=new_body)
+            console.print(f"[green]✓[/green] Updated epic #{epic_issue} body")
+
+            # Apply epic label to child issues
+            if epic_label:
+                console.print(f"Applying [cyan]{epic_label}[/cyan] to child issues...")
+                for child_num in children:
+                    try:
+                        client.add_issue_labels(
+                            owner, repo_name, child_num, [epic_label]
+                        )
+                        console.print(f"  [green]✓[/green] #{child_num}")
+                    except Exception as e:
+                        console.print(f"  [red]✗[/red] #{child_num}: {e}")
+
+            # Print summary
+            console.print()
+            count = len(children)
+            console.print(f"[bold]Added {count} issues to epic #{epic_issue}[/bold]")
+
+    except Exception as e:
+        err_console.print(f"[red]Error:[/red] {e}")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     main()

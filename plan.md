@@ -293,8 +293,8 @@ This plan addresses code quality issues discovered during review (low test cover
 **Solution:** Add `teax epic add` command.
 
 **Acceptance Criteria:**
-- [ ] Appends to checklist
-- [ ] Applies epic label to new issues
+- [x] Appends to checklist
+- [x] Applies epic label to new issues
 
 **Implementation:**
 1. Add `add` subcommand
@@ -331,7 +331,7 @@ Implementation sequence considering dependencies:
 10. ✅ **Issue 5** - Confirmation prompts (Phase 3) - depends on #3
 11. ✅ **Issue 6** - Epic create (Phase 2) - depends on #3
 12. ✅ **Issue 7** - Epic status (Phase 3) - independent
-13. ⏳ **Issue 8** - Epic add (Phase 3) - depends on #6
+13. ✅ **Issue 8** - Epic add (Phase 3) - depends on #6
 
 ---
 

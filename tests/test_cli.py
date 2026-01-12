@@ -400,3 +400,64 @@ Some other text #999 not a checklist
     children = _parse_epic_children(body)
     # Only the properly formatted checklist items should be captured
     assert children == [100, 101, 102]
+
+
+def test_epic_add_help(runner: CliRunner):
+    """Test epic add help."""
+    result = runner.invoke(main, ["epic", "add", "--help"])
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+    assert "EPIC_ISSUE" in result.output
+    assert "CHILDREN" in result.output
+
+
+def test_append_children_to_body_existing_section():
+    """Test appending children to body with existing section."""
+    from teax.cli import _append_children_to_body
+
+    body = """# Epic: Feature
+## Child Issues
+
+- [ ] #17
+- [ ] #18
+
+---
+_Tracked by label: `epic/feature`_
+"""
+    result = _append_children_to_body(body, [19, 20])
+    assert "- [ ] #17" in result
+    assert "- [ ] #18" in result
+    assert "- [ ] #19" in result
+    assert "- [ ] #20" in result
+    assert result.index("#19") > result.index("#18")
+
+
+def test_append_children_to_body_with_placeholder():
+    """Test appending children replaces placeholder text."""
+    from teax.cli import _append_children_to_body
+
+    body = """# Epic: Feature
+## Child Issues
+
+_No child issues yet. Use `teax epic add` to add issues._
+
+---
+_Tracked by label: `epic/feature`_
+"""
+    result = _append_children_to_body(body, [17])
+    assert "- [ ] #17" in result
+    assert "_No child issues yet." not in result
+
+
+def test_append_children_to_body_no_section():
+    """Test appending children creates section if missing."""
+    from teax.cli import _append_children_to_body
+
+    body = """# Epic: Feature
+
+Some description here.
+"""
+    result = _append_children_to_body(body, [17, 18])
+    assert "## Child Issues" in result
+    assert "- [ ] #17" in result
+    assert "- [ ] #18" in result
