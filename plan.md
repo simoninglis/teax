@@ -1,4 +1,4 @@
-# teax Implementation Plan v1
+# teax Implementation Plan v2
 
 **Created:** 2026-01-12
 **Status:** Active Development
@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-This plan addresses code quality issues discovered during review (low test coverage, minor bugs, documentation gaps) and outlines Phase 2 feature implementation (bulk operations and epic helpers). Priority given to fixing bugs and improving test coverage before adding new features.
+This plan addresses remaining quality improvements: 1 bug (base URL subpath), security hardening (SecretStr), test coverage improvements (CLI at 40%), and code cleanup. All Phase 2 features (bulk ops, epic helpers) are complete. Focus is now on polish and production readiness.
 
 ---
 
@@ -16,291 +16,252 @@ This plan addresses code quality issues discovered during review (low test cover
 
 | # | Priority | Issue | File(s) | Effort |
 |---|----------|-------|---------|--------|
-| 11 | CRITICAL | deps rm allows both --on and --blocks | cli.py | Low |
-| 10 | IMPORTANT | CSV output doesn't escape special chars | cli.py | Low |
-| 12 | IMPORTANT | README missing TEAX_INSECURE docs | README.md | Low |
-| 13 | IMPORTANT | Missing get_login_by_name test | test_config.py | Low |
-| 9 | IMPORTANT | Low test coverage for API client | test_api.py (new) | High |
-| 14 | NICE-TO-HAVE | Label ID resolution redundant calls | api.py | Medium |
-| 2 | IMPORTANT | Issue range parsing utility (Gitea) | cli.py | Medium |
-| 3 | IMPORTANT | Bulk command with label support (Gitea) | cli.py | Medium |
-| 4 | IMPORTANT | Bulk command with assignee/milestone (Gitea) | cli.py | Low |
-| 5 | NICE-TO-HAVE | Confirmation prompt --yes flag (Gitea) | cli.py | Low |
-| 6 | IMPORTANT | Epic create command (Gitea) | cli.py | High |
-| 7 | NICE-TO-HAVE | Epic status command (Gitea) | cli.py | Medium |
-| 8 | NICE-TO-HAVE | Epic add command (Gitea) | cli.py | Medium |
+| 9 | CRITICAL | Base URL subpath handling | api.py | Medium |
+| 10 | IMPORTANT | Pre-validate milestone in bulk | cli.py | Low |
+| 11 | IMPORTANT | SecretStr for token | models.py, api.py | Low |
+| 16 | IMPORTANT | CLI test coverage to 80% | test_cli.py | High |
+| 12 | NICE-TO-HAVE | Pagination efficiency | api.py | Medium |
+| 13 | NICE-TO-HAVE | Deduplicate epic children | cli.py | Low |
+| 14 | NICE-TO-HAVE | Input validation (color, repo) | cli.py | Low |
+| 15 | NICE-TO-HAVE | Reduce label fetches in epic_create | cli.py | Low |
+| 17 | NICE-TO-HAVE | Epic command e2e tests | test_cli.py | Medium |
+| 18 | NICE-TO-HAVE | Milestone lookup by name | api.py, cli.py | Medium |
+| 19 | NICE-TO-HAVE | Remove unused DependencyRequest | models.py | Low |
 
 ---
 
-## Phase 1: Critical Bug Fixes
+## Phase 1: Critical Bug Fix
 
-### Issue 11: deps rm allows both --on and --blocks simultaneously
+### Issue 9: Base URL subpath handling for non-root Gitea
 
-**References:** docs/ISSUES.md #11
+**References:** Gitea #9, docs/ISSUES.md #9
 
-**Problem:** The `deps_rm` command uses `if/if` instead of `if/elif`, allowing both flags to be processed when only one should be allowed.
+**Problem:** If Gitea is hosted at a subpath (e.g., `https://example.com/gitea/`), the current implementation may construct incorrect API URLs.
 
-**Solution:** Change second `if` to `elif` for consistency with `deps_add`.
+**Solution:** Ensure base URL handling preserves subpaths when constructing API endpoints.
 
 **Acceptance Criteria:**
-- [x] `deps rm` with both flags raises UsageError
-- [x] Test added for this case
+- [ ] API calls work with `url: https://example.com/gitea/`
+- [ ] Trailing slashes handled correctly
+- [ ] Test added for subpath URL handling
 
 **Implementation:**
-1. Edit `cli.py` line 240: change `if blocks is not None:` to `elif blocks is not None:`
-2. Add test in `test_cli.py` mirroring `test_deps_add_rejects_both_on_and_blocks`
-3. Run `just check`
+1. Review URL construction in `GiteaClient.__init__` (api.py:37-38)
+2. Ensure `/api/v1/...` is appended correctly to subpaths
+3. Add test case for subpath URL handling
+4. Run `just check`
 
 ---
 
 ## Phase 2: Important Improvements
 
-### Issue 10: CSV output doesn't escape special characters
+### Issue 10: Pre-validate milestone in bulk command
 
-**References:** docs/ISSUES.md #10
+**References:** Gitea #10, docs/ISSUES.md #10
 
-**Problem:** CSV output could break if titles contain commas or quotes.
+**Problem:** Bulk command applies changes sequentially. If milestone is invalid, some issues may be updated before failure, causing partial changes.
 
-**Solution:** Use Python's csv module for proper escaping.
+**Solution:** Validate milestone exists before starting bulk operation.
 
 **Acceptance Criteria:**
-- [x] Titles with commas are properly quoted
-- [x] CSV output parseable by standard tools
+- [ ] Invalid milestone ID fails fast before any changes
+- [ ] Clear error message provided
+- [ ] Test covers this case
 
 **Implementation:**
-1. Import `csv` and `io` modules
-2. Refactor `print_deps` and `print_labels` CSV branches to use csv.writer
-3. Add test with comma-containing title
+1. Add milestone validation at start of `issue_bulk` command
+2. Fetch milestone by ID to verify it exists
+3. Fail with clear error if not found
+4. Add test for invalid milestone handling
 
 ---
 
-### Issue 12: README missing TEAX_INSECURE documentation
+### Issue 11: Use SecretStr for token to prevent leakage
 
-**References:** docs/ISSUES.md #12
+**References:** Gitea #11, docs/ISSUES.md #11
 
-**Problem:** New environment variable not documented.
+**Problem:** Token stored as plain `str` in `TeaLogin` model. Could leak in error messages, logs, or repr output.
 
-**Solution:** Add section to README.md.
+**Solution:** Use Pydantic's `SecretStr` for the token field.
 
 **Acceptance Criteria:**
-- [x] README documents TEAX_INSECURE=1 usage
-- [x] Explains self-hosted CA use case
+- [ ] Token uses SecretStr in TeaLogin model
+- [ ] Token value not visible in repr/str output
+- [ ] API client updated to call `.get_secret_value()`
+- [ ] Tests updated for SecretStr handling
 
 **Implementation:**
-1. Add "Environment Variables" section to README after "Configuration"
-2. Document TEAX_INSECURE with example
+1. Change `token: str` to `token: SecretStr` in models.py
+2. Update api.py line 40: `self._login.token.get_secret_value()`
+3. Update test fixtures to use SecretStr
+4. Run `just check`
 
 ---
 
-### Issue 13: Missing get_login_by_name test
+### Issue 16: Increase CLI test coverage to 80%
 
-**References:** docs/ISSUES.md #13
+**References:** docs/ISSUES.md #16
 
-**Problem:** Config function untested.
+**Problem:** CLI module at 40% coverage. Major execution paths untested.
 
-**Solution:** Add tests to test_config.py.
-
-**Acceptance Criteria:**
-- [x] Test for successful lookup
-- [x] Test for error when not found
-
-**Implementation:**
-1. Add `test_get_login_by_name` using sample_config fixture
-2. Add `test_get_login_by_name_not_found` testing error case
-3. Run `just check`
-
----
-
-### Issue 9: Low test coverage for API client
-
-**References:** docs/ISSUES.md #9
-
-**Problem:** API client at 23% coverage, all HTTP methods untested.
-
-**Solution:** Add tests using respx or httpx mocking.
+**Solution:** Add integration tests with respx mocking.
 
 **Acceptance Criteria:**
-- [x] Tests for issue operations
-- [x] Tests for label operations
-- [x] Tests for dependency operations
-- [x] Tests for error handling
-- [x] api.py coverage reaches 80%+ (achieved 91%)
+- [ ] cli.py coverage reaches 80%+
+- [ ] deps_list, deps_add, deps_rm tested with mock API
+- [ ] issue_edit tested with mock API
+- [ ] issue_bulk tested with mock API (success path)
+- [ ] Error handling paths covered
 
 **Implementation:**
-1. Add `respx` to dev dependencies
-2. Create `tests/test_api.py`
-3. Add fixtures for mock responses
-4. Test each API method category
-5. Test error scenarios (404, 401, network)
-
----
-
-### Issue 2: Issue range parsing utility (Gitea #2)
-
-**References:** Gitea #2, docs/ISSUES.md Phase 2
-
-**Problem:** No way to specify multiple issues for bulk operations.
-
-**Solution:** Add `parse_issue_spec()` function supporting ranges and lists.
-
-**Acceptance Criteria:**
-- [x] Handles single: `17` → `[17]`
-- [x] Handles range: `17-23` → `[17..23]`
-- [x] Handles list: `17,18,19` → `[17,18,19]`
-- [x] Handles mixed: `17-19,25` → `[17,18,19,25]`
-- [x] Unit tests cover all cases
-
-**Implementation:**
-1. Add `parse_issue_spec()` to cli.py
-2. Split on comma, then handle ranges
-3. Return sorted, deduplicated list
-4. Add comprehensive tests
-
----
-
-### Issue 3: Bulk command with label support (Gitea #3)
-
-**References:** Gitea #3, docs/ISSUES.md Phase 2
-
-**Problem:** Cannot apply label changes to multiple issues at once.
-
-**Solution:** Add `teax issue bulk` command.
-
-**Acceptance Criteria:**
-- [x] `--issues` accepts range spec
-- [x] `--add-labels`, `--rm-labels`, `--set-labels` work
-- [x] Shows progress and summary
-- [x] Non-zero exit on failures
-
-**Implementation:**
-1. Add `bulk` command to issue group
-2. Use `parse_issue_spec()` from #2
-3. Iterate and apply changes
-4. Collect errors, report summary
-
----
-
-### Issue 4: Bulk command with assignee/milestone (Gitea #4)
-
-**References:** Gitea #4, docs/ISSUES.md Phase 2
-
-**Problem:** Bulk command needs assignee/milestone support.
-
-**Solution:** Extend bulk command from #3.
-
-**Acceptance Criteria:**
-- [x] `--assignees` sets assignees on all issues
-- [x] `--milestone` sets milestone
-- [x] Can combine with label options
-
-**Implementation:**
-1. Add `--assignees` and `--milestone` options to bulk
-2. Include in edit loop
-3. Add tests
-
----
-
-### Issue 6: Epic create command (Gitea #6)
-
-**References:** Gitea #6, docs/ISSUES.md Phase 2
-
-**Problem:** Creating epics manually is tedious.
-
-**Solution:** Add `teax epic create` following ADR-0005 template.
-
-**Acceptance Criteria:**
-- [x] Creates epic issue with template body
-- [x] Creates `epic/{name}` label if needed
-- [x] Applies labels to epic and child issues
-
-**Implementation:**
-1. Add `epic` command group
-2. Add `create` subcommand
-3. Generate body from template
-4. Create issue via API
-5. Apply labels using bulk logic
+1. Add fixture for mocked GiteaClient in tests
+2. Add tests for deps commands with respx mocking
+3. Add tests for issue edit command
+4. Add tests for bulk command execution
+5. Run `just check`, verify coverage
 
 ---
 
 ## Phase 3: Nice-to-Haves
 
-### Issue 14: Label ID resolution redundant calls
+### Issue 12: Improve pagination efficiency
 
-**References:** docs/ISSUES.md #14
+**References:** Gitea #12, docs/ISSUES.md #12
 
-**Problem:** Fetches all labels on every operation.
+**Problem:** Pagination always makes an extra request for an empty page to detect end. This wastes an API call per paginated operation.
 
-**Solution:** Cache within GiteaClient session.
+**Solution:** Check if returned items < limit to detect last page.
 
 **Acceptance Criteria:**
-- [x] Labels cached per repo
-- [x] Cache invalidated on close
+- [ ] No extra empty-page request when items < limit
+- [ ] Still works correctly when items == limit (needs next page check)
+- [ ] Tests verify reduced API calls
 
 **Implementation:**
-1. Add `_label_cache: dict[str, dict[str, int]]` to GiteaClient
-2. Check cache before API call
-3. Clear in `close()`
+1. In `_resolve_label_ids` and `list_repo_labels`, check `len(items) < limit`
+2. If fewer items than limit, pagination is done
+3. Update tests to verify correct call counts
 
 ---
 
-### Issue 5: Confirmation prompt --yes flag (Gitea #5)
+### Issue 13: Deduplicate child issues in epic commands
 
-**References:** Gitea #5
+**References:** Gitea #13, docs/ISSUES.md #13
 
-**Problem:** Bulk operations should confirm before executing.
+**Problem:** `epic_create` and `epic_add` don't deduplicate child issue numbers. Duplicate children could be added to checklist.
 
-**Solution:** Add confirmation prompt with `--yes` skip.
+**Solution:** Deduplicate and sort child issue numbers before processing.
 
 **Acceptance Criteria:**
-- [x] Shows preview of changes
-- [x] Prompts for confirmation
-- [x] `--yes` skips prompt
+- [ ] Duplicate child issues filtered out
+- [ ] Warning shown if duplicates removed
+- [ ] Test covers duplicate handling
 
 **Implementation:**
-1. Add `--yes/-y` flag to bulk
-2. Show issue list and changes
-3. Use click.confirm()
+1. In `epic_create`, convert `children` tuple to sorted set
+2. In `epic_add`, deduplicate `children` parameter
+3. Show warning if duplicates found
+4. Add test case
 
 ---
 
-### Issue 7: Epic status command (Gitea #7)
+### Issue 14: Improve input validation for color and repo parameters
 
-**References:** Gitea #7
+**References:** Gitea #14, docs/ISSUES.md #14
 
-**Problem:** No way to see epic progress.
+**Problem:** No validation for hex color format in `epic_create`. No validation that repo contains `/` before command execution.
 
-**Solution:** Add `teax epic status` command.
+**Solution:** Add early validation for color format and repo format.
 
 **Acceptance Criteria:**
-- [x] Parses child issues from body
-- [x] Shows progress percentage
-- [x] Lists open/closed issues
+- [ ] Invalid hex color rejected with clear error
+- [ ] Repo without `/` rejected early
+- [ ] Tests cover validation
 
 **Implementation:**
-1. Add `status` subcommand
-2. Parse checklist with regex
-3. Fetch child issue states
-4. Display progress
+1. Add color validation in `epic_create` (regex: `^[0-9a-fA-F]{6}$`)
+2. Repo validation already handled by `parse_repo`, ensure called early
+3. Add tests for invalid inputs
 
 ---
 
-### Issue 8: Epic add command (Gitea #8)
+### Issue 15: Reduce redundant label fetches in epic_create
 
-**References:** Gitea #8
+**References:** Gitea #15, docs/ISSUES.md #15
 
-**Problem:** Cannot add issues to existing epic.
+**Problem:** `epic_create` calls `list_repo_labels()` to check if label exists, then the label cache in `_resolve_label_ids` also fetches labels. Double fetch on first operation.
 
-**Solution:** Add `teax epic add` command.
+**Solution:** Use the label cache for existence checking.
 
 **Acceptance Criteria:**
-- [x] Appends to checklist
-- [x] Applies epic label to new issues
+- [ ] Only one label fetch per repo in epic_create flow
+- [ ] Label existence check uses cache
 
 **Implementation:**
-1. Add `add` subcommand
-2. Parse existing body
-3. Append new issues
-4. Update via API
+1. In `epic_create`, use `_resolve_label_ids` for label existence check
+2. Catch ValueError to detect missing label
+3. Create label only if not found
+4. Cache will be populated for subsequent operations
+
+---
+
+### Issue 17: Add end-to-end tests for epic commands
+
+**References:** docs/ISSUES.md #17
+
+**Problem:** Epic commands only have help/helper tests. Full execution paths untested.
+
+**Solution:** Add CliRunner + respx tests for epic commands.
+
+**Acceptance Criteria:**
+- [ ] epic create tested end-to-end
+- [ ] epic status tested end-to-end
+- [ ] epic add tested end-to-end
+
+**Implementation:**
+1. Add respx mock fixtures for epic API calls
+2. Test epic create: label check, label create, issue create, child labeling
+3. Test epic status: issue fetch, child issue fetch, output verification
+4. Test epic add: issue fetch, body update, child labeling
+
+---
+
+### Issue 18: Implement milestone lookup by name
+
+**References:** docs/ISSUES.md #18
+
+**Problem:** `--milestone` only accepts numeric IDs. Warning shown for name lookup.
+
+**Solution:** Add milestone list API and name resolution.
+
+**Acceptance Criteria:**
+- [ ] `--milestone "Sprint 1"` resolves to ID
+- [ ] Error if milestone name not found
+- [ ] Numeric IDs still work
+
+**Implementation:**
+1. Add `list_milestones(owner, repo)` to api.py
+2. Add milestone name cache similar to label cache
+3. In cli.py, try int() first, then name lookup
+4. Add tests for name resolution
+
+---
+
+### Issue 19: Remove unused DependencyRequest model
+
+**References:** docs/ISSUES.md #19
+
+**Problem:** `DependencyRequest` model defined but never used.
+
+**Solution:** Remove dead code.
+
+**Acceptance Criteria:**
+- [ ] DependencyRequest removed
+- [ ] Tests pass
+
+**Implementation:**
+1. Remove DependencyRequest class from models.py
+2. Run `just check`
 
 ---
 
@@ -311,7 +272,7 @@ Before marking plan complete:
 2. Linting clean: `just lint`
 3. Types check: `just typecheck`
 4. All gates: `just check`
-5. Coverage maintained: ≥39% (improve toward 80%)
+5. Coverage maintained: ≥55% (target 80%+ for cli.py)
 
 ---
 
@@ -319,19 +280,17 @@ Before marking plan complete:
 
 Implementation sequence considering dependencies:
 
-1. ✅ **Issue 11** - deps rm bug fix (Phase 1) - no dependencies
-2. ✅ **Issue 10** - CSV escaping (Phase 2) - no dependencies
-3. ✅ **Issue 12** - README TEAX_INSECURE (Phase 2) - no dependencies
-4. ✅ **Issue 13** - get_login_by_name test (Phase 2) - no dependencies
-5. ✅ **Issue 9** - API client tests (Phase 2) - no dependencies
-6. ✅ **Issue 2** - Range parsing utility (Phase 2) - foundation for bulk
-7. ✅ **Issue 3** - Bulk labels (Phase 2) - depends on #2
-8. ✅ **Issue 4** - Bulk assignees/milestone (Phase 2) - depends on #2
-9. ✅ **Issue 14** - Label caching (Phase 3) - optimization
-10. ✅ **Issue 5** - Confirmation prompts (Phase 3) - depends on #3
-11. ✅ **Issue 6** - Epic create (Phase 2) - depends on #3
-12. ✅ **Issue 7** - Epic status (Phase 3) - independent
-13. ✅ **Issue 8** - Epic add (Phase 3) - depends on #6
+1. ⏳ **Issue 9** - Base URL subpath handling (Phase 1) - critical bug
+2. **Issue 19** - Remove unused model (Phase 3) - quick cleanup
+3. **Issue 11** - SecretStr for token (Phase 2) - security hardening
+4. **Issue 10** - Pre-validate milestone in bulk (Phase 2) - bug prevention
+5. **Issue 16** - CLI test coverage (Phase 2) - foundation for other tests
+6. **Issue 12** - Pagination efficiency (Phase 3) - optimization
+7. **Issue 13** - Deduplicate epic children (Phase 3) - UX improvement
+8. **Issue 14** - Input validation (Phase 3) - robustness
+9. **Issue 15** - Reduce label fetches (Phase 3) - optimization
+10. **Issue 17** - Epic e2e tests (Phase 3) - test coverage
+11. **Issue 18** - Milestone lookup by name (Phase 3) - feature enhancement
 
 ---
 
@@ -339,4 +298,4 @@ Implementation sequence considering dependencies:
 
 - docs/ISSUES.md - Canonical issue tracker
 - archive/ - Previous plan versions
-- Gitea issues #1-#8 - Phase 2 feature tracking
+- Gitea issues #9-#15 - External issue tracking
