@@ -214,9 +214,9 @@ This plan addresses remaining quality improvements: 1 bug (base URL subpath), se
 **Solution:** Add CliRunner + respx tests for epic commands.
 
 **Acceptance Criteria:**
-- [ ] epic create tested end-to-end
-- [ ] epic status tested end-to-end
-- [ ] epic add tested end-to-end
+- [x] epic create tested end-to-end (8 tests added in Issue 16)
+- [x] epic status tested end-to-end (4 tests added in Issue 16)
+- [x] epic add tested end-to-end (6 tests added in Issue 16)
 
 **Implementation:**
 1. Add respx mock fixtures for epic API calls
@@ -289,8 +289,8 @@ Implementation sequence considering dependencies:
 7. ✅ **Issue 13** - Deduplicate epic children (Phase 3) - UX improvement
 8. ✅ **Issue 14** - Input validation (Phase 3) - robustness
 9. ✅ **Issue 15** - Reduce label fetches (Phase 3) - optimization
-10. **Issue 17** - Epic e2e tests (Phase 3) - test coverage
-11. **Issue 18** - Milestone lookup by name (Phase 3) - feature enhancement
+10. ✅ **Issue 17** - Epic e2e tests (Phase 3) - test coverage (done in Issue 16)
+11. ⏳ **Issue 18** - Milestone lookup by name (Phase 3) - feature enhancement
 
 ---
 
