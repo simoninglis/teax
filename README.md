@@ -65,8 +65,12 @@ teax issue edit 25 --repo homelab/myproject --set-labels "type/feature,prio/p2"
 # Set assignees
 teax issue edit 25 --repo homelab/myproject --assignees "user1,user2"
 
-# Set milestone (by ID)
+# Set milestone (by ID or name)
 teax issue edit 25 --repo homelab/myproject --milestone 5
+teax issue edit 25 --repo homelab/myproject --milestone "Sprint 1"
+
+# Clear milestone
+teax issue edit 25 --repo homelab/myproject --milestone ""
 
 # List labels on an issue
 teax issue labels 25 --repo homelab/myproject
@@ -81,8 +85,9 @@ teax issue bulk 17-23 --repo homelab/myproject --add-labels "sprint/week1"
 # Set assignees on a range of issues
 teax issue bulk "17,18,25-30" --repo homelab/myproject --assignees "user1"
 
-# Set milestone on multiple issues
+# Set milestone on multiple issues (by ID or name)
 teax issue bulk 17-20 --repo homelab/myproject --milestone 5
+teax issue bulk 17-20 --repo homelab/myproject --milestone "Sprint 1"
 
 # Skip confirmation prompt
 teax issue bulk 17-23 --repo homelab/myproject --add-labels "done" --yes

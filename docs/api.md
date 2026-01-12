@@ -381,6 +381,69 @@ class Repository(BaseModel):
     owner: str
 ```
 
+## Milestone Operations
+
+### list_milestones
+
+```python
+def list_milestones(
+    self, owner: str, repo: str, state: str = "all"
+) -> list[Milestone]
+```
+
+List all milestones in a repository.
+
+**Parameters**:
+- `owner`: Repository owner
+- `repo`: Repository name
+- `state`: Filter by state: 'open', 'closed', or 'all' (default)
+
+**Example**:
+```python
+milestones = client.list_milestones("homelab", "myproject")
+for ms in milestones:
+    print(f"{ms.title} ({ms.state})")
+
+# Only open milestones
+open_milestones = client.list_milestones("homelab", "myproject", state="open")
+```
+
+### resolve_milestone
+
+```python
+def resolve_milestone(
+    self, owner: str, repo: str, milestone_ref: str
+) -> int
+```
+
+Resolve a milestone reference (ID or title) to its numeric ID.
+
+**Parameters**:
+- `owner`: Repository owner
+- `repo`: Repository name
+- `milestone_ref`: Milestone ID (e.g., "5") or title (e.g., "Sprint 1")
+
+**Returns**: Milestone ID
+
+**Raises**:
+- `ValueError`: If milestone not found by name
+- `httpx.HTTPStatusError`: If milestone not found by ID (404)
+
+**Example**:
+```python
+# Resolve by name
+milestone_id = client.resolve_milestone("homelab", "myproject", "Sprint 1")
+
+# Resolve by ID (validates it exists)
+milestone_id = client.resolve_milestone("homelab", "myproject", "5")
+
+# Use with edit_issue
+issue = client.edit_issue(
+    "homelab", "myproject", 25,
+    milestone=client.resolve_milestone("homelab", "myproject", "Sprint 1")
+)
+```
+
 ## Configuration
 
 ### load_tea_config

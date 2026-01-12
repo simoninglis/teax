@@ -133,11 +133,15 @@ teax issue edit 25 --repo homelab/myproject --assignees "alice,bob"
 ### Milestone
 
 ```bash
-# Set milestone (by ID)
+# Set milestone by ID
 teax issue edit 25 --repo homelab/myproject --milestone 5
+
+# Set milestone by name
+teax issue edit 25 --repo homelab/myproject --milestone "Sprint 1"
 
 # Clear milestone
 teax issue edit 25 --repo homelab/myproject --milestone ""
+teax issue edit 25 --repo homelab/myproject --milestone none
 ```
 
 ### Title
@@ -246,11 +250,13 @@ teax issue bulk "17,18,25" --repo homelab/myproject --set-labels "type/feature"
 # Set assignees on a range
 teax issue bulk "17,18,25-30" --repo homelab/myproject --assignees "alice,bob"
 
-# Set milestone on multiple issues
+# Set milestone on multiple issues (by ID or name)
 teax issue bulk 17-20 --repo homelab/myproject --milestone 5
+teax issue bulk 17-20 --repo homelab/myproject --milestone "Sprint 1"
 
 # Clear milestone
 teax issue bulk 17-20 --repo homelab/myproject --milestone ""
+teax issue bulk 17-20 --repo homelab/myproject --milestone none
 ```
 
 ### Combined Bulk Changes
