@@ -174,9 +174,9 @@ This plan addresses remaining quality improvements: 1 bug (base URL subpath), se
 **Solution:** Add early validation for color format and repo format.
 
 **Acceptance Criteria:**
-- [ ] Invalid hex color rejected with clear error
-- [ ] Repo without `/` rejected early
-- [ ] Tests cover validation
+- [x] Invalid hex color rejected with clear error
+- [x] Repo without `/` rejected early (already implemented in parse_repo)
+- [x] Tests cover validation
 
 **Implementation:**
 1. Add color validation in `epic_create` (regex: `^[0-9a-fA-F]{6}$`)
@@ -287,7 +287,7 @@ Implementation sequence considering dependencies:
 5. ✅ **Issue 16** - CLI test coverage (Phase 2) - foundation for other tests
 6. ✅ **Issue 12** - Pagination efficiency (Phase 3) - optimization
 7. ✅ **Issue 13** - Deduplicate epic children (Phase 3) - UX improvement
-8. ⏳ **Issue 14** - Input validation (Phase 3) - robustness
+8. ✅ **Issue 14** - Input validation (Phase 3) - robustness
 9. **Issue 15** - Reduce label fetches (Phase 3) - optimization
 10. **Issue 17** - Epic e2e tests (Phase 3) - test coverage
 11. **Issue 18** - Milestone lookup by name (Phase 3) - feature enhancement

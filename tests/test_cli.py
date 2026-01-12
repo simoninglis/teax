@@ -1673,6 +1673,43 @@ def test_epic_create_error_handling(runner: CliRunner):
         assert "Error" in result.output
 
 
+def test_epic_create_invalid_color(runner: CliRunner):
+    """Test epic create rejects invalid color format."""
+    # Invalid: too short
+    result = runner.invoke(
+        main, ["epic", "create", "test", "--repo", "owner/repo", "--color", "ff00"]
+    )
+    assert result.exit_code == 2  # Click parameter error
+    assert "6-character hex code" in result.output
+
+    # Invalid: contains non-hex character
+    result = runner.invoke(
+        main, ["epic", "create", "test", "--repo", "owner/repo", "--color", "gggggg"]
+    )
+    assert result.exit_code == 2
+    assert "6-character hex code" in result.output
+
+    # Invalid: includes # prefix
+    result = runner.invoke(
+        main, ["epic", "create", "test", "--repo", "owner/repo", "--color", "#ff0000"]
+    )
+    assert result.exit_code == 2
+    assert "6-character hex code" in result.output
+
+
+def test_epic_create_valid_colors(runner: CliRunner):
+    """Test epic create accepts valid color formats."""
+    # These should fail later (API call) not at validation, so we just check
+    # they don't fail with "6-character hex code" error
+    valid_colors = ["ff0000", "FF0000", "aAbBcC", "123456", "000000", "ffffff"]
+    for color in valid_colors:
+        result = runner.invoke(
+            main, ["epic", "create", "test", "--repo", "owner/repo", "--color", color]
+        )
+        # Should fail at API call (no mock), not at color validation
+        assert "6-character hex code" not in result.output
+
+
 # --- epic status tests ---
 
 

@@ -640,6 +640,14 @@ def epic_create(
     epic_label = f"epic/{name}"
     epic_title = title or f"Epic: {name}"
 
+    # Validate hex color format
+    import re
+
+    if not re.match(r"^[0-9a-fA-F]{6}$", color):
+        raise click.BadParameter(
+            f"Color must be a 6-character hex code (e.g., 'ff0000'), got: {color}"
+        )
+
     # Deduplicate and sort children
     unique_children = sorted(set(children))
     if len(unique_children) < len(children):
