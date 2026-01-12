@@ -25,7 +25,8 @@
       "Bash(codex exec:*)",
       "Bash(poetry run pytest:*)",
       "Bash(tea issue create:*)",
-      "Bash(tea issue close:*)"
+      "Bash(tea issue close:*)",
+      "Bash(poetry run ruff check:*)"
     ]
   }
 }

@@ -107,11 +107,11 @@ This plan addresses remaining quality improvements: 1 bug (base URL subpath), se
 **Solution:** Add integration tests with respx mocking.
 
 **Acceptance Criteria:**
-- [ ] cli.py coverage reaches 80%+
-- [ ] deps_list, deps_add, deps_rm tested with mock API
-- [ ] issue_edit tested with mock API
-- [ ] issue_bulk tested with mock API (success path)
-- [ ] Error handling paths covered
+- [x] cli.py coverage reaches 80%+ (97% achieved)
+- [x] deps_list, deps_add, deps_rm tested with mock API
+- [x] issue_edit tested with mock API
+- [x] issue_bulk tested with mock API (success path)
+- [x] Error handling paths covered
 
 **Implementation:**
 1. Add fixture for mocked GiteaClient in tests
@@ -284,7 +284,7 @@ Implementation sequence considering dependencies:
 2. ✅ **Issue 19** - Remove unused model (Phase 3) - quick cleanup
 3. ✅ **Issue 11** - SecretStr for token (Phase 2) - security hardening
 4. ✅ **Issue 10** - Pre-validate milestone in bulk (Phase 2) - bug prevention
-5. ⏳ **Issue 16** - CLI test coverage (Phase 2) - foundation for other tests
+5. ✅ **Issue 16** - CLI test coverage (Phase 2) - foundation for other tests
 6. **Issue 12** - Pagination efficiency (Phase 3) - optimization
 7. **Issue 13** - Deduplicate epic children (Phase 3) - UX improvement
 8. **Issue 14** - Input validation (Phase 3) - robustness

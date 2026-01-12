@@ -471,3 +471,1562 @@ Some description here.
     assert "## Child Issues" in result
     assert "- [ ] #17" in result
     assert "- [ ] #18" in result
+
+
+# --- OutputFormat Tests ---
+
+
+def test_output_format_simple_deps(capsys):
+    """Test simple output format for dependencies."""
+    formatter = OutputFormat("simple")
+    mock_dep1 = SimpleNamespace(
+        number=17,
+        title="First dep",
+        state="open",
+        repository=SimpleNamespace(full_name="owner/repo"),
+    )
+    mock_dep2 = SimpleNamespace(
+        number=18,
+        title="Second dep",
+        state="closed",
+        repository=SimpleNamespace(full_name="owner/repo"),
+    )
+    formatter.print_deps([mock_dep1, mock_dep2], 25, "depends on")
+    captured = capsys.readouterr()
+    assert "#17" in captured.out
+    assert "#18" in captured.out
+
+
+def test_output_format_table_deps_empty(capsys, monkeypatch):
+    """Test table output format for empty dependencies."""
+    # Capture Rich console output
+    from io import StringIO
+
+    from rich.console import Console
+
+    from teax import cli
+
+    buffer = StringIO()
+    monkeypatch.setattr(cli, "console", Console(file=buffer, force_terminal=False))
+
+    formatter = OutputFormat("table")
+    formatter.print_deps([], 25, "depends on")
+    output = buffer.getvalue()
+    assert "no depends on" in output.lower()
+
+
+def test_output_format_table_deps_with_data(capsys, monkeypatch):
+    """Test table output format for dependencies with data."""
+    from io import StringIO
+
+    from rich.console import Console
+
+    from teax import cli
+
+    buffer = StringIO()
+    monkeypatch.setattr(cli, "console", Console(file=buffer, force_terminal=False))
+
+    formatter = OutputFormat("table")
+    mock_dep = SimpleNamespace(
+        number=17,
+        title="Test dep",
+        state="open",
+        repository=SimpleNamespace(full_name="owner/repo"),
+    )
+    formatter.print_deps([mock_dep], 25, "depends on")
+    output = buffer.getvalue()
+    assert "17" in output
+    assert "Test dep" in output
+
+
+def test_output_format_simple_labels(capsys):
+    """Test simple output format for labels."""
+    formatter = OutputFormat("simple")
+    mock_label = SimpleNamespace(name="bug", color="ff0000", description="Bug report")
+    formatter.print_labels([mock_label])
+    captured = capsys.readouterr()
+    assert "bug" in captured.out
+
+
+def test_output_format_table_labels_empty(capsys, monkeypatch):
+    """Test table output format for empty labels."""
+    from io import StringIO
+
+    from rich.console import Console
+
+    from teax import cli
+
+    buffer = StringIO()
+    monkeypatch.setattr(cli, "console", Console(file=buffer, force_terminal=False))
+
+    formatter = OutputFormat("table")
+    formatter.print_labels([])
+    output = buffer.getvalue()
+    assert "no labels" in output.lower()
+
+
+def test_output_format_table_labels_with_data(capsys, monkeypatch):
+    """Test table output format for labels with data."""
+    from io import StringIO
+
+    from rich.console import Console
+
+    from teax import cli
+
+    buffer = StringIO()
+    monkeypatch.setattr(cli, "console", Console(file=buffer, force_terminal=False))
+
+    formatter = OutputFormat("table")
+    mock_label = SimpleNamespace(name="bug", color="ff0000", description="Bug report")
+    formatter.print_labels([mock_label])
+    output = buffer.getvalue()
+    assert "bug" in output
+    assert "ff0000" in output
+
+
+# --- CLI Command Integration Tests with Mocked API ---
+
+
+@pytest.fixture
+def mock_login():
+    """Create a mock tea login for CLI tests."""
+    from teax.models import TeaLogin
+
+    return TeaLogin(
+        name="test.example.com",
+        url="https://test.example.com",
+        token="test-token-123",
+        default=True,
+        user="testuser",
+    )
+
+
+@pytest.fixture
+def mock_client(mock_login, monkeypatch):
+    """Patch GiteaClient to use mock login and avoid config loading."""
+
+    from teax.api import GiteaClient
+
+    original_init = GiteaClient.__init__
+
+    def patched_init(self, login=None, login_name=None):
+        original_init(self, login=mock_login, login_name=None)
+
+    monkeypatch.setattr(GiteaClient, "__init__", patched_init)
+    return mock_login
+
+
+# --- deps list tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_deps_list_command(runner: CliRunner):
+    """Test deps list command execution."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock dependencies endpoint
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 17,
+                        "number": 17,
+                        "title": "Dependency Issue",
+                        "state": "open",
+                        "repository": {
+                            "id": 1,
+                            "name": "repo",
+                            "full_name": "owner/repo",
+                            "owner": "owner",
+                        },
+                    },
+                ],
+            )
+        )
+        # Mock blocks endpoint
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/25/blocks").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        result = runner.invoke(main, ["deps", "list", "25", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_deps_list_with_blocks(runner: CliRunner):
+    """Test deps list command with blocking issues."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/25/blocks").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 30,
+                        "number": 30,
+                        "title": "Blocked Issue",
+                        "state": "open",
+                        "repository": {
+                            "id": 1,
+                            "name": "repo",
+                            "full_name": "owner/repo",
+                            "owner": "owner",
+                        },
+                    },
+                ],
+            )
+        )
+
+        result = runner.invoke(main, ["deps", "list", "25", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_deps_list_error_handling(runner: CliRunner):
+    """Test deps list error handling."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/999/dependencies").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(main, ["deps", "list", "999", "--repo", "owner/repo"])
+
+        assert result.exit_code == 1
+        assert "Error" in result.output
+
+
+# --- deps add tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_deps_add_depends_on(runner: CliRunner):
+    """Test deps add with --on flag."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies").mock(
+            return_value=httpx.Response(201)
+        )
+
+        result = runner.invoke(
+            main, ["deps", "add", "25", "--repo", "owner/repo", "--on", "17"]
+        )
+
+        assert result.exit_code == 0
+        assert "depends on" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_deps_add_blocks(runner: CliRunner):
+    """Test deps add with --blocks flag."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/30/dependencies").mock(
+            return_value=httpx.Response(201)
+        )
+
+        result = runner.invoke(
+            main, ["deps", "add", "25", "--repo", "owner/repo", "--blocks", "30"]
+        )
+
+        assert result.exit_code == 0
+        assert "blocks" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_deps_add_error_handling(runner: CliRunner):
+    """Test deps add error handling."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(
+            main, ["deps", "add", "25", "--repo", "owner/repo", "--on", "999"]
+        )
+
+        assert result.exit_code == 1
+
+
+# --- deps rm tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_deps_rm_depends_on(runner: CliRunner):
+    """Test deps rm with --on flag."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.delete("https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies").mock(
+            return_value=httpx.Response(200)
+        )
+
+        result = runner.invoke(
+            main, ["deps", "rm", "25", "--repo", "owner/repo", "--on", "17"]
+        )
+
+        assert result.exit_code == 0
+        assert "no longer depends on" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_deps_rm_blocks(runner: CliRunner):
+    """Test deps rm with --blocks flag."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.delete("https://test.example.com/api/v1/repos/owner/repo/issues/30/dependencies").mock(
+            return_value=httpx.Response(200)
+        )
+
+        result = runner.invoke(
+            main, ["deps", "rm", "25", "--repo", "owner/repo", "--blocks", "30"]
+        )
+
+        assert result.exit_code == 0
+        assert "no longer blocks" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_deps_rm_error_handling(runner: CliRunner):
+    """Test deps rm error handling."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.delete("https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(
+            main, ["deps", "rm", "25", "--repo", "owner/repo", "--on", "17"]
+        )
+
+        assert result.exit_code == 1
+
+
+# --- issue edit tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_edit_add_labels(runner: CliRunner):
+    """Test issue edit with add-labels."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock label lookup
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[
+                        {"id": 1, "name": "bug", "color": "ff0000", "description": ""},
+                    ],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+        # Mock add labels
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/25/labels").mock(
+            return_value=httpx.Response(
+                200,
+                json=[{"id": 1, "name": "bug", "color": "ff0000"}],
+            )
+        )
+
+        result = runner.invoke(
+            main, ["issue", "edit", "25", "--repo", "owner/repo", "--add-labels", "bug"]
+        )
+
+        assert result.exit_code == 0
+        assert "Updated issue #25" in result.output
+        assert "labels added" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_edit_rm_labels(runner: CliRunner):
+    """Test issue edit with rm-labels."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock label lookup
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[
+                        {"id": 1, "name": "bug", "color": "ff0000", "description": ""},
+                    ],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+        # Mock remove label
+        respx.delete("https://test.example.com/api/v1/repos/owner/repo/issues/25/labels/1").mock(
+            return_value=httpx.Response(204)
+        )
+
+        result = runner.invoke(
+            main, ["issue", "edit", "25", "--repo", "owner/repo", "--rm-labels", "bug"]
+        )
+
+        assert result.exit_code == 0
+        assert "labels removed" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_edit_set_labels(runner: CliRunner):
+    """Test issue edit with set-labels."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock label lookup
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[
+                        {"id": 1, "name": "bug", "color": "ff0000"},
+                        {"id": 2, "name": "feature", "color": "00ff00"},
+                    ],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+        # Mock set labels
+        respx.put("https://test.example.com/api/v1/repos/owner/repo/issues/25/labels").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {"id": 1, "name": "bug", "color": "ff0000"},
+                    {"id": 2, "name": "feature", "color": "00ff00"},
+                ],
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "edit", "25", "-r", "owner/repo", "--set-labels", "bug,feature"],
+        )
+
+        assert result.exit_code == 0
+        assert "labels set to" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_edit_with_title_and_assignees(runner: CliRunner):
+    """Test issue edit with title and assignees."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock edit issue
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/25").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 25,
+                    "title": "New Title",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [{"id": 1, "login": "user1", "full_name": "User One"}],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "issue", "edit", "25",
+                "--repo", "owner/repo",
+                "--title", "New Title",
+                "--assignees", "user1,user2",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "title: New Title" in result.output
+        assert "assignees:" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_edit_with_milestone(runner: CliRunner):
+    """Test issue edit with milestone."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/25").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 25,
+                    "title": "Test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": {"id": 5, "title": "Sprint 1", "state": "open"},
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["issue", "edit", "25", "--repo", "owner/repo", "--milestone", "5"]
+        )
+
+        assert result.exit_code == 0
+        assert "milestone: 5" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_edit_clear_milestone(runner: CliRunner):
+    """Test issue edit clearing milestone."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/25").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 25,
+                    "title": "Test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["issue", "edit", "25", "--repo", "owner/repo", "--milestone", "none"]
+        )
+
+        assert result.exit_code == 0
+        assert "milestone: cleared" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_edit_milestone_name_warning(runner: CliRunner, monkeypatch):
+    """Test issue edit with milestone name shows warning."""
+    from io import StringIO
+
+    from rich.console import Console
+
+    from teax import cli
+
+    buffer = StringIO()
+    monkeypatch.setattr(cli, "err_console", Console(file=buffer, force_terminal=False))
+
+    runner.invoke(
+        main, ["issue", "edit", "25", "--repo", "owner/repo", "--milestone", "Sprint 1"]
+    )
+
+    err_output = buffer.getvalue()
+    assert "Warning" in err_output
+    assert "not yet implemented" in err_output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_edit_no_changes(runner: CliRunner):
+    """Test issue edit with no changes."""
+    result = runner.invoke(main, ["issue", "edit", "25", "--repo", "owner/repo"])
+
+    assert result.exit_code == 0
+    assert "No changes specified" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_edit_error_handling(runner: CliRunner):
+    """Test issue edit error handling."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/999").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(
+            main, ["issue", "edit", "999", "--repo", "owner/repo", "--title", "New"]
+        )
+
+        assert result.exit_code == 1
+        assert "Error" in result.output
+
+
+# --- issue labels tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_labels_command(runner: CliRunner):
+    """Test issue labels command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/25/labels").mock(
+            return_value=httpx.Response(
+                200,
+                json=[{"id": 1, "name": "bug", "color": "ff0000"}],
+            )
+        )
+
+        result = runner.invoke(main, ["issue", "labels", "25", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_labels_error_handling(runner: CliRunner):
+    """Test issue labels error handling."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/999/labels").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(main, ["issue", "labels", "999", "--repo", "owner/repo"])
+
+        assert result.exit_code == 1
+
+
+# --- issue bulk execution tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_bulk_execute_with_yes_flag(runner: CliRunner):
+    """Test issue bulk command with -y flag executes changes."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock label lookup
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[{"id": 1, "name": "bug", "color": "ff0000"}],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+        # Mock add labels for each issue
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/17/labels").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/18/labels").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "bulk", "17,18", "-r", "owner/repo", "--add-labels", "bug", "-y"],
+        )
+
+        assert result.exit_code == 0
+        assert "✓" in result.output
+        assert "2 succeeded" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_bulk_with_assignees(runner: CliRunner):
+    """Test issue bulk command with assignees."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/17").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 17,
+                    "title": "Test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "bulk", "17", "-r", "owner/repo", "--assignees", "user1", "-y"],
+        )
+
+        assert result.exit_code == 0
+        assert "1 succeeded" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_bulk_with_milestone_validation(runner: CliRunner):
+    """Test issue bulk command validates milestone exists."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones/5").mock(
+            return_value=httpx.Response(
+                200, json={"id": 5, "title": "Sprint 1", "state": "open"}
+            )
+        )
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/17").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 17,
+                    "title": "Test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": {"id": 5, "title": "Sprint 1", "state": "open"},
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "bulk", "17", "--repo", "owner/repo", "--milestone", "5", "-y"],
+        )
+
+        assert result.exit_code == 0
+        assert "1 succeeded" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_bulk_milestone_not_found(runner: CliRunner):
+    """Test issue bulk command fails fast when milestone doesn't exist."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones/999").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "bulk", "17", "--repo", "owner/repo", "--milestone", "999", "-y"],
+        )
+
+        assert result.exit_code == 1
+        assert "Milestone 999 not found" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_bulk_with_partial_failure(runner: CliRunner):
+    """Test issue bulk command handles partial failures."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/17").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 17,
+                    "title": "Test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/18").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "bulk", "17,18", "-r", "owner/repo", "--assignees", "u1", "-y"],
+        )
+
+        assert result.exit_code == 1
+        assert "1 succeeded" in result.output
+        assert "1 failed" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_bulk_rm_labels(runner: CliRunner):
+    """Test issue bulk command with rm-labels."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock label lookup
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[{"id": 1, "name": "bug", "color": "ff0000"}],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+        # Mock remove label
+        respx.delete("https://test.example.com/api/v1/repos/owner/repo/issues/17/labels/1").mock(
+            return_value=httpx.Response(204)
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "bulk", "17", "--repo", "owner/repo", "--rm-labels", "bug", "-y"],
+        )
+
+        assert result.exit_code == 0
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_bulk_set_labels(runner: CliRunner):
+    """Test issue bulk command with set-labels."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock label lookup
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[{"id": 1, "name": "bug", "color": "ff0000"}],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+        # Mock set labels
+        respx.put("https://test.example.com/api/v1/repos/owner/repo/issues/17/labels").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "bulk", "17", "-r", "owner/repo", "--set-labels", "bug", "-y"],
+        )
+
+        assert result.exit_code == 0
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_bulk_clear_milestone(runner: CliRunner):
+    """Test issue bulk command clearing milestone."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/17").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 17,
+                    "title": "Test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "bulk", "17", "--repo", "owner/repo", "--milestone", "", "-y"],
+        )
+
+        assert result.exit_code == 0
+
+
+# --- epic create tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_epic_create_basic(runner: CliRunner):
+    """Test epic create basic flow."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock list repo labels (label doesn't exist)
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            side_effect=[
+                httpx.Response(200, json=[]),
+                httpx.Response(200, json=[]),
+            ]
+        )
+        # Mock create label
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 10,
+                    "name": "epic/test",
+                    "color": "9b59b6",
+                    "description": "Epic: test",
+                },
+            )
+        )
+        # Mock create issue
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["epic", "create", "test", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "Epic created successfully" in result.output
+        assert "#50" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_epic_create_with_children(runner: CliRunner):
+    """Test epic create with child issues."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock list repo labels (label doesn't exist)
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            side_effect=[
+                httpx.Response(200, json=[]),
+                httpx.Response(200, json=[]),
+                # For add_issue_labels to children
+                httpx.Response(
+                    200,
+                    json=[{"id": 10, "name": "epic/test", "color": "9b59b6"}],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+        # Mock create label
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 10,
+                    "name": "epic/test",
+                    "color": "9b59b6",
+                    "description": "Epic: test",
+                },
+            )
+        )
+        # Mock create issue
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        # Mock add labels to children
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/17/labels").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/18/labels").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        result = runner.invoke(
+            main,
+            ["epic", "create", "test", "--repo", "owner/repo", "-c", "17", "-c", "18"],
+        )
+
+        assert result.exit_code == 0
+        assert "Epic created successfully" in result.output
+        assert "2 issues labeled" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_epic_create_label_exists(runner: CliRunner):
+    """Test epic create when label already exists."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock list repo labels (label exists)
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[
+                        {"id": 10, "name": "epic/test", "color": "9b59b6"},
+                        {"id": 20, "name": "type/epic", "color": "000000"},
+                    ],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+        # Mock create issue
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["epic", "create", "test", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        # Should not create a new label
+        assert "Creating label" not in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_epic_create_child_label_error(runner: CliRunner):
+    """Test epic create handles child labeling errors gracefully."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[{"id": 10, "name": "epic/test", "color": "9b59b6"}],
+                ),
+                httpx.Response(200, json=[]),
+                httpx.Response(
+                    200,
+                    json=[{"id": 10, "name": "epic/test", "color": "9b59b6"}],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        # Child labeling fails
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/999/labels").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(
+            main,
+            ["epic", "create", "test", "--repo", "owner/repo", "-c", "999"],
+        )
+
+        assert result.exit_code == 0
+        assert "✗" in result.output  # Shows error for child
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_epic_create_error_handling(runner: CliRunner):
+    """Test epic create main error handling."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            return_value=httpx.Response(401, json={"message": "Unauthorized"})
+        )
+
+        result = runner.invoke(
+            main, ["epic", "create", "test", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 1
+        assert "Error" in result.output
+
+
+# --- epic status tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_epic_status_basic(runner: CliRunner):
+    """Test epic status with children."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock get epic issue
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/50").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "body": "## Child Issues\n\n- [ ] #17\n- [x] #18\n",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        # Mock get child issues
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/17").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 101,
+                    "number": 17,
+                    "title": "Child One",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/18").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 102,
+                    "number": 18,
+                    "title": "Child Two",
+                    "state": "closed",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["epic", "status", "50", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "Epic #50" in result.output
+        assert "1/2" in result.output  # 1 of 2 complete
+        assert "50%" in result.output
+        assert "Completed" in result.output
+        assert "Open" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_epic_status_no_children(runner: CliRunner):
+    """Test epic status with no children."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/50").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "body": "## Child Issues\n\n_No child issues yet._\n",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["epic", "status", "50", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "No child issues found" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_epic_status_child_fetch_error(runner: CliRunner):
+    """Test epic status handles child fetch errors gracefully."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/50").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "body": "## Child Issues\n\n- [ ] #17\n- [ ] #999\n",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/17").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 101,
+                    "number": 17,
+                    "title": "Child One",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/999").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(
+            main, ["epic", "status", "50", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "unable to fetch" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_epic_status_error_handling(runner: CliRunner):
+    """Test epic status main error handling."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/999").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(
+            main, ["epic", "status", "999", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 1
+        assert "Error" in result.output
+
+
+# --- epic add tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_epic_add_basic(runner: CliRunner):
+    """Test epic add basic flow."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock get epic issue
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/50").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "body": "## Child Issues\n\n- [ ] #17\n",
+                    "state": "open",
+                    "labels": [
+                        {"id": 10, "name": "epic/test", "color": "9b59b6"}
+                    ],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        # Mock edit epic issue (update body)
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/50").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "body": "## Child Issues\n\n- [ ] #17\n- [ ] #18\n",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        # Mock label lookup and add
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[{"id": 10, "name": "epic/test", "color": "9b59b6"}],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/18/labels").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        result = runner.invoke(
+            main, ["epic", "add", "50", "18", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "Updated epic #50" in result.output
+        assert "Added 1 issues" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_epic_add_multiple_children(runner: CliRunner):
+    """Test epic add with multiple children."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/50").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "body": "## Child Issues\n\n_No child issues yet._\n",
+                    "state": "open",
+                    "labels": [
+                        {"id": 10, "name": "epic/test", "color": "9b59b6"}
+                    ],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/50").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[{"id": 10, "name": "epic/test", "color": "9b59b6"}],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/17/labels").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/18/labels").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        result = runner.invoke(
+            main, ["epic", "add", "50", "17", "18", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "Added 2 issues" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_epic_add_no_epic_label_warning(runner: CliRunner, monkeypatch):
+    """Test epic add warns when epic has no epic/* label."""
+    from io import StringIO
+
+    import httpx
+    import respx
+    from rich.console import Console
+
+    from teax import cli
+
+    buffer = StringIO()
+    monkeypatch.setattr(cli, "console", Console(file=buffer, force_terminal=False))
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/50").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "body": "## Child Issues\n\n",
+                    "state": "open",
+                    "labels": [],  # No epic/* label
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/50").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["epic", "add", "50", "17", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        output = buffer.getvalue()
+        assert "Warning" in output
+        assert "No epic/* label found" in output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_epic_add_child_label_error(runner: CliRunner):
+    """Test epic add handles child labeling errors gracefully."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/50").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "body": "## Child Issues\n\n",
+                    "state": "open",
+                    "labels": [
+                        {"id": 10, "name": "epic/test", "color": "9b59b6"}
+                    ],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/50").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[{"id": 10, "name": "epic/test", "color": "9b59b6"}],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/999/labels").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(
+            main, ["epic", "add", "50", "999", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "✗" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_epic_add_error_handling(runner: CliRunner):
+    """Test epic add main error handling."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/999").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(
+            main, ["epic", "add", "999", "17", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 1
+        assert "Error" in result.output
