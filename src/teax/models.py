@@ -74,11 +74,3 @@ class Repository(BaseModel):
     name: str
     full_name: str
     owner: "User | str | None" = None
-
-
-class DependencyRequest(BaseModel):
-    """Request body for adding/removing dependencies (IssueMeta)."""
-
-    owner: str
-    repo: str
-    index: int
