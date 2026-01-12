@@ -144,11 +144,11 @@ This plan addresses code quality issues discovered during review (low test cover
 **Solution:** Add `parse_issue_spec()` function supporting ranges and lists.
 
 **Acceptance Criteria:**
-- [ ] Handles single: `17` → `[17]`
-- [ ] Handles range: `17-23` → `[17..23]`
-- [ ] Handles list: `17,18,19` → `[17,18,19]`
-- [ ] Handles mixed: `17-19,25` → `[17,18,19,25]`
-- [ ] Unit tests cover all cases
+- [x] Handles single: `17` → `[17]`
+- [x] Handles range: `17-23` → `[17..23]`
+- [x] Handles list: `17,18,19` → `[17,18,19]`
+- [x] Handles mixed: `17-19,25` → `[17,18,19,25]`
+- [x] Unit tests cover all cases
 
 **Implementation:**
 1. Add `parse_issue_spec()` to cli.py
@@ -324,7 +324,7 @@ Implementation sequence considering dependencies:
 3. ✅ **Issue 12** - README TEAX_INSECURE (Phase 2) - no dependencies
 4. ✅ **Issue 13** - get_login_by_name test (Phase 2) - no dependencies
 5. ✅ **Issue 9** - API client tests (Phase 2) - no dependencies
-6. **Issue 2** - Range parsing utility (Phase 2) - foundation for bulk
+6. ✅ **Issue 2** - Range parsing utility (Phase 2) - foundation for bulk
 7. **Issue 3** - Bulk labels (Phase 2) - depends on #2
 8. **Issue 4** - Bulk assignees/milestone (Phase 2) - depends on #2
 9. **Issue 14** - Label caching (Phase 3) - optimization

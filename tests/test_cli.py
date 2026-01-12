@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 from click.testing import CliRunner
 
-from teax.cli import OutputFormat, main, parse_repo
+from teax.cli import OutputFormat, main, parse_issue_spec, parse_repo
 
 
 @pytest.fixture
@@ -154,3 +154,74 @@ def test_csv_output_escapes_quotes_in_labels(capsys):
     assert len(rows) == 2  # header + 1 data row
     assert rows[0] == ["name", "color", "description"]
     assert rows[1] == ["bug", "ff0000", 'Issues with "critical" bugs']
+
+
+# --- Issue Spec Parsing Tests ---
+
+
+def test_parse_issue_spec_single():
+    """Test parsing a single issue number."""
+    assert parse_issue_spec("17") == [17]
+
+
+def test_parse_issue_spec_range():
+    """Test parsing an issue range."""
+    assert parse_issue_spec("17-20") == [17, 18, 19, 20]
+
+
+def test_parse_issue_spec_comma_list():
+    """Test parsing comma-separated issues."""
+    assert parse_issue_spec("17,18,19") == [17, 18, 19]
+
+
+def test_parse_issue_spec_mixed():
+    """Test parsing mixed ranges and singles."""
+    assert parse_issue_spec("17-19,25,30-32") == [17, 18, 19, 25, 30, 31, 32]
+
+
+def test_parse_issue_spec_deduplicates():
+    """Test that duplicate issues are removed."""
+    assert parse_issue_spec("17,17,18,18") == [17, 18]
+
+
+def test_parse_issue_spec_sorted():
+    """Test that results are sorted."""
+    assert parse_issue_spec("30,17,25") == [17, 25, 30]
+
+
+def test_parse_issue_spec_with_spaces():
+    """Test that whitespace is handled."""
+    assert parse_issue_spec("17, 18, 19") == [17, 18, 19]
+    assert parse_issue_spec("17 - 19") == [17, 18, 19]
+
+
+def test_parse_issue_spec_invalid_number():
+    """Test error on invalid number."""
+    from click import BadParameter
+
+    with pytest.raises(BadParameter, match="Invalid issue number"):
+        parse_issue_spec("abc")
+
+
+def test_parse_issue_spec_invalid_range():
+    """Test error on invalid range."""
+    from click import BadParameter
+
+    with pytest.raises(BadParameter, match="Invalid range format"):
+        parse_issue_spec("17-18-19")
+
+
+def test_parse_issue_spec_reversed_range():
+    """Test error on reversed range."""
+    from click import BadParameter
+
+    with pytest.raises(BadParameter, match="Range start must be <= end"):
+        parse_issue_spec("20-17")
+
+
+def test_parse_issue_spec_empty():
+    """Test error on empty spec."""
+    from click import BadParameter
+
+    with pytest.raises(BadParameter, match="No valid issue numbers"):
+        parse_issue_spec("")

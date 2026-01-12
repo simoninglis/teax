@@ -26,6 +26,59 @@ def parse_repo(repo: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
+def parse_issue_spec(spec: str) -> list[int]:
+    """Parse issue specification into list of issue numbers.
+
+    Supports:
+        - Single issue: "17" -> [17]
+        - Range: "17-23" -> [17, 18, 19, 20, 21, 22, 23]
+        - Comma-separated: "17,18,19" -> [17, 18, 19]
+        - Mixed: "17-19,25,30-32" -> [17, 18, 19, 25, 30, 31, 32]
+
+    Args:
+        spec: Issue specification string
+
+    Returns:
+        Sorted, deduplicated list of issue numbers
+
+    Raises:
+        click.BadParameter: If spec is invalid
+    """
+    result: set[int] = set()
+
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+
+        if "-" in part:
+            # Handle range
+            range_parts = part.split("-")
+            if len(range_parts) != 2:
+                raise click.BadParameter(f"Invalid range format: {part}")
+            try:
+                start = int(range_parts[0].strip())
+                end = int(range_parts[1].strip())
+            except ValueError as e:
+                raise click.BadParameter(f"Invalid number in range: {part}") from e
+            if start > end:
+                raise click.BadParameter(
+                    f"Range start must be <= end: {part}"
+                )
+            result.update(range(start, end + 1))
+        else:
+            # Handle single number
+            try:
+                result.add(int(part))
+            except ValueError as e:
+                raise click.BadParameter(f"Invalid issue number: {part}") from e
+
+    if not result:
+        raise click.BadParameter("No valid issue numbers in specification")
+
+    return sorted(result)
+
+
 class OutputFormat:
     """Output formatting helpers."""
 
