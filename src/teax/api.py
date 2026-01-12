@@ -2,6 +2,7 @@
 
 import os
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -9,12 +10,48 @@ from teax.config import get_default_login, get_login_by_name
 from teax.models import Dependency, Issue, Label, Milestone, TeaLogin
 
 
-def _get_ssl_verify() -> bool:
-    """Check if SSL verification should be enabled.
+def _get_ssl_verify() -> bool | str:
+    """Get SSL verification setting.
 
-    Set TEAX_INSECURE=1 to disable SSL verification for self-hosted CA instances.
+    Environment variables (checked in order):
+    - TEAX_CA_BUNDLE: Path to custom CA certificate bundle (e.g., /path/to/ca.pem)
+    - TEAX_INSECURE=1: Disable SSL verification entirely (not recommended)
+
+    Returns:
+        True for default verification, False to disable, or path string for custom CA.
     """
-    return os.environ.get("TEAX_INSECURE", "").lower() not in ("1", "true", "yes")
+    ca_bundle = os.environ.get("TEAX_CA_BUNDLE", "").strip()
+    if ca_bundle:
+        return ca_bundle
+    if os.environ.get("TEAX_INSECURE", "").lower() in ("1", "true", "yes"):
+        return False
+    return True
+
+
+def _seg(s: str) -> str:
+    """URL-encode a path segment to prevent path traversal.
+
+    Encodes special characters including '/' which prevents path traversal
+    attacks (e.g., '../admin' becomes '..%2Fadmin'). The encoded slash
+    is treated as part of the segment, not a path separator.
+    """
+    return quote(s, safe="")
+
+
+def _normalize_base_url(url: str) -> str:
+    """Normalize a base URL for API requests.
+
+    Handles various URL formats:
+    - Strips trailing slashes and /api/v1 if already present
+    - Returns a clean base URL ending with /api/v1/
+    """
+    url = url.rstrip("/")
+    # Remove any existing /api/v1 suffix to avoid duplication
+    if url.endswith("/api/v1"):
+        url = url[:-7]
+    elif url.endswith("/api"):
+        url = url[:-4]
+    return url + "/api/v1/"
 
 
 class GiteaClient:
@@ -34,9 +71,8 @@ class GiteaClient:
         else:
             self._login = get_default_login()
 
-        # Ensure base URL ends with / and includes /api/v1/ for correct path joining
-        # This handles subpath installations like https://example.com/gitea/
-        base = self._login.url.rstrip("/") + "/api/v1/"
+        # Normalize base URL to handle various formats (with/without /api/v1)
+        base = _normalize_base_url(self._login.url)
         self._client = httpx.Client(
             base_url=base,
             headers={
@@ -103,7 +139,7 @@ class GiteaClient:
             data["labels"] = labels
 
         response = self._client.post(
-            f"repos/{owner}/{repo}/issues",
+            f"repos/{_seg(owner)}/{_seg(repo)}/issues",
             json=data,
         )
         response.raise_for_status()
@@ -120,7 +156,7 @@ class GiteaClient:
         Returns:
             Issue details
         """
-        response = self._client.get(f"repos/{owner}/{repo}/issues/{index}")
+        response = self._client.get(f"repos/{_seg(owner)}/{_seg(repo)}/issues/{index}")
         response.raise_for_status()
         return Issue.model_validate(response.json())
 
@@ -160,7 +196,7 @@ class GiteaClient:
             data["milestone"] = milestone if milestone > 0 else None
 
         response = self._client.patch(
-            f"repos/{owner}/{repo}/issues/{index}",
+            f"repos/{_seg(owner)}/{_seg(repo)}/issues/{index}",
             json=data,
         )
         response.raise_for_status()
@@ -180,7 +216,7 @@ class GiteaClient:
             List of labels
         """
         response = self._client.get(
-            f"repos/{owner}/{repo}/issues/{index}/labels"
+            f"repos/{_seg(owner)}/{_seg(repo)}/issues/{index}/labels"
         )
         response.raise_for_status()
         return [Label.model_validate(item) for item in response.json()]
@@ -203,7 +239,7 @@ class GiteaClient:
         label_ids = self._resolve_label_ids(owner, repo, labels)
 
         response = self._client.post(
-            f"repos/{owner}/{repo}/issues/{index}/labels",
+            f"repos/{_seg(owner)}/{_seg(repo)}/issues/{index}/labels",
             json={"labels": label_ids},
         )
         response.raise_for_status()
@@ -222,7 +258,7 @@ class GiteaClient:
         label_ids = self._resolve_label_ids(owner, repo, [label])
 
         response = self._client.delete(
-            f"repos/{owner}/{repo}/issues/{index}/labels/{label_ids[0]}"
+            f"repos/{_seg(owner)}/{_seg(repo)}/issues/{index}/labels/{label_ids[0]}"
         )
         response.raise_for_status()
 
@@ -243,7 +279,7 @@ class GiteaClient:
         label_ids = self._resolve_label_ids(owner, repo, labels)
 
         response = self._client.put(
-            f"repos/{owner}/{repo}/issues/{index}/labels",
+            f"repos/{_seg(owner)}/{_seg(repo)}/issues/{index}/labels",
             json={"labels": label_ids},
         )
         response.raise_for_status()
@@ -274,7 +310,7 @@ class GiteaClient:
             limit = 50
             while True:
                 response = self._client.get(
-                    f"repos/{owner}/{repo}/labels",
+                    f"repos/{_seg(owner)}/{_seg(repo)}/labels",
                     params={"page": page, "limit": limit},
                 )
                 response.raise_for_status()
@@ -327,7 +363,7 @@ class GiteaClient:
             List of dependency issues
         """
         response = self._client.get(
-            f"repos/{owner}/{repo}/issues/{index}/dependencies"
+            f"repos/{_seg(owner)}/{_seg(repo)}/issues/{index}/dependencies"
         )
         response.raise_for_status()
         return [Dependency.model_validate(d) for d in response.json()]
@@ -344,7 +380,7 @@ class GiteaClient:
             List of blocked issues
         """
         response = self._client.get(
-            f"repos/{owner}/{repo}/issues/{index}/blocks"
+            f"repos/{_seg(owner)}/{_seg(repo)}/issues/{index}/blocks"
         )
         response.raise_for_status()
         return [Dependency.model_validate(d) for d in response.json()]
@@ -369,7 +405,7 @@ class GiteaClient:
             depends_on_index: Issue number being depended on
         """
         response = self._client.post(
-            f"repos/{owner}/{repo}/issues/{index}/dependencies",
+            f"repos/{_seg(owner)}/{_seg(repo)}/issues/{index}/dependencies",
             json={
                 "owner": depends_on_owner,
                 "repo": depends_on_repo,
@@ -399,7 +435,7 @@ class GiteaClient:
         """
         response = self._client.request(
             "DELETE",
-            f"repos/{owner}/{repo}/issues/{index}/dependencies",
+            f"repos/{_seg(owner)}/{_seg(repo)}/issues/{index}/dependencies",
             json={
                 "owner": depends_on_owner,
                 "repo": depends_on_repo,
@@ -431,7 +467,7 @@ class GiteaClient:
             Created label
         """
         response = self._client.post(
-            f"repos/{owner}/{repo}/labels",
+            f"repos/{_seg(owner)}/{_seg(repo)}/labels",
             json={"name": name, "color": color, "description": description},
         )
         response.raise_for_status()
@@ -459,7 +495,7 @@ class GiteaClient:
         limit = 50
         while True:
             response = self._client.get(
-                f"repos/{owner}/{repo}/labels",
+                f"repos/{_seg(owner)}/{_seg(repo)}/labels",
                 params={"page": page, "limit": limit},
             )
             response.raise_for_status()
@@ -495,7 +531,7 @@ class GiteaClient:
             httpx.HTTPStatusError: If milestone not found (404) or other error
         """
         response = self._client.get(
-            f"repos/{owner}/{repo}/milestones/{milestone_id}"
+            f"repos/{_seg(owner)}/{_seg(repo)}/milestones/{milestone_id}"
         )
         response.raise_for_status()
         return Milestone.model_validate(response.json())
@@ -520,7 +556,7 @@ class GiteaClient:
         limit = 50
         while True:
             response = self._client.get(
-                f"repos/{owner}/{repo}/milestones",
+                f"repos/{_seg(owner)}/{_seg(repo)}/milestones",
                 params={"page": page, "limit": limit, "state": state},
             )
             response.raise_for_status()

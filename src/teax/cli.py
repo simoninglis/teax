@@ -2,17 +2,66 @@
 
 import csv
 import io
+import re
 import sys
 from typing import Any
 
 import click
 import httpx
+from pydantic import ValidationError
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
 from teax import __version__
 from teax.api import GiteaClient
+
+# Pattern to match terminal escape sequences and control characters
+# Handles: CSI (\x1b[), OSC (\x1b]), DCS (\x1bP), APC (\x1b_), PM (\x1b^), SOS (\x1bX)
+# Also matches C1 control codes (0x80-0x9f) and regular control chars
+_ESC_PATTERN = re.compile(
+    r"\x1b\[[0-?]*[ -/]*[@-~]"  # CSI sequences (e.g., \x1b[31m)
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?"  # OSC sequences (terminated by BEL or ST)
+    r"|\x1b[P_^X][^\x1b]*(?:\x1b\\)?"  # DCS/APC/PM/SOS sequences
+    r"|\x1b[NO][^\x1b]"  # SS2/SS3 single shifts
+    r"|\x1b."  # Other 2-char escape sequences
+    r"|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]"  # C0 control chars (except tab/LF)
+    r"|[\x80-\x9f]"  # C1 control chars
+    r"|\r(?!\n)"  # Standalone CR (not CRLF) - prevents line-rewrite spoofing
+)
+
+
+def terminal_safe(text: str) -> str:
+    """Strip terminal control and escape sequences for safe output.
+
+    Used for all terminal output (simple, CSV, Rich) to prevent injection.
+    """
+    return _ESC_PATTERN.sub("", text)
+
+
+def safe_rich(text: str) -> str:
+    """Escape text for safe Rich markup display.
+
+    Strips terminal control characters (including escape sequences)
+    before escaping Rich markup to prevent terminal injection attacks.
+    """
+    return escape(terminal_safe(text))
+
+
+def csv_safe(value: str) -> str:
+    """Neutralize CSV formula injection and terminal escape sequences.
+
+    Strips terminal escape sequences and prefixes dangerous characters that
+    could execute formulas in spreadsheets (Excel, Google Sheets, LibreOffice)
+    with a single quote. Also handles leading whitespace before formula chars.
+    """
+    # Strip terminal escapes first
+    value = terminal_safe(value)
+    # Check for formula chars after optional leading whitespace
+    stripped = value.lstrip()
+    if stripped and stripped[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
 
 console = Console()
 err_console = Console(stderr=True)
@@ -23,6 +72,8 @@ CLI_ERRORS = (
     httpx.RequestError,
     ValueError,
     FileNotFoundError,
+    ValidationError,
+    KeyError,  # Unexpected API response format
 )
 
 
@@ -31,10 +82,14 @@ def parse_repo(repo: str) -> tuple[str, str]:
     repo = repo.strip()
     if "/" not in repo:
         raise click.BadParameter(
-            f"Repository must be in 'owner/repo' format, got: {repo}"
+            f"Repository must be in 'owner/repo' format, got: {terminal_safe(repo)}"
         )
     parts = repo.split("/", 1)
     return parts[0].strip(), parts[1].strip()
+
+
+# Maximum number of issues allowed in a single bulk operation
+MAX_BULK_ISSUES = 10000
 
 
 def parse_issue_spec(spec: str) -> list[int]:
@@ -53,7 +108,7 @@ def parse_issue_spec(spec: str) -> list[int]:
         Sorted, deduplicated list of issue numbers
 
     Raises:
-        click.BadParameter: If spec is invalid
+        click.BadParameter: If spec is invalid or exceeds MAX_BULK_ISSUES
     """
     result: set[int] = set()
 
@@ -66,24 +121,42 @@ def parse_issue_spec(spec: str) -> list[int]:
             # Handle range
             range_parts = part.split("-")
             if len(range_parts) != 2:
-                raise click.BadParameter(f"Invalid range format: {part}")
+                raise click.BadParameter(f"Invalid range format: {terminal_safe(part)}")
             try:
                 start = int(range_parts[0].strip())
                 end = int(range_parts[1].strip())
             except ValueError as e:
-                raise click.BadParameter(f"Invalid number in range: {part}") from e
+                safe_part = terminal_safe(part)
+                raise click.BadParameter(f"Invalid number in range: {safe_part}") from e
             if start > end:
-                raise click.BadParameter(f"Range start must be <= end: {part}")
+                safe_part = terminal_safe(part)
+                raise click.BadParameter(f"Range start must be <= end: {safe_part}")
+            # Check range size before expanding to prevent memory exhaustion
+            range_size = end - start + 1
+            if range_size > MAX_BULK_ISSUES:
+                raise click.BadParameter(
+                    f"Range too large: {range_size} issues (max {MAX_BULK_ISSUES})"
+                )
             result.update(range(start, end + 1))
+            if len(result) > MAX_BULK_ISSUES:
+                raise click.BadParameter(
+                    f"Too many issues: exceeds maximum of {MAX_BULK_ISSUES}"
+                )
         else:
             # Handle single number
             try:
                 result.add(int(part))
             except ValueError as e:
-                raise click.BadParameter(f"Invalid issue number: {part}") from e
+                safe_part = terminal_safe(part)
+                raise click.BadParameter(f"Invalid issue number: {safe_part}") from e
 
     if not result:
         raise click.BadParameter("No valid issue numbers in specification")
+
+    if len(result) > MAX_BULK_ISSUES:
+        raise click.BadParameter(
+            f"Too many issues: {len(result)} (max {MAX_BULK_ISSUES})"
+        )
 
     return sorted(result)
 
@@ -104,7 +177,12 @@ class OutputFormat:
             writer = csv.writer(output)
             writer.writerow(["number", "title", "state", "repository"])
             for d in deps:
-                writer.writerow([d.number, d.title, d.state, d.repository.full_name])
+                writer.writerow([
+                    d.number,
+                    csv_safe(d.title),
+                    csv_safe(d.state),
+                    csv_safe(d.repository.full_name),
+                ])
             click.echo(output.getvalue().rstrip())
         else:  # table (default)
             if not deps:
@@ -121,9 +199,9 @@ class OutputFormat:
                 state_style = "green" if d.state == "open" else "dim"
                 table.add_row(
                     str(d.number),
-                    escape(d.title),
-                    f"[{state_style}]{escape(d.state)}[/{state_style}]",
-                    escape(d.repository.full_name),
+                    safe_rich(d.title),
+                    f"[{state_style}]{safe_rich(d.state)}[/{state_style}]",
+                    safe_rich(d.repository.full_name),
                 )
             console.print(table)
 
@@ -131,13 +209,17 @@ class OutputFormat:
         """Print label list."""
         if self.format_type == "simple":
             for label in labels:
-                click.echo(label.name)
+                click.echo(terminal_safe(label.name))
         elif self.format_type == "csv":
             output = io.StringIO()
             writer = csv.writer(output)
             writer.writerow(["name", "color", "description"])
             for label in labels:
-                writer.writerow([label.name, label.color, label.description])
+                writer.writerow([
+                    csv_safe(label.name),
+                    csv_safe(label.color),
+                    csv_safe(label.description),
+                ])
             click.echo(output.getvalue().rstrip())
         else:  # table
             if not labels:
@@ -151,9 +233,9 @@ class OutputFormat:
 
             for label in labels:
                 table.add_row(
-                    escape(label.name),
-                    f"#{escape(label.color)}",
-                    escape(label.description),
+                    safe_rich(label.name),
+                    f"#{safe_rich(label.color)}",
+                    safe_rich(label.description),
                 )
             console.print(table)
 
@@ -221,7 +303,7 @@ def deps_list(ctx: click.Context, issue: int, repo: str) -> None:
                 console.print()
                 output.print_deps(blocks, issue, "blocks")
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)
 
 
@@ -270,7 +352,7 @@ def deps_add(
                 client.add_dependency(owner, repo_name, blocks, owner, repo_name, issue)
                 console.print(f"[green]Added:[/green] #{issue} now blocks #{blocks}")
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)
 
 
@@ -315,7 +397,7 @@ def deps_rm(
                     f"[yellow]Removed:[/yellow] #{issue} no longer blocks #{blocks}"
                 )
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)
 
 
@@ -406,12 +488,12 @@ def issue_edit(
             if changes_made:
                 console.print(f"[green]Updated issue #{issue_num}:[/green]")
                 for change in changes_made:
-                    console.print(f"  - {escape(change)}")
+                    console.print(f"  - {safe_rich(change)}")
             else:
                 console.print("[yellow]No changes specified[/yellow]")
 
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)
 
 
@@ -433,7 +515,7 @@ def issue_labels(ctx: click.Context, issue_num: int, repo: str) -> None:
             labels = client.get_issue_labels(owner, repo_name, issue_num)
             output.print_labels(labels)
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)
 
 
@@ -495,7 +577,7 @@ def issue_bulk(
             changes.append(f"Set milestone: {milestone}")
 
     # Show preview
-    esc_repo = escape(repo)
+    esc_repo = safe_rich(repo)
     console.print(f"\n[bold]Bulk edit {len(issue_nums)} issues in {esc_repo}[/bold]")
     console.print(f"Issues: {', '.join(f'#{n}' for n in issue_nums[:10])}", end="")
     if len(issue_nums) > 10:
@@ -504,7 +586,7 @@ def issue_bulk(
         console.print()
     console.print("\n[bold]Changes:[/bold]")
     for change in changes:
-        console.print(f"  • {escape(change)}")
+        console.print(f"  • {safe_rich(change)}")
     console.print()
 
     # Confirm unless --yes
@@ -515,7 +597,6 @@ def issue_bulk(
 
     success_count = 0
     error_count = 0
-    errors: list[tuple[int, str]] = []
 
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
@@ -537,12 +618,12 @@ def issue_bulk(
                         if e.response.status_code == 404:
                             err_console.print(
                                 f"[red]Error:[/red] Milestone "
-                                f"'{escape(milestone)}' not found"
+                                f"'{safe_rich(milestone)}' not found"
                             )
                         else:
-                            err_console.print(f"[red]Error:[/red] {escape(str(e))}")
+                            err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
                     else:
-                        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
+                        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
                     sys.exit(1)
             for issue_num in issue_nums:
                 try:
@@ -584,12 +665,11 @@ def issue_bulk(
                     success_count += 1
 
                 except CLI_ERRORS as e:
-                    console.print(f"  [red]✗[/red] #{issue_num}: {escape(str(e))}")
-                    errors.append((issue_num, str(e)))
+                    console.print(f"  [red]✗[/red] #{issue_num}: {safe_rich(str(e))}")
                     error_count += 1
 
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)
 
     # Print summary
@@ -650,8 +730,9 @@ def epic_create(
     import re
 
     if not re.match(r"^[0-9a-fA-F]{6}$", color):
+        safe_color = terminal_safe(color)
         raise click.BadParameter(
-            f"Color must be a 6-character hex code (e.g., 'ff0000'), got: {color}"
+            f"Color must be a 6-character hex code (e.g., 'ff0000'), got: {safe_color}"
         )
 
     # Deduplicate and sort children
@@ -669,7 +750,7 @@ def epic_create(
             label_names = {label.name: label.id for label in existing_labels}
 
             if epic_label not in label_names:
-                console.print(f"Creating label [cyan]{escape(epic_label)}[/cyan]...")
+                console.print(f"Creating label [cyan]{safe_rich(epic_label)}[/cyan]...")
                 created_label = client.create_label(
                     owner, repo_name, epic_label, color, f"Epic: {name}"
                 )
@@ -696,7 +777,8 @@ def epic_create(
                 issue_labels.insert(0, type_epic_id)
 
             # Create the epic issue
-            console.print(f"Creating epic issue [cyan]{escape(epic_title)}[/cyan]...")
+            esc_title = safe_rich(epic_title)
+            console.print(f"Creating epic issue [cyan]{esc_title}[/cyan]...")
             issue = client.create_issue(
                 owner, repo_name, epic_title, body, labels=issue_labels
             )
@@ -704,7 +786,7 @@ def epic_create(
 
             # Apply epic label to child issues
             if unique_children:
-                escaped_label = escape(epic_label)
+                escaped_label = safe_rich(epic_label)
                 console.print(f"Applying [cyan]{escaped_label}[/cyan] to child issues…")
                 for child_num in unique_children:
                     try:
@@ -713,18 +795,19 @@ def epic_create(
                         )
                         console.print(f"  [green]✓[/green] #{child_num}")
                     except CLI_ERRORS as e:
-                        console.print(f"  [red]✗[/red] #{child_num}: {escape(str(e))}")
+                        esc_err = safe_rich(str(e))
+                        console.print(f"  [red]✗[/red] #{child_num}: {esc_err}")
 
             # Print summary
             console.print()
             console.print("[bold]Epic created successfully![/bold]")
             console.print(f"  Issue: #{issue.number}")
-            console.print(f"  Label: {escape(epic_label)}")
+            console.print(f"  Label: {safe_rich(epic_label)}")
             if unique_children:
                 console.print(f"  Children: {len(unique_children)} issues labeled")
 
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)
 
 
@@ -778,7 +861,8 @@ def epic_status(
             child_nums = list(dict.fromkeys(parsed))
 
             if not child_nums:
-                console.print(f"[bold]Epic #{issue}:[/bold] {escape(epic_issue.title)}")
+                esc_title = safe_rich(epic_issue.title)
+                console.print(f"[bold]Epic #{issue}:[/bold] {esc_title}")
                 console.print("[yellow]No child issues found in epic body[/yellow]")
                 return
 
@@ -801,7 +885,8 @@ def epic_status(
             percentage = (completed / total * 100) if total > 0 else 0
 
             # Display status
-            console.print(f"\n[bold]Epic #{issue}:[/bold] {escape(epic_issue.title)}")
+            esc_title = safe_rich(epic_issue.title)
+            console.print(f"\n[bold]Epic #{issue}:[/bold] {esc_title}")
             pct = f"{percentage:.0f}%"
             console.print(f"[bold]Progress:[/bold] {completed}/{total} ({pct})")
 
@@ -815,15 +900,15 @@ def epic_status(
             if closed_issues:
                 console.print(f"\n[green]Completed ({len(closed_issues)}):[/green]")
                 for num, title in closed_issues:
-                    console.print(f"  [green]✓[/green] #{num} {escape(title)}")
+                    console.print(f"  [green]✓[/green] #{num} {safe_rich(title)}")
 
             if open_issues:
                 console.print(f"\n[yellow]Open ({len(open_issues)}):[/yellow]")
                 for num, title in open_issues:
-                    console.print(f"  [ ] #{num} {escape(title)}")
+                    console.print(f"  [ ] #{num} {safe_rich(title)}")
 
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)
 
 
@@ -953,7 +1038,7 @@ def epic_add(
 
             # Apply epic label to child issues
             if epic_label:
-                escaped = escape(epic_label)
+                escaped = safe_rich(epic_label)
                 console.print(f"Applying [cyan]{escaped}[/cyan] to child issues...")
                 for child_num in new_children:
                     try:
@@ -962,7 +1047,8 @@ def epic_add(
                         )
                         console.print(f"  [green]✓[/green] #{child_num}")
                     except CLI_ERRORS as e:
-                        console.print(f"  [red]✗[/red] #{child_num}: {escape(str(e))}")
+                        esc_err = safe_rich(str(e))
+                        console.print(f"  [red]✗[/red] #{child_num}: {esc_err}")
 
             # Print summary
             console.print()
@@ -970,7 +1056,7 @@ def epic_add(
             console.print(f"[bold]Added {count} issues to epic #{epic_issue}[/bold]")
 
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)
 
 

@@ -48,6 +48,29 @@ src/teax/
 - Testing patterns: See `.claude/rules/testing.md`
 - Full API docs: See `docs/api.md`
 
+### Code Review with Codex
+
+Use `codex exec` for iterative security hardening:
+
+```bash
+codex exec "Conduct a comprehensive code review of teax...
+- Security: Terminal/CSV injection, path traversal, token leakage
+- Error handling: Exception messages sanitized
+Please provide grade (A, A-, B+, etc.) and critical issues."
+```
+
+Iterate fixes until achieving target grade (aim for A).
+
+### Security Checklist
+
+When adding output or error messages, verify:
+- [ ] User/server strings pass through `safe_rich()` for Rich output
+- [ ] User/server strings pass through `terminal_safe()` for plain output
+- [ ] CSV string fields pass through `csv_safe()`
+- [ ] Click BadParameter messages sanitise user input via `terminal_safe()`
+- [ ] Config error messages don't expose token values
+- [ ] API paths use `_seg()` for owner/repo to prevent traversal
+
 ## tea CLI Reference
 
 When creating Gitea issues programmatically:

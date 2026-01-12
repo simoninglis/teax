@@ -15,6 +15,37 @@ Uses tea's configuration for authentication - no additional setup required.
 
 ## Installation
 
+### From Gitea PyPI Registry
+
+```bash
+# Using uv (recommended)
+UV_INDEX_URL=https://prod-vm-gitea.internal.kellgari.com.au/api/packages/homelab-teams/pypi/simple \
+  uv pip install teax
+
+# Using pip
+pip install teax \
+  --index-url https://prod-vm-gitea.internal.kellgari.com.au/api/packages/homelab-teams/pypi/simple
+
+# Using pipx (isolated environment)
+pipx install teax \
+  --pip-args="--index-url https://prod-vm-gitea.internal.kellgari.com.au/api/packages/homelab-teams/pypi/simple"
+```
+
+For self-hosted Gitea with custom CA certificates:
+
+```bash
+# uv with custom CA
+UV_INDEX_URL=https://prod-vm-gitea.internal.kellgari.com.au/api/packages/homelab-teams/pypi/simple \
+  SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
+  uv pip install teax
+
+# pip/pipx with custom CA
+PIP_CERT=/etc/ssl/certs/ca-certificates.crt pipx install teax \
+  --pip-args="--index-url https://prod-vm-gitea.internal.kellgari.com.au/api/packages/homelab-teams/pypi/simple"
+```
+
+### Development Installation
+
 ```bash
 # Clone the repository
 git clone https://prod-vm-gitea.internal.kellgari.com.au/homelab-teams/teax.git
@@ -140,12 +171,16 @@ tea login add
 
 | Variable | Description |
 |----------|-------------|
-| `TEAX_INSECURE` | Set to `1` to skip SSL certificate verification. Use for self-hosted Gitea with self-signed certificates. |
+| `TEAX_CA_BUNDLE` | Path to custom CA certificate bundle (e.g., `/path/to/ca.pem`). Use for self-hosted Gitea with custom certificates. |
+| `TEAX_INSECURE` | Set to `1` to skip SSL certificate verification entirely (not recommended). |
 
-Example:
+Examples:
 
 ```bash
-# Skip SSL verification for self-signed certs
+# Use a custom CA certificate bundle
+TEAX_CA_BUNDLE=/etc/ssl/certs/my-ca.pem teax deps list 25 --repo owner/repo
+
+# Skip SSL verification (not recommended)
 TEAX_INSECURE=1 teax deps list 25 --repo owner/repo
 ```
 
@@ -153,19 +188,48 @@ TEAX_INSECURE=1 teax deps list 25 --repo owner/repo
 
 ```bash
 # Install dev dependencies
-poetry install
+just install
 
-# Run tests
-poetry run pytest
+# Run all quality checks (lint, typecheck, test)
+just check
 
-# Run linting
-poetry run ruff check .
-
-# Run type checking
-poetry run mypy src/
+# Run individual checks
+just test           # Run pytest
+just lint           # Run ruff linting
+just typecheck      # Run mypy
 
 # Format code
-poetry run ruff format .
+just format
+
+# Run CLI during development
+just run --help
+just run deps list 25 --repo owner/repo
+```
+
+## Publishing (Maintainers)
+
+```bash
+# One-time setup: configure Poetry repository for Gitea PyPI
+just setup-publish
+# Then configure credentials (see output for options)
+
+# Show current version
+just version
+
+# Bump version (updates pyproject.toml and src/teax/__init__.py)
+just bump patch     # 0.1.0 → 0.1.1
+just bump minor     # 0.1.0 → 0.2.0
+just bump major     # 0.1.0 → 1.0.0
+
+# Build package
+just build
+
+# Publish to Gitea PyPI
+just publish
+
+# Full release workflow (check → bump → commit → tag → publish)
+just release patch
+# Then: git push origin main --tags
 ```
 
 ## Feature Gap Analysis (tea v0.9.2)

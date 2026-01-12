@@ -7,7 +7,124 @@ from types import SimpleNamespace
 import pytest
 from click.testing import CliRunner
 
-from teax.cli import OutputFormat, main, parse_issue_spec, parse_repo
+from teax.cli import (
+    OutputFormat,
+    csv_safe,
+    main,
+    parse_issue_spec,
+    parse_repo,
+    safe_rich,
+    terminal_safe,
+)
+
+# --- Security Tests ---
+
+
+def test_terminal_safe_strips_csi_sequences():
+    """Test terminal_safe strips CSI (ANSI) escape sequences."""
+    # ANSI color codes should be removed
+    assert terminal_safe("\x1b[31mRed Text\x1b[0m") == "Red Text"
+    # ANSI cursor movement should be removed
+    assert terminal_safe("\x1b[2J\x1b[HEvil") == "Evil"
+
+
+def test_terminal_safe_strips_osc_sequences():
+    """Test terminal_safe strips OSC escape sequences (e.g., hyperlinks)."""
+    # OSC-8 hyperlink (terminated by BEL)
+    osc_link = "\x1b]8;;https://phish.example.com\x07click\x1b]8;;\x07"
+    assert terminal_safe(osc_link) == "click"
+    # OSC terminated by ST (\x1b\\)
+    osc_st = "\x1b]0;Evil Title\x1b\\"
+    assert terminal_safe(osc_st) == ""
+
+
+def test_terminal_safe_strips_dcs_sequences():
+    """Test terminal_safe strips DCS escape sequences."""
+    dcs = "\x1bPq#0;2;0;0;0#1;2;255;255;255\x1b\\"
+    assert terminal_safe(dcs) == ""
+
+
+def test_terminal_safe_strips_c1_control_codes():
+    """Test terminal_safe strips C1 control codes (0x80-0x9F)."""
+    # C1 CSI (0x9B) is equivalent to ESC [
+    assert terminal_safe("Hello\x9bWorld") == "HelloWorld"
+    # C1 OSC (0x9D) is equivalent to ESC ]
+    assert terminal_safe("Test\x9dEvil\x9c") == "TestEvil"
+
+
+def test_terminal_safe_strips_standalone_cr():
+    """Test terminal_safe strips standalone CR (line-rewrite spoofing)."""
+    # Standalone CR allows overwriting output - must be stripped
+    assert terminal_safe("Real text\rFake") == "Real textFake"
+    # CRLF is valid Windows line ending - CR is preserved (not spoofing risk)
+    assert terminal_safe("Line1\r\nLine2") == "Line1\r\nLine2"
+
+
+def test_terminal_safe_strips_control_characters():
+    """Test terminal_safe strips C0 control characters."""
+    # Null bytes
+    assert terminal_safe("Hello\x00World") == "HelloWorld"
+    # Bell character
+    assert terminal_safe("Alert\x07!") == "Alert!"
+    # Backspace
+    assert terminal_safe("Back\x08space") == "Backspace"
+
+
+def test_terminal_safe_preserves_normal_text():
+    """Test terminal_safe preserves normal text."""
+    assert terminal_safe("Normal text with spaces") == "Normal text with spaces"
+    assert terminal_safe("Unicode: café résumé") == "Unicode: café résumé"
+    # Tabs and newlines should be preserved
+    assert terminal_safe("Line1\nLine2\tTabbed") == "Line1\nLine2\tTabbed"
+
+
+def test_safe_rich_strips_escapes_and_markup():
+    """Test safe_rich combines terminal_safe with Rich markup escaping."""
+    # Should strip escape sequences
+    assert safe_rich("\x1b[31mRed\x1b[0m") == "Red"
+    # Should escape Rich markup
+    result = safe_rich("[bold]Not bold[/bold]")
+    assert "bold" in result
+    # Combined: strip escapes then escape markup
+    result = safe_rich("\x1b[31m[red]Fake[/red]\x1b[0m")
+    assert "red" in result
+    assert "\x1b" not in result
+
+
+def test_csv_safe_neutralizes_formula_prefix():
+    """Test csv_safe neutralizes Excel/Sheets formula prefixes."""
+    assert csv_safe("=SUM(A1:A10)") == "'=SUM(A1:A10)"
+    assert csv_safe("+1234567890") == "'+1234567890"
+    assert csv_safe("-1234567890") == "'-1234567890"
+    assert csv_safe("@SUM(A1)") == "'@SUM(A1)"
+
+
+def test_csv_safe_neutralizes_formula_after_whitespace():
+    """Test csv_safe neutralizes formulas even after leading whitespace."""
+    assert csv_safe("  =SUM(A1)") == "'  =SUM(A1)"
+    assert csv_safe(" +123") == "' +123"
+    assert csv_safe("\t-456") == "'\t-456"
+
+
+def test_csv_safe_strips_terminal_escapes():
+    """Test csv_safe strips terminal escape sequences."""
+    assert csv_safe("\x1b[31mRed\x1b[0m") == "Red"
+    assert csv_safe("\x1b]8;;https://evil.com\x07click\x1b]8;;\x07") == "click"
+
+
+def test_csv_safe_preserves_normal_text():
+    """Test csv_safe preserves normal text without prefix."""
+    assert csv_safe("Normal text") == "Normal text"
+    assert csv_safe("123-456-7890") == "123-456-7890"
+    assert csv_safe("email@example.com") == "email@example.com"
+
+
+def test_csv_safe_handles_empty_string():
+    """Test csv_safe handles empty string."""
+    assert csv_safe("") == ""
+
+
+# --- Fixture ---
 
 
 @pytest.fixture

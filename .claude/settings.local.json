@@ -26,7 +26,19 @@
       "Bash(poetry run pytest:*)",
       "Bash(tea issue create:*)",
       "Bash(tea issue close:*)",
-      "Bash(poetry run ruff check:*)"
+      "Bash(poetry run ruff check:*)",
+      "Bash(poetry run just:*)",
+      "Bash(just --list:*)",
+      "Bash(just setup-publish:*)",
+      "Bash(just version:*)",
+      "Bash(just build:*)",
+      "Bash(just publish:*)",
+      "WebSearch",
+      "Bash(poetry config:*)",
+      "Bash(env)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(git reset:*)"
     ]
   }
 }

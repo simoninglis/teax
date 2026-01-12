@@ -55,6 +55,93 @@ def test_ssl_verify_disabled():
             os.environ.pop("TEAX_INSECURE", None)
 
 
+def test_ssl_verify_custom_ca_bundle():
+    """Test custom CA bundle path with TEAX_CA_BUNDLE."""
+    env_backup_insecure = os.environ.get("TEAX_INSECURE")
+    env_backup_ca = os.environ.get("TEAX_CA_BUNDLE")
+    try:
+        os.environ.pop("TEAX_INSECURE", None)
+        os.environ["TEAX_CA_BUNDLE"] = "/path/to/custom/ca.pem"
+        assert _get_ssl_verify() == "/path/to/custom/ca.pem"
+    finally:
+        if env_backup_insecure is not None:
+            os.environ["TEAX_INSECURE"] = env_backup_insecure
+        else:
+            os.environ.pop("TEAX_INSECURE", None)
+        if env_backup_ca is not None:
+            os.environ["TEAX_CA_BUNDLE"] = env_backup_ca
+        else:
+            os.environ.pop("TEAX_CA_BUNDLE", None)
+
+
+def test_ssl_ca_bundle_takes_precedence_over_insecure():
+    """Test TEAX_CA_BUNDLE takes precedence over TEAX_INSECURE."""
+    env_backup_insecure = os.environ.get("TEAX_INSECURE")
+    env_backup_ca = os.environ.get("TEAX_CA_BUNDLE")
+    try:
+        os.environ["TEAX_INSECURE"] = "1"
+        os.environ["TEAX_CA_BUNDLE"] = "/path/to/ca.pem"
+        # CA bundle should take precedence
+        assert _get_ssl_verify() == "/path/to/ca.pem"
+    finally:
+        if env_backup_insecure is not None:
+            os.environ["TEAX_INSECURE"] = env_backup_insecure
+        else:
+            os.environ.pop("TEAX_INSECURE", None)
+        if env_backup_ca is not None:
+            os.environ["TEAX_CA_BUNDLE"] = env_backup_ca
+        else:
+            os.environ.pop("TEAX_CA_BUNDLE", None)
+
+
+# --- Path Encoding Tests (Security) ---
+
+
+def test_seg_encodes_slashes():
+    """Test _seg encodes slashes to prevent path traversal."""
+    from teax.api import _seg
+
+    # Path traversal attempt should be encoded
+    assert _seg("../admin") == "..%2Fadmin"
+    assert _seg("owner/../other") == "owner%2F..%2Fother"
+
+
+def test_seg_encodes_special_chars():
+    """Test _seg encodes special URL characters."""
+    from teax.api import _seg
+
+    # Query string injection attempt should be encoded
+    assert _seg("repo?foo=bar") == "repo%3Ffoo%3Dbar"
+    # Hash/fragment should be encoded
+    assert _seg("repo#anchor") == "repo%23anchor"
+
+
+def test_normalize_base_url_standard():
+    """Test URL normalization for standard URLs."""
+    from teax.api import _normalize_base_url
+
+    assert _normalize_base_url("https://example.com") == "https://example.com/api/v1/"
+    assert _normalize_base_url("https://example.com/") == "https://example.com/api/v1/"
+
+
+def test_normalize_base_url_with_existing_api_path():
+    """Test URL normalization doesn't double /api/v1."""
+    from teax.api import _normalize_base_url
+
+    # Should not produce /api/v1/api/v1/
+    result = _normalize_base_url("https://example.com/api/v1")
+    assert result == "https://example.com/api/v1/"
+    assert "/api/v1/api/v1" not in result
+
+
+def test_normalize_base_url_subpath():
+    """Test URL normalization with subpath installations."""
+    from teax.api import _normalize_base_url
+
+    result = _normalize_base_url("https://example.com/gitea")
+    assert result == "https://example.com/gitea/api/v1/"
+
+
 # --- Client Initialization Tests ---
 
 

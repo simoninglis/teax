@@ -36,6 +36,41 @@ with GiteaClient(login_name="backup.example.com") as client:
 - **Label caching** - Per-repo cache to avoid redundant API calls
 - **Pydantic validation** - Type-safe API responses
 
+## Security Architecture
+
+teax implements defense-in-depth security measures:
+
+### Output Sanitisation
+
+All user-controlled and server-returned strings are sanitised before display:
+
+| Function | Purpose | Usage |
+|----------|---------|-------|
+| `terminal_safe()` | Strips terminal escape sequences (CSI, OSC, DCS, etc.) | All terminal output |
+| `safe_rich()` | Combines `terminal_safe()` + Rich markup escaping | Rich console output |
+| `csv_safe()` | Strips escapes + neutralises formula injection (`=+−@`) | CSV output |
+
+### Transport Security
+
+- **`trust_env=False`**: httpx ignores proxy env vars to prevent token leakage
+- **`TEAX_CA_BUNDLE`**: Custom CA certificate support for self-hosted instances
+- **Path encoding**: `_seg()` URL-encodes path segments to prevent traversal attacks
+
+### Error Handling
+
+`CLI_ERRORS` tuple catches all expected exceptions for graceful error display:
+- `httpx.HTTPStatusError` - API errors
+- `httpx.RequestError` - Network errors
+- `ValueError` - Validation errors (e.g., label not found)
+- `FileNotFoundError` - Missing tea config
+- `ValidationError` - Pydantic model validation failures
+- `KeyError` - Unexpected API response format
+
+### DoS Prevention
+
+- `MAX_BULK_ISSUES = 10000` caps issue range expansion
+- Range size validated before memory allocation
+
 ## Related
 
 - [ADR-0006](adr/ADR-0006-teax-design.md) - Design decision record
