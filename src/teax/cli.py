@@ -1,5 +1,7 @@
 """teax CLI - Gitea companion for tea feature gaps."""
 
+import csv
+import io
 import sys
 from typing import Any
 
@@ -36,9 +38,12 @@ class OutputFormat:
             for d in deps:
                 click.echo(f"#{d.number}")
         elif self.format_type == "csv":
-            click.echo("number,title,state,repository")
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["number", "title", "state", "repository"])
             for d in deps:
-                click.echo(f"{d.number},{d.title},{d.state},{d.repository.full_name}")
+                writer.writerow([d.number, d.title, d.state, d.repository.full_name])
+            click.echo(output.getvalue().rstrip())
         else:  # table (default)
             if not deps:
                 console.print(f"[dim]Issue #{issue_num} has no {direction}[/dim]")
@@ -66,9 +71,12 @@ class OutputFormat:
             for label in labels:
                 click.echo(label.name)
         elif self.format_type == "csv":
-            click.echo("name,color,description")
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["name", "color", "description"])
             for label in labels:
-                click.echo(f"{label.name},{label.color},{label.description}")
+                writer.writerow([label.name, label.color, label.description])
+            click.echo(output.getvalue().rstrip())
         else:  # table
             if not labels:
                 console.print("[dim]No labels[/dim]")
@@ -89,9 +97,7 @@ class OutputFormat:
 
 @click.group()
 @click.version_option(__version__, prog_name="teax")
-@click.option(
-    "--login", "-l", "login_name", help="Use specific tea login"
-)
+@click.option("--login", "-l", "login_name", help="Use specific tea login")
 @click.option(
     "--output",
     "-o",
@@ -195,12 +201,8 @@ def deps_add(
             else:
                 # issue blocks 'blocks' -> blocks depends on issue
                 assert blocks is not None
-                client.add_dependency(
-                    owner, repo_name, blocks, owner, repo_name, issue
-                )
-                console.print(
-                    f"[green]Added:[/green] #{issue} now blocks #{blocks}"
-                )
+                client.add_dependency(owner, repo_name, blocks, owner, repo_name, issue)
+                console.print(f"[green]Added:[/green] #{issue} now blocks #{blocks}")
     except Exception as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
