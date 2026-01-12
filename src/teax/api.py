@@ -207,10 +207,8 @@ class GiteaClient:
             index: Issue number
             label: Label name to remove
         """
-        # Get label ID
+        # Get label ID (raises ValueError if not found)
         label_ids = self._resolve_label_ids(owner, repo, [label])
-        if not label_ids:
-            return
 
         response = self._client.delete(
             f"/api/v1/repos/{owner}/{repo}/issues/{index}/labels/{label_ids[0]}"
@@ -257,11 +255,22 @@ class GiteaClient:
         """
         cache_key = f"{owner}/{repo}"
         if cache_key not in self._label_cache:
-            response = self._client.get(f"/api/v1/repos/{owner}/{repo}/labels")
-            response.raise_for_status()
-            self._label_cache[cache_key] = {
-                item["name"]: item["id"] for item in response.json()
-            }
+            # Fetch all labels with pagination
+            all_labels: dict[str, int] = {}
+            page = 1
+            while True:
+                response = self._client.get(
+                    f"/api/v1/repos/{owner}/{repo}/labels",
+                    params={"page": page, "limit": 50},
+                )
+                response.raise_for_status()
+                items = response.json()
+                if not items:
+                    break
+                for item in items:
+                    all_labels[item["name"]] = item["id"]
+                page += 1
+            self._label_cache[cache_key] = all_labels
 
         all_labels = self._label_cache[cache_key]
         ids = []

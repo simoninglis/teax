@@ -8,7 +8,8 @@ Gitea CLI companion for tea feature gaps.
 
 - **Issue editing**: Modify labels, assignees, milestones on existing issues
 - **Dependency management**: Set and manage issue blockers/blocked-by relationships
-- **Bulk operations**: Apply changes to multiple issues (coming soon)
+- **Bulk operations**: Apply changes to multiple issues at once
+- **Epic management**: Create and track parent issues with child issue checklists
 
 Uses tea's configuration for authentication - no additional setup required.
 
@@ -69,6 +70,35 @@ teax issue edit 25 --repo homelab/myproject --milestone 5
 
 # List labels on an issue
 teax issue labels 25 --repo homelab/myproject
+```
+
+### Bulk Operations
+
+```bash
+# Add labels to multiple issues
+teax issue bulk 17-23 --repo homelab/myproject --add-labels "sprint/week1"
+
+# Set assignees on a range of issues
+teax issue bulk "17,18,25-30" --repo homelab/myproject --assignees "user1"
+
+# Set milestone on multiple issues
+teax issue bulk 17-20 --repo homelab/myproject --milestone 5
+
+# Skip confirmation prompt
+teax issue bulk 17-23 --repo homelab/myproject --add-labels "done" --yes
+```
+
+### Epic Management
+
+```bash
+# Create a new epic with child issues
+teax epic create auth --repo homelab/myproject --title "Auth System" -c 17 -c 18
+
+# Add issues to an existing epic
+teax epic add 25 17 18 19 --repo homelab/myproject
+
+# Show epic progress
+teax epic status 25 --repo homelab/myproject
 ```
 
 ### Global Options
@@ -139,9 +169,10 @@ poetry run ruff format .
 |---------|-------------|------------|
 | Issue create | Full | Out of scope |
 | Issue list/view | Full | Out of scope |
-| Issue edit | Missing | **Primary** |
-| Issue dependencies | Missing | **Primary** |
-| Issue bulk ops | Missing | Phase 2 |
+| Issue edit | Missing | **Implemented** |
+| Issue dependencies | Missing | **Implemented** |
+| Issue bulk ops | Missing | **Implemented** |
+| Epic management | Missing | **Implemented** |
 | Label CRUD | Full | Out of scope |
 | Label assign | Missing | Via issue edit |
 | Milestone CRUD | Full | Out of scope |

@@ -272,15 +272,18 @@ def test_get_issue_labels(client: GiteaClient):
 @respx.mock
 def test_add_issue_labels(client: GiteaClient):
     """Test adding labels to an issue."""
-    # Mock the label lookup
+    # Mock the label lookup with pagination
     respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
-        return_value=httpx.Response(
-            200,
-            json=[
-                {"id": 1, "name": "bug", "color": "ff0000", "description": ""},
-                {"id": 2, "name": "feature", "color": "00ff00", "description": ""},
-            ],
-        )
+        side_effect=[
+            httpx.Response(
+                200,
+                json=[
+                    {"id": 1, "name": "bug", "color": "ff0000", "description": ""},
+                    {"id": 2, "name": "feature", "color": "00ff00", "description": ""},
+                ],
+            ),
+            httpx.Response(200, json=[]),  # End of pagination
+        ]
     )
     # Mock the add labels request
     respx.post(
@@ -303,14 +306,17 @@ def test_add_issue_labels(client: GiteaClient):
 @respx.mock
 def test_remove_issue_label(client: GiteaClient):
     """Test removing a label from an issue."""
-    # Mock the label lookup
+    # Mock the label lookup with pagination
     respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
-        return_value=httpx.Response(
-            200,
-            json=[
-                {"id": 1, "name": "bug", "color": "ff0000", "description": ""},
-            ],
-        )
+        side_effect=[
+            httpx.Response(
+                200,
+                json=[
+                    {"id": 1, "name": "bug", "color": "ff0000", "description": ""},
+                ],
+            ),
+            httpx.Response(200, json=[]),  # End of pagination
+        ]
     )
     # Mock the delete request
     respx.delete(
@@ -324,15 +330,18 @@ def test_remove_issue_label(client: GiteaClient):
 @respx.mock
 def test_set_issue_labels(client: GiteaClient):
     """Test replacing all labels on an issue."""
-    # Mock the label lookup
+    # Mock the label lookup with pagination
     respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
-        return_value=httpx.Response(
-            200,
-            json=[
-                {"id": 1, "name": "bug", "color": "ff0000", "description": ""},
-                {"id": 2, "name": "feature", "color": "00ff00", "description": ""},
-            ],
-        )
+        side_effect=[
+            httpx.Response(
+                200,
+                json=[
+                    {"id": 1, "name": "bug", "color": "ff0000", "description": ""},
+                    {"id": 2, "name": "feature", "color": "00ff00", "description": ""},
+                ],
+            ),
+            httpx.Response(200, json=[]),  # End of pagination
+        ]
     )
     # Mock the set labels request
     respx.put("https://test.example.com/api/v1/repos/owner/repo/issues/25/labels").mock(
@@ -562,13 +571,16 @@ def test_label_cache_avoids_redundant_calls(client: GiteaClient):
     """Test that label resolution uses cache to avoid redundant API calls."""
     label_route = respx.get("https://test.example.com/api/v1/repos/owner/repo/labels")
     label_route.mock(
-        return_value=httpx.Response(
-            200,
-            json=[
-                {"id": 1, "name": "bug", "color": "ff0000", "description": ""},
-                {"id": 2, "name": "feature", "color": "00ff00", "description": ""},
-            ],
-        )
+        side_effect=[
+            httpx.Response(
+                200,
+                json=[
+                    {"id": 1, "name": "bug", "color": "ff0000", "description": ""},
+                    {"id": 2, "name": "feature", "color": "00ff00", "description": ""},
+                ],
+            ),
+            httpx.Response(200, json=[]),  # End of pagination
+        ]
     )
     # Mock for adding labels
     respx.post(
@@ -582,8 +594,9 @@ def test_label_cache_avoids_redundant_calls(client: GiteaClient):
     client.add_issue_labels("owner", "repo", 25, ["bug"])
     client.add_issue_labels("owner", "repo", 26, ["feature"])
 
-    # Label lookup should only be called once due to caching
-    assert label_route.call_count == 1
+    # Label lookup should only be called twice (2 pages) due to caching
+    # (page 1 with labels + page 2 empty), second operation uses cache
+    assert label_route.call_count == 2
 
 
 @respx.mock
@@ -591,17 +604,23 @@ def test_label_cache_per_repo(client: GiteaClient):
     """Test that label cache is per-repo."""
     label_route_1 = respx.get("https://test.example.com/api/v1/repos/owner/repo1/labels")
     label_route_1.mock(
-        return_value=httpx.Response(
-            200,
-            json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
-        )
+        side_effect=[
+            httpx.Response(
+                200,
+                json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
+            ),
+            httpx.Response(200, json=[]),  # End of pagination
+        ]
     )
     label_route_2 = respx.get("https://test.example.com/api/v1/repos/owner/repo2/labels")
     label_route_2.mock(
-        return_value=httpx.Response(
-            200,
-            json=[{"id": 5, "name": "bug", "color": "ff0000", "description": ""}],
-        )
+        side_effect=[
+            httpx.Response(
+                200,
+                json=[{"id": 5, "name": "bug", "color": "ff0000", "description": ""}],
+            ),
+            httpx.Response(200, json=[]),  # End of pagination
+        ]
     )
     respx.post(
         "https://test.example.com/api/v1/repos/owner/repo1/issues/1/labels"
@@ -614,8 +633,9 @@ def test_label_cache_per_repo(client: GiteaClient):
     client.add_issue_labels("owner", "repo1", 1, ["bug"])
     client.add_issue_labels("owner", "repo2", 1, ["bug"])
 
-    assert label_route_1.call_count == 1
-    assert label_route_2.call_count == 1
+    # Each repo gets 2 calls (page 1 + page 2 empty)
+    assert label_route_1.call_count == 2
+    assert label_route_2.call_count == 2
 
 
 @respx.mock
@@ -623,10 +643,13 @@ def test_label_cache_cleared_on_close(client: GiteaClient):
     """Test that label cache is cleared when client is closed."""
     label_route = respx.get("https://test.example.com/api/v1/repos/owner/repo/labels")
     label_route.mock(
-        return_value=httpx.Response(
-            200,
-            json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
-        )
+        side_effect=[
+            httpx.Response(
+                200,
+                json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
+            ),
+            httpx.Response(200, json=[]),  # End of pagination
+        ]
     )
     respx.post(
         "https://test.example.com/api/v1/repos/owner/repo/issues/25/labels"
@@ -634,7 +657,7 @@ def test_label_cache_cleared_on_close(client: GiteaClient):
 
     # Populate the cache
     client.add_issue_labels("owner", "repo", 25, ["bug"])
-    assert label_route.call_count == 1
+    assert label_route.call_count == 2  # page 1 + empty page 2
 
     # Close and verify cache is cleared
     client.close()
@@ -646,10 +669,20 @@ def test_label_cache_invalidated_on_create_label(client: GiteaClient):
     """Test that create_label invalidates the cache for that repo."""
     label_route = respx.get("https://test.example.com/api/v1/repos/owner/repo/labels")
     label_route.mock(
-        return_value=httpx.Response(
-            200,
-            json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
-        )
+        side_effect=[
+            # First population (2 calls for pagination)
+            httpx.Response(
+                200,
+                json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
+            ),
+            httpx.Response(200, json=[]),  # End of pagination
+            # Second population after cache invalidation (2 calls)
+            httpx.Response(
+                200,
+                json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
+            ),
+            httpx.Response(200, json=[]),  # End of pagination
+        ]
     )
     respx.post(
         "https://test.example.com/api/v1/repos/owner/repo/issues/25/labels"
@@ -663,7 +696,7 @@ def test_label_cache_invalidated_on_create_label(client: GiteaClient):
 
     # First operation populates cache
     client.add_issue_labels("owner", "repo", 25, ["bug"])
-    assert label_route.call_count == 1
+    assert label_route.call_count == 2  # page 1 + empty page 2
     assert "owner/repo" in client._label_cache
 
     # Creating a label should invalidate the cache
@@ -672,4 +705,4 @@ def test_label_cache_invalidated_on_create_label(client: GiteaClient):
 
     # Next operation should fetch labels again
     client.add_issue_labels("owner", "repo", 25, ["bug"])
-    assert label_route.call_count == 2
+    assert label_route.call_count == 4  # 2 more for re-population

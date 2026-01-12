@@ -29,7 +29,9 @@
       "Bash(just test:*)",
       "Bash(just format:*)",
       "Bash(poetry add:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(codex exec \"Conduct a comprehensive code review of this teax project - a Gitea CLI companion tool.\n\nKey files:\n- src/teax/api.py - GiteaClient with label caching\n- src/teax/cli.py - Click commands \\(deps, issue, epic\\)\n- src/teax/config.py - tea config reader\n- src/teax/models.py - Pydantic models\n- tests/ - pytest tests\n\nReview for: code quality, security, error handling, test coverage, docs.\n\nProvide letter grade, critical issues, important improvements, and nice-to-haves.\")",
+      "Bash(poetry run pytest:*)"
     ]
   }
 }

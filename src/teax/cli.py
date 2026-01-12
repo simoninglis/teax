@@ -6,6 +6,7 @@ import sys
 from typing import Any
 
 import click
+import httpx
 from rich.console import Console
 from rich.table import Table
 
@@ -205,7 +206,7 @@ def deps_list(ctx: click.Context, issue: int, repo: str) -> None:
             if blocks:
                 console.print()
                 output.print_deps(blocks, issue, "blocks")
-    except Exception as e:
+    except (httpx.HTTPStatusError, ValueError) as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -254,7 +255,7 @@ def deps_add(
                 assert blocks is not None
                 client.add_dependency(owner, repo_name, blocks, owner, repo_name, issue)
                 console.print(f"[green]Added:[/green] #{issue} now blocks #{blocks}")
-    except Exception as e:
+    except (httpx.HTTPStatusError, ValueError) as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -299,7 +300,7 @@ def deps_rm(
                 console.print(
                     f"[yellow]Removed:[/yellow] #{issue} no longer blocks #{blocks}"
                 )
-    except Exception as e:
+    except (httpx.HTTPStatusError, ValueError) as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -400,7 +401,7 @@ def issue_edit(
             else:
                 console.print("[yellow]No changes specified[/yellow]")
 
-    except Exception as e:
+    except (httpx.HTTPStatusError, ValueError) as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -422,7 +423,7 @@ def issue_labels(ctx: click.Context, issue_num: int, repo: str) -> None:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
             labels = client.get_issue_labels(owner, repo_name, issue_num)
             output.print_labels(labels)
-    except Exception as e:
+    except (httpx.HTTPStatusError, ValueError) as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -530,7 +531,8 @@ def issue_bulk(
                     edit_kwargs: dict[str, Any] = {}
 
                     if assignees is not None:
-                        usernames = [u.strip() for u in assignees.split(",") if u]
+                        parts = assignees.split(",")
+                        usernames = [u.strip() for u in parts if u.strip()]
                         edit_kwargs["assignees"] = usernames
 
                     if milestone is not None:
@@ -545,12 +547,12 @@ def issue_bulk(
                     console.print(f"  [green]✓[/green] #{issue_num}")
                     success_count += 1
 
-                except Exception as e:
+                except (httpx.HTTPStatusError, ValueError) as e:
                     console.print(f"  [red]✗[/red] #{issue_num}: {e}")
                     errors.append((issue_num, str(e)))
                     error_count += 1
 
-    except Exception as e:
+    except (httpx.HTTPStatusError, ValueError) as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -657,7 +659,7 @@ def epic_create(
                             owner, repo_name, child_num, [epic_label]
                         )
                         console.print(f"  [green]✓[/green] #{child_num}")
-                    except Exception as e:
+                    except (httpx.HTTPStatusError, ValueError) as e:
                         console.print(f"  [red]✗[/red] #{child_num}: {e}")
 
             # Print summary
@@ -668,7 +670,7 @@ def epic_create(
             if children:
                 console.print(f"  Children: {len(children)} issues labeled")
 
-    except Exception as e:
+    except (httpx.HTTPStatusError, ValueError) as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -737,7 +739,7 @@ def epic_status(
                         closed_issues.append((child_num, child.title))
                     else:
                         open_issues.append((child_num, child.title))
-                except Exception:
+                except httpx.HTTPStatusError:
                     open_issues.append((child_num, "(unable to fetch)"))
 
             total = len(child_nums)
@@ -766,7 +768,7 @@ def epic_status(
                 for num, title in open_issues:
                     console.print(f"  [ ] #{num} {title}")
 
-    except Exception as e:
+    except (httpx.HTTPStatusError, ValueError) as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -878,7 +880,7 @@ def epic_add(
                             owner, repo_name, child_num, [epic_label]
                         )
                         console.print(f"  [green]✓[/green] #{child_num}")
-                    except Exception as e:
+                    except (httpx.HTTPStatusError, ValueError) as e:
                         console.print(f"  [red]✗[/red] #{child_num}: {e}")
 
             # Print summary
@@ -886,7 +888,7 @@ def epic_add(
             count = len(children)
             console.print(f"[bold]Added {count} issues to epic #{epic_issue}[/bold]")
 
-    except Exception as e:
+    except (httpx.HTTPStatusError, ValueError) as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 

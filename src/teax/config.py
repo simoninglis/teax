@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import yaml
+from pydantic import ValidationError
 
 from teax.models import TeaConfig, TeaLogin
 
@@ -33,13 +34,19 @@ def load_tea_config(config_path: Path | None = None) -> TeaConfig:
             "Please configure tea first: tea login add"
         )
 
-    with path.open() as f:
-        raw_config = yaml.safe_load(f)
+    try:
+        with path.open(encoding="utf-8") as f:
+            raw_config = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        raise ValueError(f"Invalid YAML in tea config: {e}") from e
 
     if raw_config is None:
         return TeaConfig()
 
-    return TeaConfig.model_validate(raw_config)
+    try:
+        return TeaConfig.model_validate(raw_config)
+    except ValidationError as e:
+        raise ValueError(f"Invalid tea config format: {e}") from e
 
 
 def get_default_login(config: TeaConfig | None = None) -> TeaLogin:
