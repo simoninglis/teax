@@ -849,3 +849,150 @@ def test_get_milestone_not_found(client: GiteaClient):
         client.get_milestone("owner", "repo", 999)
 
     assert exc_info.value.response.status_code == 404
+
+
+@respx.mock
+def test_list_milestones(client: GiteaClient):
+    """Test listing milestones."""
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones")
+    route.mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"id": 1, "title": "v1.0", "state": "closed"},
+                {"id": 2, "title": "v1.1", "state": "open"},
+                {"id": 3, "title": "Sprint 1", "state": "open"},
+            ],
+        )
+    )
+
+    milestones = client.list_milestones("owner", "repo")
+
+    assert len(milestones) == 3
+    assert milestones[0].title == "v1.0"
+    assert milestones[1].title == "v1.1"
+    assert milestones[2].title == "Sprint 1"
+    # Verify state filter was passed
+    assert route.calls.last.request.url.params["state"] == "all"
+
+
+@respx.mock
+def test_list_milestones_populates_cache(client: GiteaClient):
+    """Test that list_milestones populates milestone cache."""
+    respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"id": 1, "title": "v1.0", "state": "closed"},
+                {"id": 2, "title": "Sprint 1", "state": "open"},
+            ],
+        )
+    )
+
+    client.list_milestones("owner", "repo")
+
+    # Cache should be populated
+    assert "owner/repo" in client._milestone_cache
+    assert client._milestone_cache["owner/repo"]["v1.0"] == 1
+    assert client._milestone_cache["owner/repo"]["Sprint 1"] == 2
+
+
+@respx.mock
+def test_resolve_milestone_by_id(client: GiteaClient):
+    """Test resolving milestone by numeric ID."""
+    respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones/5").mock(
+        return_value=httpx.Response(
+            200, json={"id": 5, "title": "Sprint 1", "state": "open"}
+        )
+    )
+
+    milestone_id = client.resolve_milestone("owner", "repo", "5")
+
+    assert milestone_id == 5
+
+
+@respx.mock
+def test_resolve_milestone_by_name(client: GiteaClient):
+    """Test resolving milestone by name."""
+    respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"id": 1, "title": "v1.0", "state": "closed"},
+                {"id": 5, "title": "Sprint 1", "state": "open"},
+            ],
+        )
+    )
+
+    milestone_id = client.resolve_milestone("owner", "repo", "Sprint 1")
+
+    assert milestone_id == 5
+
+
+@respx.mock
+def test_resolve_milestone_name_not_found(client: GiteaClient):
+    """Test error when milestone name not found."""
+    respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+        return_value=httpx.Response(
+            200, json=[{"id": 1, "title": "v1.0", "state": "open"}]
+        )
+    )
+
+    with pytest.raises(ValueError, match="Milestone 'Unknown' not found"):
+        client.resolve_milestone("owner", "repo", "Unknown")
+
+
+@respx.mock
+def test_resolve_milestone_id_not_found(client: GiteaClient):
+    """Test 404 error when milestone ID not found."""
+    respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones/999").mock(
+        return_value=httpx.Response(404, json={"message": "Not found"})
+    )
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        client.resolve_milestone("owner", "repo", "999")
+
+    assert exc_info.value.response.status_code == 404
+
+
+@respx.mock
+def test_milestone_cache_used_on_second_resolve(client: GiteaClient):
+    """Test that milestone cache is used for subsequent resolves."""
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones")
+    route.mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"id": 1, "title": "v1.0", "state": "closed"},
+                {"id": 5, "title": "Sprint 1", "state": "open"},
+            ],
+        )
+    )
+
+    # First resolve populates cache
+    id1 = client.resolve_milestone("owner", "repo", "Sprint 1")
+    assert id1 == 5
+    assert route.call_count == 1
+
+    # Second resolve uses cache
+    id2 = client.resolve_milestone("owner", "repo", "v1.0")
+    assert id2 == 1
+    assert route.call_count == 1  # No additional API call
+
+
+@respx.mock
+def test_milestone_cache_cleared_on_close(client: GiteaClient):
+    """Test that milestone cache is cleared when client is closed."""
+    respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+        return_value=httpx.Response(
+            200, json=[{"id": 1, "title": "v1.0", "state": "open"}]
+        )
+    )
+
+    # Populate cache
+    client.list_milestones("owner", "repo")
+    assert "owner/repo" in client._milestone_cache
+
+    # Close should clear cache
+    client.close()
+    assert client._milestone_cache == {}

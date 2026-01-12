@@ -235,9 +235,9 @@ This plan addresses remaining quality improvements: 1 bug (base URL subpath), se
 **Solution:** Add milestone list API and name resolution.
 
 **Acceptance Criteria:**
-- [ ] `--milestone "Sprint 1"` resolves to ID
-- [ ] Error if milestone name not found
-- [ ] Numeric IDs still work
+- [x] `--milestone "Sprint 1"` resolves to ID
+- [x] Error if milestone name not found
+- [x] Numeric IDs still work
 
 **Implementation:**
 1. Add `list_milestones(owner, repo)` to api.py
@@ -290,7 +290,7 @@ Implementation sequence considering dependencies:
 8. ✅ **Issue 14** - Input validation (Phase 3) - robustness
 9. ✅ **Issue 15** - Reduce label fetches (Phase 3) - optimization
 10. ✅ **Issue 17** - Epic e2e tests (Phase 3) - test coverage (done in Issue 16)
-11. ⏳ **Issue 18** - Milestone lookup by name (Phase 3) - feature enhancement
+11. ✅ **Issue 18** - Milestone lookup by name (Phase 3) - feature enhancement
 
 ---
 

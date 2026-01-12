@@ -49,11 +49,14 @@ class GiteaClient:
         )
         # Cache for label name -> ID mapping per repo (cleared on close)
         self._label_cache: dict[str, dict[str, int]] = {}
+        # Cache for milestone title -> ID mapping per repo (cleared on close)
+        self._milestone_cache: dict[str, dict[str, int]] = {}
 
     def close(self) -> None:
         """Close the HTTP client and clear caches."""
         self._client.close()
         self._label_cache.clear()
+        self._milestone_cache.clear()
 
     def __enter__(self) -> "GiteaClient":
         return self
@@ -472,3 +475,86 @@ class GiteaClient:
         )
         response.raise_for_status()
         return Milestone.model_validate(response.json())
+
+    def list_milestones(
+        self, owner: str, repo: str, state: str = "all"
+    ) -> list[Milestone]:
+        """List all milestones in a repository.
+
+        Also populates the milestone cache for subsequent resolve_milestone calls.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            state: Filter by state: 'open', 'closed', or 'all' (default)
+
+        Returns:
+            List of milestones
+        """
+        all_milestones: list[Milestone] = []
+        page = 1
+        limit = 50
+        while True:
+            response = self._client.get(
+                f"repos/{owner}/{repo}/milestones",
+                params={"page": page, "limit": limit, "state": state},
+            )
+            response.raise_for_status()
+            items = response.json()
+            if not items:
+                break
+            all_milestones.extend(Milestone.model_validate(item) for item in items)
+            # If we got fewer items than the limit, we're on the last page
+            if len(items) < limit:
+                break
+            page += 1
+
+        # Populate milestone cache for subsequent resolve_milestone calls
+        cache_key = f"{owner}/{repo}"
+        self._milestone_cache[cache_key] = {
+            ms.title: ms.id for ms in all_milestones
+        }
+
+        return all_milestones
+
+    def resolve_milestone(self, owner: str, repo: str, milestone_ref: str) -> int:
+        """Resolve a milestone reference to its ID.
+
+        The reference can be:
+        - A numeric ID (e.g., "5")
+        - A milestone title (e.g., "Sprint 1")
+
+        Uses per-repo caching to avoid redundant API calls within a session.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            milestone_ref: Milestone ID or title
+
+        Returns:
+            Milestone ID
+
+        Raises:
+            ValueError: If milestone not found by name
+            httpx.HTTPStatusError: If milestone not found by ID (404)
+        """
+        # Try parsing as an integer first
+        try:
+            milestone_id = int(milestone_ref)
+            # Validate the milestone exists (raises 404 if not)
+            self.get_milestone(owner, repo, milestone_id)
+            return milestone_id
+        except ValueError:
+            pass  # Not a numeric ID, try name lookup
+
+        # Look up by name using cache
+        cache_key = f"{owner}/{repo}"
+        if cache_key not in self._milestone_cache:
+            # Fetch all milestones to populate cache
+            self.list_milestones(owner, repo)
+
+        all_milestones = self._milestone_cache.get(cache_key, {})
+        if milestone_ref in all_milestones:
+            return all_milestones[milestone_ref]
+
+        raise ValueError(f"Milestone '{milestone_ref}' not found in repository")

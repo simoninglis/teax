@@ -169,14 +169,24 @@ def test_issue_bulk_truncates_long_issue_list(runner: CliRunner):
     assert "and 5 more" in result.output
 
 
-def test_issue_bulk_invalid_milestone_id(runner: CliRunner):
-    """Test that invalid milestone ID is rejected with clear error."""
-    result = runner.invoke(
-        main,
-        ["issue", "bulk", "17", "--repo", "owner/repo", "--milestone", "abc", "-y"],
-    )
-    assert result.exit_code != 0
-    assert "Invalid milestone ID" in result.output
+@pytest.mark.usefixtures("mock_client")
+def test_issue_bulk_invalid_milestone_name(runner: CliRunner):
+    """Test that invalid milestone name is rejected with clear error."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock empty milestones list (name not found)
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "bulk", "17", "-r", "owner/repo", "--milestone", "abc", "-y"],
+        )
+        assert result.exit_code != 0
+        assert "Milestone 'abc' not found" in result.output
 
 
 def test_deps_add_requires_on_or_blocks(runner: CliRunner):
@@ -977,11 +987,17 @@ def test_issue_edit_with_title_and_assignees(runner: CliRunner):
 
 @pytest.mark.usefixtures("mock_client")
 def test_issue_edit_with_milestone(runner: CliRunner):
-    """Test issue edit with milestone."""
+    """Test issue edit with milestone ID."""
     import httpx
     import respx
 
     with respx.mock:
+        # Mock milestone validation (get_milestone call)
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones/5").mock(
+            return_value=httpx.Response(
+                200, json={"id": 5, "title": "Sprint 1", "state": "open"}
+            )
+        )
         respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/25").mock(
             return_value=httpx.Response(
                 200,
@@ -1036,24 +1052,44 @@ def test_issue_edit_clear_milestone(runner: CliRunner):
 
 
 @pytest.mark.usefixtures("mock_client")
-def test_issue_edit_milestone_name_warning(runner: CliRunner, monkeypatch):
-    """Test issue edit with milestone name shows warning."""
-    from io import StringIO
+def test_issue_edit_with_milestone_name(runner: CliRunner):
+    """Test issue edit with milestone name resolution."""
+    import httpx
+    import respx
 
-    from rich.console import Console
+    with respx.mock:
+        # Mock milestone list (for name lookup)
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {"id": 3, "title": "v1.0", "state": "open"},
+                    {"id": 5, "title": "Sprint 1", "state": "open"},
+                ],
+            )
+        )
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/25").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 25,
+                    "title": "Test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": {"id": 5, "title": "Sprint 1", "state": "open"},
+                },
+            )
+        )
 
-    from teax import cli
+        result = runner.invoke(
+            main,
+            ["issue", "edit", "25", "-r", "owner/repo", "--milestone", "Sprint 1"],
+        )
 
-    buffer = StringIO()
-    monkeypatch.setattr(cli, "err_console", Console(file=buffer, force_terminal=False))
-
-    runner.invoke(
-        main, ["issue", "edit", "25", "--repo", "owner/repo", "--milestone", "Sprint 1"]
-    )
-
-    err_output = buffer.getvalue()
-    assert "Warning" in err_output
-    assert "not yet implemented" in err_output
+        assert result.exit_code == 0
+        assert "milestone: Sprint 1" in result.output
 
 
 @pytest.mark.usefixtures("mock_client")
@@ -1244,7 +1280,7 @@ def test_issue_bulk_milestone_not_found(runner: CliRunner):
         )
 
         assert result.exit_code == 1
-        assert "Milestone 999 not found" in result.output
+        assert "Milestone '999' not found" in result.output
 
 
 @pytest.mark.usefixtures("mock_client")

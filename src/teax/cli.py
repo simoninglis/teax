@@ -389,15 +389,10 @@ def issue_edit(
                     edit_kwargs["milestone"] = 0
                     changes_made.append("milestone: cleared")
                 else:
-                    # Try to parse as int, otherwise would need to look up by name
-                    try:
-                        edit_kwargs["milestone"] = int(milestone)
-                        changes_made.append(f"milestone: {milestone}")
-                    except ValueError:
-                        err_console.print(
-                            "[yellow]Warning:[/yellow] Milestone lookup by name "
-                            "not yet implemented. Use milestone ID instead."
-                        )
+                    # Resolve milestone by ID or name
+                    milestone_id = client.resolve_milestone(owner, repo_name, milestone)
+                    edit_kwargs["milestone"] = milestone_id
+                    changes_made.append(f"milestone: {milestone}")
 
             if edit_kwargs:
                 client.edit_issue(owner, repo_name, issue_num, **edit_kwargs)
@@ -515,26 +510,29 @@ def issue_bulk(
     error_count = 0
     errors: list[tuple[int, str]] = []
 
-    # Pre-validate milestone if provided (fail fast before any changes)
-    milestone_id: int | None = None
-    if milestone is not None and milestone != "" and milestone.lower() != "none":
-        try:
-            milestone_id = int(milestone)
-        except ValueError:
-            err_console.print(f"[red]Error:[/red] Invalid milestone ID: {milestone}")
-            sys.exit(1)
-
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
-            # Validate milestone exists before processing any issues
-            if milestone_id is not None:
+            # Pre-validate milestone if provided (fail fast before any changes)
+            milestone_id: int | None = None
+            needs_milestone = (
+                milestone is not None
+                and milestone != ""
+                and milestone.lower() != "none"
+            )
+            if needs_milestone:
+                assert milestone is not None  # Type guard: checked in needs_milestone
                 try:
-                    client.get_milestone(owner, repo_name, milestone_id)
-                except httpx.HTTPStatusError as e:
-                    if e.response.status_code == 404:
-                        err_console.print(
-                            f"[red]Error:[/red] Milestone {milestone_id} not found"
-                        )
+                    milestone_id = client.resolve_milestone(
+                        owner, repo_name, milestone
+                    )
+                except (ValueError, httpx.HTTPStatusError) as e:
+                    if isinstance(e, httpx.HTTPStatusError):
+                        if e.response.status_code == 404:
+                            err_console.print(
+                                f"[red]Error:[/red] Milestone '{milestone}' not found"
+                            )
+                        else:
+                            err_console.print(f"[red]Error:[/red] {e}")
                     else:
                         err_console.print(f"[red]Error:[/red] {e}")
                     sys.exit(1)
