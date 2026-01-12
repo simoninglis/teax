@@ -46,7 +46,7 @@ def test_load_tea_config(sample_config: Path):
     assert isinstance(config, TeaConfig)
     assert len(config.logins) == 2
     assert config.logins[0].name == "gitea.example.com"
-    assert config.logins[0].token == "secret-token-123"
+    assert config.logins[0].token.get_secret_value() == "secret-token-123"
     assert config.logins[0].default is True
 
 
@@ -106,7 +106,7 @@ def test_get_login_by_name(sample_config: Path):
     login = get_login_by_name("backup.example.com", config)
 
     assert login.name == "backup.example.com"
-    assert login.token == "backup-token"
+    assert login.token.get_secret_value() == "backup-token"
     assert login.user == "backupuser"
 
 
@@ -115,3 +115,17 @@ def test_get_login_by_name_not_found(sample_config: Path):
     config = load_tea_config(sample_config)
     with pytest.raises(ValueError, match="Login 'nonexistent' not found"):
         get_login_by_name("nonexistent", config)
+
+
+def test_token_not_exposed_in_repr(sample_config: Path):
+    """Test that SecretStr token is not visible in repr/str output."""
+    config = load_tea_config(sample_config)
+    login = config.logins[0]
+
+    # Token should be masked in repr output
+    repr_str = repr(login)
+    assert "secret-token-123" not in repr_str
+    assert "**********" in repr_str  # Pydantic's SecretStr masking
+
+    # Can still access the actual value when needed
+    assert login.token.get_secret_value() == "secret-token-123"

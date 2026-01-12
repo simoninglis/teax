@@ -1,6 +1,6 @@
 """Pydantic models for Gitea API responses."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 
 class TeaLogin(BaseModel):
@@ -8,7 +8,7 @@ class TeaLogin(BaseModel):
 
     name: str
     url: str
-    token: str
+    token: SecretStr
     default: bool = False
     user: str = ""
 

@@ -40,7 +40,7 @@ class GiteaClient:
         self._client = httpx.Client(
             base_url=base,
             headers={
-                "Authorization": f"token {self._login.token}",
+                "Authorization": f"token {self._login.token.get_secret_value()}",
                 "Accept": "application/json",
                 "Content-Type": "application/json",
             },
