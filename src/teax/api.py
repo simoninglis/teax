@@ -1,11 +1,20 @@
 """Gitea API client for teax operations."""
 
+import os
 from typing import Any
 
 import httpx
 
 from teax.config import get_default_login, get_login_by_name
 from teax.models import Dependency, Issue, Label, TeaLogin
+
+
+def _get_ssl_verify() -> bool:
+    """Check if SSL verification should be enabled.
+
+    Set TEAX_INSECURE=1 to disable SSL verification for self-hosted CA instances.
+    """
+    return os.environ.get("TEAX_INSECURE", "").lower() not in ("1", "true", "yes")
 
 
 class GiteaClient:
@@ -33,6 +42,7 @@ class GiteaClient:
                 "Content-Type": "application/json",
             },
             timeout=30.0,
+            verify=_get_ssl_verify(),
         )
 
     def close(self) -> None:
@@ -283,9 +293,9 @@ class GiteaClient:
         response = self._client.post(
             f"/api/v1/repos/{owner}/{repo}/issues/{index}/dependencies",
             json={
-                "dependentOwner": depends_on_owner,
-                "dependentRepo": depends_on_repo,
-                "dependentIndex": depends_on_index,
+                "owner": depends_on_owner,
+                "repo": depends_on_repo,
+                "index": depends_on_index,
             },
         )
         response.raise_for_status()
@@ -313,9 +323,9 @@ class GiteaClient:
             "DELETE",
             f"/api/v1/repos/{owner}/{repo}/issues/{index}/dependencies",
             json={
-                "dependentOwner": depends_on_owner,
-                "dependentRepo": depends_on_repo,
-                "dependentIndex": depends_on_index,
+                "owner": depends_on_owner,
+                "repo": depends_on_repo,
+                "index": depends_on_index,
             },
         )
         response.raise_for_status()

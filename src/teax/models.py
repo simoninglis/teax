@@ -76,10 +76,8 @@ class Repository(BaseModel):
 
 
 class DependencyRequest(BaseModel):
-    """Request body for adding/removing dependencies."""
+    """Request body for adding/removing dependencies (IssueMeta)."""
 
-    owner: str = Field(..., alias="dependentOwner")
-    repo: str = Field(..., alias="dependentRepo")
-    index: int = Field(..., alias="dependentIndex")
-
-    model_config = {"populate_by_name": True}
+    owner: str
+    repo: str
+    index: int
