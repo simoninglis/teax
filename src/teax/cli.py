@@ -673,5 +673,103 @@ def epic_create(
         sys.exit(1)
 
 
+def _parse_epic_children(body: str) -> list[int]:
+    """Parse child issue numbers from epic body.
+
+    Looks for checklist items like:
+        - [ ] #17
+        - [x] #18
+        - [ ] #19 Some title
+
+    Returns:
+        List of issue numbers found
+    """
+    import re
+
+    pattern = r"^- \[[x ]\] #(\d+)"
+    matches = re.findall(pattern, body, re.MULTILINE)
+    return [int(m) for m in matches]
+
+
+@epic.command("status")
+@click.argument("issue", type=int)
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.pass_context
+def epic_status(
+    ctx: click.Context,
+    issue: int,
+    repo: str,
+) -> None:
+    """Show status and progress of an epic.
+
+    Parses the epic issue body for child issue references (checklist items)
+    and displays their current states with progress percentage.
+
+    ISSUE is the epic issue number.
+
+    Examples:
+        teax epic status 25 --repo owner/repo
+        teax epic status 100 -r homelab/project
+    """
+    owner, repo_name = parse_repo(repo)
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            # Fetch the epic issue
+            epic_issue = client.get_issue(owner, repo_name, issue)
+
+            # Parse child issues from body
+            child_nums = _parse_epic_children(epic_issue.body or "")
+
+            if not child_nums:
+                console.print(f"[bold]Epic #{issue}:[/bold] {epic_issue.title}")
+                console.print("[yellow]No child issues found in epic body[/yellow]")
+                return
+
+            # Fetch child issue states
+            open_issues: list[tuple[int, str]] = []
+            closed_issues: list[tuple[int, str]] = []
+
+            for child_num in child_nums:
+                try:
+                    child = client.get_issue(owner, repo_name, child_num)
+                    if child.state == "closed":
+                        closed_issues.append((child_num, child.title))
+                    else:
+                        open_issues.append((child_num, child.title))
+                except Exception:
+                    open_issues.append((child_num, "(unable to fetch)"))
+
+            total = len(child_nums)
+            completed = len(closed_issues)
+            percentage = (completed / total * 100) if total > 0 else 0
+
+            # Display status
+            console.print(f"\n[bold]Epic #{issue}:[/bold] {epic_issue.title}")
+            pct = f"{percentage:.0f}%"
+            console.print(f"[bold]Progress:[/bold] {completed}/{total} ({pct})")
+
+            # Progress bar
+            bar_width = 30
+            filled = int(bar_width * completed / total) if total > 0 else 0
+            bar = "█" * filled + "░" * (bar_width - filled)
+            console.print(f"[green]{bar}[/green]")
+
+            # List issues by state
+            if closed_issues:
+                console.print(f"\n[green]Completed ({len(closed_issues)}):[/green]")
+                for num, title in closed_issues:
+                    console.print(f"  [green]✓[/green] #{num} {title}")
+
+            if open_issues:
+                console.print(f"\n[yellow]Open ({len(open_issues)}):[/yellow]")
+                for num, title in open_issues:
+                    console.print(f"  [ ] #{num} {title}")
+
+    except Exception as e:
+        err_console.print(f"[red]Error:[/red] {e}")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     main()

@@ -26,6 +26,7 @@ class Issue(BaseModel):
     number: int
     title: str
     state: str
+    body: str = ""
     labels: list["Label"] = Field(default_factory=list)
     assignees: list["User"] = Field(default_factory=list)
     milestone: "Milestone | None" = None

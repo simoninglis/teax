@@ -344,3 +344,59 @@ def test_epic_create_help(runner: CliRunner):
     assert "--child" in result.output
     assert "--color" in result.output
     assert "NAME" in result.output
+
+
+def test_epic_status_help(runner: CliRunner):
+    """Test epic status help."""
+    result = runner.invoke(main, ["epic", "status", "--help"])
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+    assert "ISSUE" in result.output
+
+
+# --- Epic Helper Function Tests ---
+
+
+def test_parse_epic_children():
+    """Test parsing child issues from epic body."""
+    from teax.cli import _parse_epic_children
+
+    body = """# Epic: Feature
+## Child Issues
+
+- [ ] #17
+- [x] #18
+- [ ] #19 Some title text
+"""
+    children = _parse_epic_children(body)
+    assert children == [17, 18, 19]
+
+
+def test_parse_epic_children_empty():
+    """Test parsing epic body with no children."""
+    from teax.cli import _parse_epic_children
+
+    body = """# Epic: Feature
+## Child Issues
+
+_No child issues yet._
+"""
+    children = _parse_epic_children(body)
+    assert children == []
+
+
+def test_parse_epic_children_mixed_format():
+    """Test parsing epic body with various checklist formats."""
+    from teax.cli import _parse_epic_children
+
+    body = """## Child Issues
+
+- [ ] #100
+- [x] #101
+- [ ] #102
+Some other text #999 not a checklist
+- not a checklist #888
+"""
+    children = _parse_epic_children(body)
+    # Only the properly formatted checklist items should be captured
+    assert children == [100, 101, 102]

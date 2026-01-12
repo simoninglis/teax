@@ -272,9 +272,9 @@ This plan addresses code quality issues discovered during review (low test cover
 **Solution:** Add `teax epic status` command.
 
 **Acceptance Criteria:**
-- [ ] Parses child issues from body
-- [ ] Shows progress percentage
-- [ ] Lists open/closed issues
+- [x] Parses child issues from body
+- [x] Shows progress percentage
+- [x] Lists open/closed issues
 
 **Implementation:**
 1. Add `status` subcommand
@@ -330,7 +330,7 @@ Implementation sequence considering dependencies:
 9. ✅ **Issue 14** - Label caching (Phase 3) - optimization
 10. ✅ **Issue 5** - Confirmation prompts (Phase 3) - depends on #3
 11. ✅ **Issue 6** - Epic create (Phase 2) - depends on #3
-12. ⏳ **Issue 7** - Epic status (Phase 3) - independent
+12. ✅ **Issue 7** - Epic status (Phase 3) - independent
 13. **Issue 8** - Epic add (Phase 3) - depends on #6
 
 ---
