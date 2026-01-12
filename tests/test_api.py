@@ -73,6 +73,70 @@ def test_client_base_url(client: GiteaClient):
 
 
 @respx.mock
+def test_create_issue(client: GiteaClient):
+    """Test creating an issue."""
+    route = respx.post("https://test.example.com/api/v1/repos/owner/repo/issues")
+    route.mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "id": 200,
+                "number": 50,
+                "title": "New Issue",
+                "state": "open",
+                "labels": [],
+                "assignees": [],
+                "milestone": None,
+            },
+        )
+    )
+
+    issue = client.create_issue("owner", "repo", "New Issue", "Issue body")
+
+    assert issue.number == 50
+    assert issue.title == "New Issue"
+
+    # Verify request body
+    import json
+
+    request_body = json.loads(route.calls.last.request.content)
+    assert request_body["title"] == "New Issue"
+    assert request_body["body"] == "Issue body"
+
+
+@respx.mock
+def test_create_issue_with_labels(client: GiteaClient):
+    """Test creating an issue with labels."""
+    route = respx.post("https://test.example.com/api/v1/repos/owner/repo/issues")
+    route.mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "id": 200,
+                "number": 50,
+                "title": "New Issue",
+                "state": "open",
+                "labels": [
+                    {"id": 1, "name": "bug", "color": "ff0000", "description": ""}
+                ],
+                "assignees": [],
+                "milestone": None,
+            },
+        )
+    )
+
+    issue = client.create_issue("owner", "repo", "New Issue", labels=[1, 2])
+
+    assert issue.number == 50
+
+    # Verify request body includes labels
+    import json
+
+    request_body = json.loads(route.calls.last.request.content)
+    assert request_body["labels"] == [1, 2]
+
+
+@respx.mock
 def test_get_issue(client: GiteaClient):
     """Test getting an issue."""
     respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/25").mock(
@@ -390,6 +454,39 @@ def test_remove_dependency(client: GiteaClient):
 
 
 # --- Repository Label Operations Tests ---
+
+
+@respx.mock
+def test_create_label(client: GiteaClient):
+    """Test creating a label."""
+    route = respx.post("https://test.example.com/api/v1/repos/owner/repo/labels")
+    route.mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "id": 10,
+                "name": "epic/new-feature",
+                "color": "9b59b6",
+                "description": "Epic: new-feature",
+            },
+        )
+    )
+
+    label = client.create_label(
+        "owner", "repo", "epic/new-feature", "9b59b6", "Epic: new-feature"
+    )
+
+    assert label.id == 10
+    assert label.name == "epic/new-feature"
+    assert label.color == "9b59b6"
+
+    # Verify request body
+    import json
+
+    request_body = json.loads(route.calls.last.request.content)
+    assert request_body["name"] == "epic/new-feature"
+    assert request_body["color"] == "9b59b6"
+    assert request_body["description"] == "Epic: new-feature"
 
 
 @respx.mock

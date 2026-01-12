@@ -528,5 +528,114 @@ def issue_bulk(
         sys.exit(1)
 
 
+# --- Epic Group ---
+
+
+@main.group()
+def epic() -> None:
+    """Manage epic issues (parent issues tracking multiple child issues)."""
+    pass
+
+
+@epic.command("create")
+@click.argument("name")
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--title", "-t", help="Epic title (default: 'Epic: {name}')")
+@click.option(
+    "--child", "-c", "children", multiple=True, type=int, help="Child issue numbers"
+)
+@click.option("--color", default="9b59b6", help="Label color (hex, default: purple)")
+@click.pass_context
+def epic_create(
+    ctx: click.Context,
+    name: str,
+    repo: str,
+    title: str | None,
+    children: tuple[int, ...],
+    color: str,
+) -> None:
+    """Create a new epic with optional child issues.
+
+    Creates:
+    1. An epic/{name} label (if it doesn't exist)
+    2. A new issue with the epic template
+    3. Applies labels to the epic and any specified child issues
+
+    NAME is used for both the label (epic/{name}) and default title.
+
+    Examples:
+        teax epic create diagnostics --repo homelab/myproject
+        teax epic create auth --repo owner/repo --title "Auth System" -c 17 -c 18
+        teax epic create refactor --repo owner/repo --child 25 --child 26
+    """
+    owner, repo_name = parse_repo(repo)
+    epic_label = f"epic/{name}"
+    epic_title = title or f"Epic: {name}"
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            # Check if epic label exists, create if not
+            existing_labels = client.list_repo_labels(owner, repo_name)
+            label_names = {label.name: label.id for label in existing_labels}
+
+            if epic_label not in label_names:
+                console.print(f"Creating label [cyan]{epic_label}[/cyan]...")
+                created_label = client.create_label(
+                    owner, repo_name, epic_label, color, f"Epic: {name}"
+                )
+                label_names[epic_label] = created_label.id
+                console.print(f"  [green]✓[/green] Created label #{created_label.id}")
+
+            # Build the epic body with checklist if there are children
+            body_lines = [f"# {epic_title}", "", "## Child Issues", ""]
+            if children:
+                for child_num in children:
+                    body_lines.append(f"- [ ] #{child_num}")
+            else:
+                body_lines.append(
+                    "_No child issues yet. Use `teax epic add` to add issues._"
+                )
+            body_lines.extend(["", "---", f"_Tracked by label: `{epic_label}`_"])
+            body = "\n".join(body_lines)
+
+            # Get label IDs for the epic
+            type_epic_id = label_names.get("type/epic")
+            epic_label_id = label_names[epic_label]
+            issue_labels = [epic_label_id]
+            if type_epic_id:
+                issue_labels.insert(0, type_epic_id)
+
+            # Create the epic issue
+            console.print(f"Creating epic issue [cyan]{epic_title}[/cyan]...")
+            issue = client.create_issue(
+                owner, repo_name, epic_title, body, labels=issue_labels
+            )
+            console.print(f"  [green]✓[/green] Created issue #{issue.number}")
+
+            # Apply epic label to child issues
+            if children:
+                console.print(f"Applying [cyan]{epic_label}[/cyan] to child issues...")
+                for child_num in children:
+                    try:
+                        client.add_issue_labels(
+                            owner, repo_name, child_num, [epic_label]
+                        )
+                        console.print(f"  [green]✓[/green] #{child_num}")
+                    except Exception as e:
+                        console.print(f"  [red]✗[/red] #{child_num}: {e}")
+
+            # Print summary
+            console.print()
+            console.print("[bold]Epic created successfully![/bold]")
+            console.print(f"  Issue: #{issue.number}")
+            console.print(f"  Label: {epic_label}")
+            if children:
+                console.print(f"  Children: {len(children)} issues labeled")
+
+    except Exception as e:
+        err_console.print(f"[red]Error:[/red] {e}")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     main()

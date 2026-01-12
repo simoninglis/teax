@@ -62,6 +62,39 @@ class GiteaClient:
 
     # --- Issue Operations ---
 
+    def create_issue(
+        self,
+        owner: str,
+        repo: str,
+        title: str,
+        body: str = "",
+        labels: list[int] | None = None,
+    ) -> Issue:
+        """Create a new issue.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            title: Issue title
+            body: Issue body (optional)
+            labels: Label IDs to apply (optional)
+
+        Returns:
+            Created issue
+        """
+        data: dict[str, Any] = {"title": title}
+        if body:
+            data["body"] = body
+        if labels:
+            data["labels"] = labels
+
+        response = self._client.post(
+            f"/api/v1/repos/{owner}/{repo}/issues",
+            json=data,
+        )
+        response.raise_for_status()
+        return Issue.model_validate(response.json())
+
     def get_issue(self, owner: str, repo: str, index: int) -> Issue:
         """Get an issue by number.
 
@@ -73,9 +106,7 @@ class GiteaClient:
         Returns:
             Issue details
         """
-        response = self._client.get(
-            f"/api/v1/repos/{owner}/{repo}/issues/{index}"
-        )
+        response = self._client.get(f"/api/v1/repos/{owner}/{repo}/issues/{index}")
         response.raise_for_status()
         return Issue.model_validate(response.json())
 
@@ -164,9 +195,7 @@ class GiteaClient:
         response.raise_for_status()
         return [Label.model_validate(item) for item in response.json()]
 
-    def remove_issue_label(
-        self, owner: str, repo: str, index: int, label: str
-    ) -> None:
+    def remove_issue_label(self, owner: str, repo: str, index: int, label: str) -> None:
         """Remove a label from an issue.
 
         Args:
@@ -235,9 +264,7 @@ class GiteaClient:
 
     # --- Dependency Operations ---
 
-    def list_dependencies(
-        self, owner: str, repo: str, index: int
-    ) -> list[Dependency]:
+    def list_dependencies(self, owner: str, repo: str, index: int) -> list[Dependency]:
         """List issues that this issue depends on.
 
         Args:
@@ -331,6 +358,33 @@ class GiteaClient:
         response.raise_for_status()
 
     # --- Repository Label Operations ---
+
+    def create_label(
+        self,
+        owner: str,
+        repo: str,
+        name: str,
+        color: str = "e0e0e0",
+        description: str = "",
+    ) -> Label:
+        """Create a new label in a repository.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            name: Label name
+            color: Hex color code without # (default: grey)
+            description: Label description (optional)
+
+        Returns:
+            Created label
+        """
+        response = self._client.post(
+            f"/api/v1/repos/{owner}/{repo}/labels",
+            json={"name": name, "color": color, "description": description},
+        )
+        response.raise_for_status()
+        return Label.model_validate(response.json())
 
     def list_repo_labels(self, owner: str, repo: str) -> list[Label]:
         """List all labels in a repository.

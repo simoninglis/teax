@@ -245,3 +245,25 @@ def test_parse_issue_spec_empty():
 
     with pytest.raises(BadParameter, match="No valid issue numbers"):
         parse_issue_spec("")
+
+
+# --- Epic Command Tests ---
+
+
+def test_epic_help(runner: CliRunner):
+    """Test epic subcommand help."""
+    result = runner.invoke(main, ["epic", "--help"])
+    assert result.exit_code == 0
+    assert "create" in result.output
+    assert "Manage epic issues" in result.output
+
+
+def test_epic_create_help(runner: CliRunner):
+    """Test epic create help."""
+    result = runner.invoke(main, ["epic", "create", "--help"])
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+    assert "--title" in result.output
+    assert "--child" in result.output
+    assert "--color" in result.output
+    assert "NAME" in result.output

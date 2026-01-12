@@ -209,9 +209,9 @@ This plan addresses code quality issues discovered during review (low test cover
 **Solution:** Add `teax epic create` following ADR-0005 template.
 
 **Acceptance Criteria:**
-- [ ] Creates epic issue with template body
-- [ ] Creates `epic/{name}` label if needed
-- [ ] Applies labels to epic and child issues
+- [x] Creates epic issue with template body
+- [x] Creates `epic/{name}` label if needed
+- [x] Applies labels to epic and child issues
 
 **Implementation:**
 1. Add `epic` command group
@@ -329,7 +329,7 @@ Implementation sequence considering dependencies:
 8. ✅ **Issue 4** - Bulk assignees/milestone (Phase 2) - depends on #2
 9. **Issue 14** - Label caching (Phase 3) - optimization
 10. **Issue 5** - Confirmation prompts (Phase 3) - depends on #3
-11. ⏳ **Issue 6** - Epic create (Phase 2) - depends on #3
+11. ✅ **Issue 6** - Epic create (Phase 2) - depends on #3
 12. **Issue 7** - Epic status (Phase 3) - independent
 13. **Issue 8** - Epic add (Phase 3) - depends on #6
 
