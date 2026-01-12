@@ -84,3 +84,14 @@ def test_deps_add_rejects_both_on_and_blocks(runner: CliRunner):
     result = runner.invoke(main, args)
     assert result.exit_code != 0
     assert "Cannot specify both" in result.output
+
+
+def test_deps_rm_rejects_both_on_and_blocks(runner: CliRunner):
+    """Test that deps rm rejects both --on and --blocks."""
+    args = [
+        "deps", "rm", "25", "--repo", "owner/repo",
+        "--on", "17", "--blocks", "30",
+    ]
+    result = runner.invoke(main, args)
+    assert result.exit_code != 0
+    assert "Cannot specify both" in result.output

@@ -226,6 +226,8 @@ def deps_rm(
     """
     if depends_on is None and blocks is None:
         raise click.UsageError("Must specify either --on or --blocks")
+    if depends_on is not None and blocks is not None:
+        raise click.UsageError("Cannot specify both --on and --blocks")
 
     owner, repo_name = parse_repo(repo)
 
@@ -237,7 +239,7 @@ def deps_rm(
                 )
                 msg = f"#{issue} no longer depends on #{depends_on}"
                 console.print(f"[yellow]Removed:[/yellow] {msg}")
-            if blocks is not None:
+            elif blocks is not None:
                 client.remove_dependency(
                     owner, repo_name, blocks, owner, repo_name, issue
                 )

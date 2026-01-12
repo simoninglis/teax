@@ -43,8 +43,8 @@ This plan addresses code quality issues discovered during review (low test cover
 **Solution:** Change second `if` to `elif` for consistency with `deps_add`.
 
 **Acceptance Criteria:**
-- [ ] `deps rm` with both flags raises UsageError
-- [ ] Test added for this case
+- [x] `deps rm` with both flags raises UsageError
+- [x] Test added for this case
 
 **Implementation:**
 1. Edit `cli.py` line 240: change `if blocks is not None:` to `elif blocks is not None:`
@@ -319,7 +319,7 @@ Before marking plan complete:
 
 Implementation sequence considering dependencies:
 
-1. **Issue 11** - deps rm bug fix (Phase 1) - no dependencies
+1. ✅ **Issue 11** - deps rm bug fix (Phase 1) - no dependencies
 2. **Issue 10** - CSV escaping (Phase 2) - no dependencies
 3. **Issue 12** - README TEAX_INSECURE (Phase 2) - no dependencies
 4. **Issue 13** - get_login_by_name test (Phase 2) - no dependencies
