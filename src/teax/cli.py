@@ -8,6 +8,7 @@ from typing import Any
 import click
 import httpx
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from teax import __version__
@@ -27,12 +28,13 @@ CLI_ERRORS = (
 
 def parse_repo(repo: str) -> tuple[str, str]:
     """Parse owner/repo string into components."""
+    repo = repo.strip()
     if "/" not in repo:
         raise click.BadParameter(
             f"Repository must be in 'owner/repo' format, got: {repo}"
         )
     parts = repo.split("/", 1)
-    return parts[0], parts[1]
+    return parts[0].strip(), parts[1].strip()
 
 
 def parse_issue_spec(spec: str) -> list[int]:
@@ -119,9 +121,9 @@ class OutputFormat:
                 state_style = "green" if d.state == "open" else "dim"
                 table.add_row(
                     str(d.number),
-                    d.title,
-                    f"[{state_style}]{d.state}[/{state_style}]",
-                    d.repository.full_name,
+                    escape(d.title),
+                    f"[{state_style}]{escape(d.state)}[/{state_style}]",
+                    escape(d.repository.full_name),
                 )
             console.print(table)
 
@@ -148,7 +150,9 @@ class OutputFormat:
             table.add_column("Description", style="dim")
 
             for label in labels:
-                table.add_row(label.name, f"#{label.color}", label.description)
+                table.add_row(
+                    escape(label.name), f"#{label.color}", escape(label.description)
+                )
             console.print(table)
 
 
@@ -764,11 +768,12 @@ def epic_status(
             # Fetch the epic issue
             epic_issue = client.get_issue(owner, repo_name, issue)
 
-            # Parse child issues from body
-            child_nums = _parse_epic_children(epic_issue.body or "")
+            # Parse child issues from body (deduplicate while preserving order)
+            parsed = _parse_epic_children(epic_issue.body or "")
+            child_nums = list(dict.fromkeys(parsed))
 
             if not child_nums:
-                console.print(f"[bold]Epic #{issue}:[/bold] {epic_issue.title}")
+                console.print(f"[bold]Epic #{issue}:[/bold] {escape(epic_issue.title)}")
                 console.print("[yellow]No child issues found in epic body[/yellow]")
                 return
 
@@ -791,7 +796,7 @@ def epic_status(
             percentage = (completed / total * 100) if total > 0 else 0
 
             # Display status
-            console.print(f"\n[bold]Epic #{issue}:[/bold] {epic_issue.title}")
+            console.print(f"\n[bold]Epic #{issue}:[/bold] {escape(epic_issue.title)}")
             pct = f"{percentage:.0f}%"
             console.print(f"[bold]Progress:[/bold] {completed}/{total} ({pct})")
 
@@ -805,12 +810,12 @@ def epic_status(
             if closed_issues:
                 console.print(f"\n[green]Completed ({len(closed_issues)}):[/green]")
                 for num, title in closed_issues:
-                    console.print(f"  [green]✓[/green] #{num} {title}")
+                    console.print(f"  [green]✓[/green] #{num} {escape(title)}")
 
             if open_issues:
                 console.print(f"\n[yellow]Open ({len(open_issues)}):[/yellow]")
                 for num, title in open_issues:
-                    console.print(f"  [ ] #{num} {title}")
+                    console.print(f"  [ ] #{num} {escape(title)}")
 
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {e}")
@@ -918,15 +923,34 @@ def epic_add(
                     f"[yellow]Warning:[/yellow] No epic/* label found on #{epic_issue}"
                 )
 
+            # Filter out children already in the epic body
+            existing_children = set(_parse_epic_children(epic.body or ""))
+            new_children = [c for c in unique_children if c not in existing_children]
+
+            if not new_children:
+                console.print(
+                    "[yellow]Warning:[/yellow] All specified issues are already "
+                    "in the epic"
+                )
+                return
+
+            if len(new_children) < len(unique_children):
+                skipped = len(unique_children) - len(new_children)
+                console.print(
+                    f"[yellow]Warning:[/yellow] {skipped} issue(s) already in epic, "
+                    "skipping"
+                )
+
             # Update the epic body with new children
-            new_body = _append_children_to_body(epic.body, unique_children)
+            new_body = _append_children_to_body(epic.body, new_children)
             client.edit_issue(owner, repo_name, epic_issue, body=new_body)
             console.print(f"[green]✓[/green] Updated epic #{epic_issue} body")
 
             # Apply epic label to child issues
             if epic_label:
-                console.print(f"Applying [cyan]{epic_label}[/cyan] to child issues...")
-                for child_num in unique_children:
+                escaped = escape(epic_label)
+                console.print(f"Applying [cyan]{escaped}[/cyan] to child issues...")
+                for child_num in new_children:
                     try:
                         client.add_issue_labels(
                             owner, repo_name, child_num, [epic_label]
@@ -937,7 +961,7 @@ def epic_add(
 
             # Print summary
             console.print()
-            count = len(unique_children)
+            count = len(new_children)
             console.print(f"[bold]Added {count} issues to epic #{epic_issue}[/bold]")
 
     except CLI_ERRORS as e:

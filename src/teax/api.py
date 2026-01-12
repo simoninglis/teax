@@ -46,17 +46,22 @@ class GiteaClient:
             },
             timeout=30.0,
             verify=_get_ssl_verify(),
+            # Disable trust_env to prevent token leakage via HTTP_PROXY/HTTPS_PROXY
+            trust_env=False,
         )
         # Cache for label name -> ID mapping per repo (cleared on close)
         self._label_cache: dict[str, dict[str, int]] = {}
         # Cache for milestone title -> ID mapping per repo (cleared on close)
         self._milestone_cache: dict[str, dict[str, int]] = {}
+        # Track the state filter used to populate milestone cache
+        self._milestone_cache_state: dict[str, str] = {}
 
     def close(self) -> None:
         """Close the HTTP client and clear caches."""
         self._client.close()
         self._label_cache.clear()
         self._milestone_cache.clear()
+        self._milestone_cache_state.clear()
 
     def __enter__(self) -> "GiteaClient":
         return self
@@ -413,10 +418,12 @@ class GiteaClient:
             json={"name": name, "color": color, "description": description},
         )
         response.raise_for_status()
-        # Invalidate label cache for this repo
+        label = Label.model_validate(response.json())
+        # Update label cache with the new label (if cache exists)
         cache_key = f"{owner}/{repo}"
-        self._label_cache.pop(cache_key, None)
-        return Label.model_validate(response.json())
+        if cache_key in self._label_cache:
+            self._label_cache[cache_key][label.name] = label.id
+        return label
 
     def list_repo_labels(self, owner: str, repo: str) -> list[Label]:
         """List all labels in a repository.
@@ -514,6 +521,7 @@ class GiteaClient:
         self._milestone_cache[cache_key] = {
             ms.title: ms.id for ms in all_milestones
         }
+        self._milestone_cache_state[cache_key] = state
 
         return all_milestones
 
@@ -538,6 +546,8 @@ class GiteaClient:
             ValueError: If milestone not found by name
             httpx.HTTPStatusError: If milestone not found by ID (404)
         """
+        milestone_ref = milestone_ref.strip()
+
         # Try parsing as an integer first
         try:
             milestone_id = int(milestone_ref)
@@ -548,10 +558,14 @@ class GiteaClient:
             pass  # Not a numeric ID, try name lookup
 
         # Look up by name using cache
+        # Ensure cache includes all milestones (not just open/closed)
         cache_key = f"{owner}/{repo}"
-        if cache_key not in self._milestone_cache:
+        if (
+            cache_key not in self._milestone_cache
+            or self._milestone_cache_state.get(cache_key) != "all"
+        ):
             # Fetch all milestones to populate cache
-            self.list_milestones(owner, repo)
+            self.list_milestones(owner, repo, state="all")
 
         all_milestones = self._milestone_cache.get(cache_key, {})
         if milestone_ref in all_milestones:

@@ -773,22 +773,14 @@ def test_label_cache_cleared_on_close(client: GiteaClient):
 
 
 @respx.mock
-def test_label_cache_invalidated_on_create_label(client: GiteaClient):
-    """Test that create_label invalidates the cache for that repo."""
+def test_label_cache_updated_on_create_label(client: GiteaClient):
+    """Test that create_label updates the cache with the new label."""
     label_route = respx.get("https://test.example.com/api/v1/repos/owner/repo/labels")
     label_route.mock(
-        side_effect=[
-            # First population (items < limit = 1 call)
-            httpx.Response(
-                200,
-                json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
-            ),
-            # Second population after cache invalidation (items < limit = 1 call)
-            httpx.Response(
-                200,
-                json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
-            ),
-        ]
+        return_value=httpx.Response(
+            200,
+            json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
+        )
     )
     respx.post(
         "https://test.example.com/api/v1/repos/owner/repo/issues/25/labels"
@@ -802,16 +794,18 @@ def test_label_cache_invalidated_on_create_label(client: GiteaClient):
 
     # First operation populates cache
     client.add_issue_labels("owner", "repo", 25, ["bug"])
-    assert label_route.call_count == 1  # items < limit = 1 call
+    assert label_route.call_count == 1
     assert "owner/repo" in client._label_cache
+    assert client._label_cache["owner/repo"]["bug"] == 1
 
-    # Creating a label should invalidate the cache
+    # Creating a label should update the cache (not invalidate)
     client.create_label("owner", "repo", "new-label", "0000ff")
-    assert "owner/repo" not in client._label_cache
+    assert "owner/repo" in client._label_cache
+    assert client._label_cache["owner/repo"]["new-label"] == 2
 
-    # Next operation should fetch labels again
+    # Next operation should NOT fetch labels again (cache is still valid)
     client.add_issue_labels("owner", "repo", 25, ["bug"])
-    assert label_route.call_count == 2  # 1 more for re-population
+    assert label_route.call_count == 1  # No additional API call
 
 
 # --- Milestone Operations Tests ---
