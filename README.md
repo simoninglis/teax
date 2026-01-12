@@ -101,6 +101,19 @@ If you haven't configured tea yet:
 tea login add
 ```
 
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `TEAX_INSECURE` | Set to `1` to skip SSL certificate verification. Use for self-hosted Gitea with self-signed certificates. |
+
+Example:
+
+```bash
+# Skip SSL verification for self-signed certs
+TEAX_INSECURE=1 teax deps list 25 --repo owner/repo
+```
+
 ## Development
 
 ```bash

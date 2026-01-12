@@ -83,8 +83,8 @@ This plan addresses code quality issues discovered during review (low test cover
 **Solution:** Add section to README.md.
 
 **Acceptance Criteria:**
-- [ ] README documents TEAX_INSECURE=1 usage
-- [ ] Explains self-hosted CA use case
+- [x] README documents TEAX_INSECURE=1 usage
+- [x] Explains self-hosted CA use case
 
 **Implementation:**
 1. Add "Environment Variables" section to README after "Configuration"
@@ -321,7 +321,7 @@ Implementation sequence considering dependencies:
 
 1. ✅ **Issue 11** - deps rm bug fix (Phase 1) - no dependencies
 2. ✅ **Issue 10** - CSV escaping (Phase 2) - no dependencies
-3. **Issue 12** - README TEAX_INSECURE (Phase 2) - no dependencies
+3. ✅ **Issue 12** - README TEAX_INSECURE (Phase 2) - no dependencies
 4. **Issue 13** - get_login_by_name test (Phase 2) - no dependencies
 5. **Issue 9** - API client tests (Phase 2) - no dependencies
 6. **Issue 2** - Range parsing utility (Phase 2) - foundation for bulk
