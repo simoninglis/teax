@@ -778,3 +778,40 @@ def test_label_cache_invalidated_on_create_label(client: GiteaClient):
     # Next operation should fetch labels again
     client.add_issue_labels("owner", "repo", 25, ["bug"])
     assert label_route.call_count == 4  # 2 more for re-population
+
+
+# --- Milestone Operations Tests ---
+
+
+@respx.mock
+def test_get_milestone(client: GiteaClient):
+    """Test getting a milestone by ID."""
+    respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones/5").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 5,
+                "title": "Sprint 1",
+                "state": "open",
+            },
+        )
+    )
+
+    milestone = client.get_milestone("owner", "repo", 5)
+
+    assert milestone.id == 5
+    assert milestone.title == "Sprint 1"
+    assert milestone.state == "open"
+
+
+@respx.mock
+def test_get_milestone_not_found(client: GiteaClient):
+    """Test 404 error when milestone not found."""
+    respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones/999").mock(
+        return_value=httpx.Response(404, json={"message": "Milestone not found"})
+    )
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        client.get_milestone("owner", "repo", 999)
+
+    assert exc_info.value.response.status_code == 404

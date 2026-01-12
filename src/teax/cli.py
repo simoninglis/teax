@@ -515,8 +515,29 @@ def issue_bulk(
     error_count = 0
     errors: list[tuple[int, str]] = []
 
+    # Pre-validate milestone if provided (fail fast before any changes)
+    milestone_id: int | None = None
+    if milestone is not None and milestone != "" and milestone.lower() != "none":
+        try:
+            milestone_id = int(milestone)
+        except ValueError:
+            err_console.print(f"[red]Error:[/red] Invalid milestone ID: {milestone}")
+            sys.exit(1)
+
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            # Validate milestone exists before processing any issues
+            if milestone_id is not None:
+                try:
+                    client.get_milestone(owner, repo_name, milestone_id)
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 404:
+                        err_console.print(
+                            f"[red]Error:[/red] Milestone {milestone_id} not found"
+                        )
+                    else:
+                        err_console.print(f"[red]Error:[/red] {e}")
+                    sys.exit(1)
             for issue_num in issue_nums:
                 try:
                     # Handle labels
@@ -547,7 +568,8 @@ def issue_bulk(
                         if milestone == "" or milestone.lower() == "none":
                             edit_kwargs["milestone"] = 0
                         else:
-                            edit_kwargs["milestone"] = int(milestone)
+                            # Use pre-validated milestone_id
+                            edit_kwargs["milestone"] = milestone_id
 
                     if edit_kwargs:
                         client.edit_issue(owner, repo_name, issue_num, **edit_kwargs)

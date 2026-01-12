@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 
 from teax.config import get_default_login, get_login_by_name
-from teax.models import Dependency, Issue, Label, TeaLogin
+from teax.models import Dependency, Issue, Label, Milestone, TeaLogin
 
 
 def _get_ssl_verify() -> bool:
@@ -435,3 +435,25 @@ class GiteaClient:
             all_labels.extend(Label.model_validate(item) for item in items)
             page += 1
         return all_labels
+
+    # --- Milestone Operations ---
+
+    def get_milestone(self, owner: str, repo: str, milestone_id: int) -> Milestone:
+        """Get a milestone by ID.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            milestone_id: Milestone ID
+
+        Returns:
+            Milestone details
+
+        Raises:
+            httpx.HTTPStatusError: If milestone not found (404) or other error
+        """
+        response = self._client.get(
+            f"repos/{owner}/{repo}/milestones/{milestone_id}"
+        )
+        response.raise_for_status()
+        return Milestone.model_validate(response.json())

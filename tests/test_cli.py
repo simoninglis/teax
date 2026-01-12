@@ -169,6 +169,16 @@ def test_issue_bulk_truncates_long_issue_list(runner: CliRunner):
     assert "and 5 more" in result.output
 
 
+def test_issue_bulk_invalid_milestone_id(runner: CliRunner):
+    """Test that invalid milestone ID is rejected with clear error."""
+    result = runner.invoke(
+        main,
+        ["issue", "bulk", "17", "--repo", "owner/repo", "--milestone", "abc", "-y"],
+    )
+    assert result.exit_code != 0
+    assert "Invalid milestone ID" in result.output
+
+
 def test_deps_add_requires_on_or_blocks(runner: CliRunner):
     """Test that deps add requires --on or --blocks."""
     result = runner.invoke(main, ["deps", "add", "25", "--repo", "owner/repo"])
