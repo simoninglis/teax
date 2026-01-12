@@ -44,10 +44,13 @@ class GiteaClient:
             timeout=30.0,
             verify=_get_ssl_verify(),
         )
+        # Cache for label name -> ID mapping per repo (cleared on close)
+        self._label_cache: dict[str, dict[str, int]] = {}
 
     def close(self) -> None:
-        """Close the HTTP client."""
+        """Close the HTTP client and clear caches."""
         self._client.close()
+        self._label_cache.clear()
 
     def __enter__(self) -> "GiteaClient":
         return self
@@ -242,6 +245,8 @@ class GiteaClient:
     ) -> list[int]:
         """Resolve label names to IDs.
 
+        Uses per-repo caching to avoid redundant API calls within a session.
+
         Args:
             owner: Repository owner
             repo: Repository name
@@ -250,10 +255,15 @@ class GiteaClient:
         Returns:
             List of label IDs
         """
-        response = self._client.get(f"/api/v1/repos/{owner}/{repo}/labels")
-        response.raise_for_status()
-        all_labels = {item["name"]: item["id"] for item in response.json()}
+        cache_key = f"{owner}/{repo}"
+        if cache_key not in self._label_cache:
+            response = self._client.get(f"/api/v1/repos/{owner}/{repo}/labels")
+            response.raise_for_status()
+            self._label_cache[cache_key] = {
+                item["name"]: item["id"] for item in response.json()
+            }
 
+        all_labels = self._label_cache[cache_key]
         ids = []
         for name in label_names:
             if name in all_labels:
@@ -384,6 +394,9 @@ class GiteaClient:
             json={"name": name, "color": color, "description": description},
         )
         response.raise_for_status()
+        # Invalidate label cache for this repo
+        cache_key = f"{owner}/{repo}"
+        self._label_cache.pop(cache_key, None)
         return Label.model_validate(response.json())
 
     def list_repo_labels(self, owner: str, repo: str) -> list[Label]:

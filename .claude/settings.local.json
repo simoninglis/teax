@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tea labels create:*)",
+      "Bash(tea issues create:*)",
+      "Bash(__NEW_LINE_f99e23bacb1e03d3__ Args:)",
+      "Bash(spec: Issue spec like \"17-23\" or \"17,18,19\" or \"17-19,25\")",
+      "Bash(__NEW_LINE_f99e23bacb1e03d3__ Returns:)",
+      "Bash(Sorted list of unique issue numbers)",
+      "Bash(__NEW_LINE_f99e23bacb1e03d3__ Raises:)",
+      "Bash(click.BadParameter: If spec is invalid)",
+      "Bash(poetry run teax issue edit:*)",
+      "Bash(echo:*)",
+      "Bash(tea issues labels add:*)",
+      "Bash(tea issues labels --help:*)",
+      "Bash(tea issues --help:*)",
+      "Bash(python3:*)",
+      "Bash(TEAX_INSECURE=1 poetry run teax issue edit:*)",
+      "Bash(TEAX_INSECURE=1 poetry run teax deps add:*)",
+      "Bash(TEAX_INSECURE=1 poetry run teax:*)",
+      "Bash(tea repo:*)",
+      "Bash(curl:*)",
+      "WebFetch(domain:docs.gitea.com)",
+      "Bash(jq:*)",
+      "Bash(just check:*)",
+      "Bash(tea issues list:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: correct dependency API field names and add SSL skip option\n\n- Fix IssueMeta field names: owner/repo/index instead of dependentOwner etc\n- Add TEAX_INSECURE=1 env var to skip SSL verification for self-hosted CAs\nEOF\n\\)\")",
+      "Bash(git commit:*)",
+      "Bash(just test:*)",
+      "Bash(just format:*)",
+      "Bash(poetry add:*)",
+      "Bash(git checkout:*)"
+    ]
+  }
+}

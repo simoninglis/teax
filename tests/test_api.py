@@ -552,3 +552,124 @@ def test_http_error_401(client: GiteaClient):
         client.get_issue("owner", "repo", 25)
 
     assert exc_info.value.response.status_code == 401
+
+
+# --- Label Caching Tests ---
+
+
+@respx.mock
+def test_label_cache_avoids_redundant_calls(client: GiteaClient):
+    """Test that label resolution uses cache to avoid redundant API calls."""
+    label_route = respx.get("https://test.example.com/api/v1/repos/owner/repo/labels")
+    label_route.mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"id": 1, "name": "bug", "color": "ff0000", "description": ""},
+                {"id": 2, "name": "feature", "color": "00ff00", "description": ""},
+            ],
+        )
+    )
+    # Mock for adding labels
+    respx.post(
+        "https://test.example.com/api/v1/repos/owner/repo/issues/25/labels"
+    ).mock(return_value=httpx.Response(200, json=[]))
+    respx.post(
+        "https://test.example.com/api/v1/repos/owner/repo/issues/26/labels"
+    ).mock(return_value=httpx.Response(200, json=[]))
+
+    # Make two label operations on different issues in same repo
+    client.add_issue_labels("owner", "repo", 25, ["bug"])
+    client.add_issue_labels("owner", "repo", 26, ["feature"])
+
+    # Label lookup should only be called once due to caching
+    assert label_route.call_count == 1
+
+
+@respx.mock
+def test_label_cache_per_repo(client: GiteaClient):
+    """Test that label cache is per-repo."""
+    label_route_1 = respx.get("https://test.example.com/api/v1/repos/owner/repo1/labels")
+    label_route_1.mock(
+        return_value=httpx.Response(
+            200,
+            json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
+        )
+    )
+    label_route_2 = respx.get("https://test.example.com/api/v1/repos/owner/repo2/labels")
+    label_route_2.mock(
+        return_value=httpx.Response(
+            200,
+            json=[{"id": 5, "name": "bug", "color": "ff0000", "description": ""}],
+        )
+    )
+    respx.post(
+        "https://test.example.com/api/v1/repos/owner/repo1/issues/1/labels"
+    ).mock(return_value=httpx.Response(200, json=[]))
+    respx.post(
+        "https://test.example.com/api/v1/repos/owner/repo2/issues/1/labels"
+    ).mock(return_value=httpx.Response(200, json=[]))
+
+    # Operations on different repos should fetch labels separately
+    client.add_issue_labels("owner", "repo1", 1, ["bug"])
+    client.add_issue_labels("owner", "repo2", 1, ["bug"])
+
+    assert label_route_1.call_count == 1
+    assert label_route_2.call_count == 1
+
+
+@respx.mock
+def test_label_cache_cleared_on_close(client: GiteaClient):
+    """Test that label cache is cleared when client is closed."""
+    label_route = respx.get("https://test.example.com/api/v1/repos/owner/repo/labels")
+    label_route.mock(
+        return_value=httpx.Response(
+            200,
+            json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
+        )
+    )
+    respx.post(
+        "https://test.example.com/api/v1/repos/owner/repo/issues/25/labels"
+    ).mock(return_value=httpx.Response(200, json=[]))
+
+    # Populate the cache
+    client.add_issue_labels("owner", "repo", 25, ["bug"])
+    assert label_route.call_count == 1
+
+    # Close and verify cache is cleared
+    client.close()
+    assert client._label_cache == {}
+
+
+@respx.mock
+def test_label_cache_invalidated_on_create_label(client: GiteaClient):
+    """Test that create_label invalidates the cache for that repo."""
+    label_route = respx.get("https://test.example.com/api/v1/repos/owner/repo/labels")
+    label_route.mock(
+        return_value=httpx.Response(
+            200,
+            json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
+        )
+    )
+    respx.post(
+        "https://test.example.com/api/v1/repos/owner/repo/issues/25/labels"
+    ).mock(return_value=httpx.Response(200, json=[]))
+    respx.post("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+        return_value=httpx.Response(
+            201,
+            json={"id": 2, "name": "new-label", "color": "0000ff", "description": ""},
+        )
+    )
+
+    # First operation populates cache
+    client.add_issue_labels("owner", "repo", 25, ["bug"])
+    assert label_route.call_count == 1
+    assert "owner/repo" in client._label_cache
+
+    # Creating a label should invalidate the cache
+    client.create_label("owner", "repo", "new-label", "0000ff")
+    assert "owner/repo" not in client._label_cache
+
+    # Next operation should fetch labels again
+    client.add_issue_labels("owner", "repo", 25, ["bug"])
+    assert label_route.call_count == 2
