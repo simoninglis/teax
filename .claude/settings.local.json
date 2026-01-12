@@ -3,14 +3,7 @@
     "allow": [
       "Bash(tea labels create:*)",
       "Bash(tea issues create:*)",
-      "Bash(__NEW_LINE_f99e23bacb1e03d3__ Args:)",
-      "Bash(spec: Issue spec like \"17-23\" or \"17,18,19\" or \"17-19,25\")",
-      "Bash(__NEW_LINE_f99e23bacb1e03d3__ Returns:)",
-      "Bash(Sorted list of unique issue numbers)",
-      "Bash(__NEW_LINE_f99e23bacb1e03d3__ Raises:)",
-      "Bash(click.BadParameter: If spec is invalid)",
       "Bash(poetry run teax issue edit:*)",
-      "Bash(echo:*)",
       "Bash(tea issues labels add:*)",
       "Bash(tea issues labels --help:*)",
       "Bash(tea issues --help:*)",
@@ -24,14 +17,15 @@
       "Bash(jq:*)",
       "Bash(just check:*)",
       "Bash(tea issues list:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: correct dependency API field names and add SSL skip option\n\n- Fix IssueMeta field names: owner/repo/index instead of dependentOwner etc\n- Add TEAX_INSECURE=1 env var to skip SSL verification for self-hosted CAs\nEOF\n\\)\")",
       "Bash(git commit:*)",
       "Bash(just test:*)",
       "Bash(just format:*)",
       "Bash(poetry add:*)",
       "Bash(git checkout:*)",
-      "Bash(codex exec \"Conduct a comprehensive code review of this teax project - a Gitea CLI companion tool.\n\nKey files:\n- src/teax/api.py - GiteaClient with label caching\n- src/teax/cli.py - Click commands \\(deps, issue, epic\\)\n- src/teax/config.py - tea config reader\n- src/teax/models.py - Pydantic models\n- tests/ - pytest tests\n\nReview for: code quality, security, error handling, test coverage, docs.\n\nProvide letter grade, critical issues, important improvements, and nice-to-haves.\")",
-      "Bash(poetry run pytest:*)"
+      "Bash(codex exec:*)",
+      "Bash(poetry run pytest:*)",
+      "Bash(tea issue create:*)",
+      "Bash(tea issue close:*)"
     ]
   }
 }

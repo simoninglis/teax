@@ -1,137 +1,131 @@
 # teax Issue Tracker
 
-Canonical issue list for teax development. Phase 2 features are tracked in Gitea (#1-#8).
+Canonical issue list for teax development. Issues are now tracked in Gitea.
 
 ---
 
-## Open Issues
+## Open Issues (Gitea #9-#19)
 
-### 9. Low test coverage for API client Open
+Quality improvements from codex reviews. All issues tracked in Gitea.
 
-**Status:** Open
+| Gitea # | Title | Priority | Labels |
+|---------|-------|----------|--------|
+| 9 | Fix base URL subpath handling for non-root Gitea | p1 | type/bug |
+| 10 | Pre-validate milestone in bulk command | p2 | type/bug |
+| 11 | Use SecretStr for token to prevent leakage | p2 | type/enhancement |
+| 12 | Improve pagination efficiency | p3 | type/enhancement |
+| 13 | Deduplicate child issues in epic commands | p3 | type/enhancement |
+| 14 | Improve input validation for color and repo | p3 | type/enhancement |
+| 15 | Reduce redundant label fetches in epic_create | p3 | type/enhancement |
+| 16 | Increase CLI test coverage to 80% | p2 | type/test |
+| 17 | Add end-to-end tests for epic commands | p3 | type/test |
+| 18 | Implement milestone lookup by name | p3 | type/enhancement |
+| 19 | Remove unused DependencyRequest model | p3 | type/cleanup |
 
-**Problem:** The API client (`api.py`) has only 23% test coverage. All API methods that make HTTP calls are untested, making it risky to refactor or extend.
-
-**Solution:** Add integration-style tests using httpx mock or respx to test API client methods without hitting real servers.
-
-**Acceptance Criteria:**
-- [ ] Tests for `get_issue`, `edit_issue`
-- [ ] Tests for label operations (`get_issue_labels`, `add_issue_labels`, `remove_issue_label`, `set_issue_labels`)
-- [ ] Tests for dependency operations (`list_dependencies`, `list_blocks`, `add_dependency`, `remove_dependency`)
-- [ ] Tests for error handling (404, 401, network errors)
-- [ ] Coverage for api.py reaches 80%+
-
-**Files affected:**
-- tests/test_api.py (new)
-- src/teax/api.py
-
----
-
-### 10. CSV output doesn't escape special characters Open
+### 16. Increase CLI test coverage to 80%
 
 **Status:** Open
 
-**Problem:** The CSV output format in `OutputFormat.print_deps` and `print_labels` doesn't escape commas or quotes in titles/descriptions, which could break CSV parsing.
+**Problem:** CLI module at 40% coverage. Many command execution paths untested, including actual bulk operations with API mocking, epic create/status/add with API mocking, and error handling paths.
 
-**Solution:** Use Python's `csv` module for proper escaping, or at minimum quote fields containing special characters.
-
-**Acceptance Criteria:**
-- [ ] Titles with commas are properly quoted
-- [ ] Descriptions with quotes are properly escaped
-- [ ] CSV output can be parsed by standard CSV tools
-
-**Files affected:**
-- src/teax/cli.py (OutputFormat class)
-
----
-
-### 11. deps rm allows both --on and --blocks simultaneously Open
-
-**Status:** Open
-
-**Problem:** The `deps_rm` command (line 227-228) uses `if/if` instead of `if/elif`, allowing both `--on` and `--blocks` to be processed. This differs from `deps_add` which correctly rejects both.
-
-**Solution:** Change the second `if` to `elif` for consistency with `deps_add`.
+**Solution:** Add integration tests using respx mocking for CLI commands.
 
 **Acceptance Criteria:**
-- [ ] `deps rm` with both `--on` and `--blocks` raises UsageError
-- [ ] Test added for this case
+- [ ] cli.py coverage reaches 80%+
+- [ ] Bulk command execution tested with mock API
+- [ ] Epic commands tested with mock API
+- [ ] Error handling paths covered
 
 **Files affected:**
-- src/teax/cli.py (deps_rm function)
 - tests/test_cli.py
 
 ---
 
-### 12. README doesn't document TEAX_INSECURE environment variable Open
+### 17. Add end-to-end tests for epic commands
 
 **Status:** Open
 
-**Problem:** The `TEAX_INSECURE=1` environment variable for self-hosted CA instances was added but not documented in README.md.
+**Problem:** Epic command tests only verify help output and helper functions. Actual command execution (`epic_create`, `epic_status`, `epic_add`) not tested with mocked API responses.
 
-**Solution:** Add a section to README documenting the environment variable.
+**Solution:** Add tests using CliRunner + respx to test full command execution.
 
 **Acceptance Criteria:**
-- [ ] README documents TEAX_INSECURE usage
-- [ ] Explains when to use it (self-hosted CA)
+- [ ] epic create tested with label creation and issue creation mocks
+- [ ] epic status tested with issue fetch and child issue state checks
+- [ ] epic add tested with body update and label application
 
 **Files affected:**
-- README.md
+- tests/test_cli.py
 
 ---
 
-### 13. Missing test for get_login_by_name Open
+### 18. Implement milestone lookup by name
 
 **Status:** Open
 
-**Problem:** The `get_login_by_name` function in config.py is not tested, though it's used for the `--login` flag.
+**Problem:** In `issue_edit` (cli.py:397-400), milestone only accepts numeric IDs. Passing a name shows a warning about lookup not being implemented.
 
-**Solution:** Add tests for successful lookup and error case.
+**Solution:** Add milestone list API method, cache results, and resolve names to IDs.
 
 **Acceptance Criteria:**
-- [ ] Test for finding login by name
-- [ ] Test for error when login not found
+- [ ] `--milestone "Sprint 1"` works (resolves to ID)
+- [ ] Error message if milestone name not found
+- [ ] Numeric IDs still work
 
 **Files affected:**
-- tests/test_config.py
+- src/teax/api.py (add list_milestones method)
+- src/teax/cli.py (resolve milestone names)
 
 ---
 
-### 14. Label ID resolution makes redundant API calls Open
+### 19. Remove unused DependencyRequest model
 
 **Status:** Open
 
-**Problem:** `_resolve_label_ids` fetches all repo labels on every label operation. When editing multiple issues or doing bulk operations, this causes redundant API calls.
+**Problem:** `DependencyRequest` in models.py (lines 79-84) is defined but never used. Dependency operations construct JSON directly.
 
-**Solution:** Cache label IDs per repo within a GiteaClient session, or accept label IDs directly as an alternative to names.
+**Solution:** Remove the unused model to reduce dead code.
 
 **Acceptance Criteria:**
-- [ ] Label resolution cached within single GiteaClient session
-- [ ] Subsequent operations reuse cached labels
-- [ ] Cache invalidated on client close
+- [ ] DependencyRequest removed from models.py
+- [ ] Tests still pass
 
 **Files affected:**
-- src/teax/api.py
-
----
-
-## Phase 2 Features (Gitea #1-#8)
-
-These are tracked in Gitea as Epic #1: Phase 2 - Bulk Operations and Epic Helpers.
-
-| Gitea # | Title | Priority | Status |
-|---------|-------|----------|--------|
-| 1 | Epic: Phase 2 - Bulk Operations and Epic Helpers | p1 | Open |
-| 2 | Issue range parsing utility | p0 | Open |
-| 3 | Bulk command with label support | p1 | Open |
-| 4 | Bulk command with assignee/milestone support | p1 | Open |
-| 5 | Confirmation prompt with --yes flag | p2 | Open |
-| 6 | Epic create command | p1 | Open |
-| 7 | Epic status command | p2 | Open |
-| 8 | Epic add command | p2 | Open |
+- src/teax/models.py
 
 ---
 
 ## Closed Issues
 
-(None yet)
+### Phase 2 Features (Gitea #1-#8) - COMPLETED
+
+Epic #1: Phase 2 - Bulk Operations and Epic Helpers (closed)
+
+| Gitea # | Title | Status |
+|---------|-------|--------|
+| 1 | Epic: Phase 2 - Bulk Operations and Epic Helpers | Closed |
+| 2 | Issue range parsing utility | Closed |
+| 3 | Bulk command with label support | Closed |
+| 4 | Bulk command with assignee/milestone support | Closed |
+| 5 | Confirmation prompt with --yes flag | Closed |
+| 6 | Epic create command | Closed |
+| 7 | Epic status command | Closed |
+| 8 | Epic add command | Closed |
+
+### Phase 1 Bug Fixes - COMPLETED
+
+| # | Title | Status |
+|---|-------|--------|
+| 9 | Low test coverage for API client | Closed (95% coverage achieved) |
+| 10 | CSV output doesn't escape special characters | Closed |
+| 11 | deps rm allows both --on and --blocks | Closed |
+| 12 | README doesn't document TEAX_INSECURE | Closed |
+| 13 | Missing test for get_login_by_name | Closed |
+| 14 | Label ID resolution makes redundant API calls | Closed (caching implemented) |
+
+---
+
+## Issue Tracking
+
+All issues are now tracked in Gitea:
+- https://prod-vm-gitea.internal.kellgari.com.au/homelab-teams/teax/issues

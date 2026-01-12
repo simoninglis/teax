@@ -164,6 +164,22 @@ teax issue edit 25 --repo homelab/myproject \
 
 ### Setting Up an Epic (per ADR-0005)
 
+**Using epic commands (recommended)**:
+```bash
+# Create epic with child issues in one command
+teax epic create interactive-diagnostics --repo homelab/myproject \
+    --title "Interactive Diagnostics" -c 17 -c 18 -c 19 -c 20 -c 21
+
+# Set up dependencies between child issues
+teax deps add 20 --repo homelab/myproject --on 17
+teax deps add 21 --repo homelab/myproject --on 17
+teax deps add 20 --repo homelab/myproject --on 21
+
+# Check progress
+teax epic status 24 --repo homelab/myproject
+```
+
+**Manual approach** (if you need more control):
 ```bash
 # 1. Create the epic issue with tea
 tea issues create --title "Epic: Interactive Diagnostics" \
@@ -174,10 +190,8 @@ tea issues create --title "Epic: Interactive Diagnostics" \
 teax issue edit 24 --repo homelab/myproject \
     --set-labels "type/epic,epic/interactive-diagnostics,prio/p1"
 
-# 3. Label child issues
-teax issue edit 17 --repo homelab/myproject \
-    --add-labels "epic/interactive-diagnostics"
-teax issue edit 18 --repo homelab/myproject \
+# 3. Label child issues (bulk)
+teax issue bulk 17-21 --repo homelab/myproject \
     --add-labels "epic/interactive-diagnostics"
 
 # 4. Set up dependencies
@@ -201,13 +215,136 @@ teax issue edit 30 --repo homelab/myproject --assignees "alice"
 teax issue edit 30 --repo homelab/myproject --milestone 3
 ```
 
-### Bulk Sprint Planning (Manual)
+## Bulk Operations
+
+Apply changes to multiple issues at once.
+
+### Issue Specification
+
+Issues can be specified as:
+- Single: `17`
+- Range: `17-23`
+- List: `17,18,19`
+- Mixed: `17-19,25,30-32`
+
+### Bulk Label Changes
 
 ```bash
-# Add sprint label to multiple issues
-for issue in 17 18 19 20; do
-    teax issue edit $issue --repo homelab/myproject --add-labels "sprint/current"
-done
+# Add labels to multiple issues
+teax issue bulk 17-23 --repo homelab/myproject --add-labels "sprint/week1"
+
+# Remove labels from range
+teax issue bulk 17-20 --repo homelab/myproject --rm-labels "needs-triage"
+
+# Replace all labels on multiple issues
+teax issue bulk "17,18,25" --repo homelab/myproject --set-labels "type/feature"
+```
+
+### Bulk Assignees and Milestones
+
+```bash
+# Set assignees on a range
+teax issue bulk "17,18,25-30" --repo homelab/myproject --assignees "alice,bob"
+
+# Set milestone on multiple issues
+teax issue bulk 17-20 --repo homelab/myproject --milestone 5
+
+# Clear milestone
+teax issue bulk 17-20 --repo homelab/myproject --milestone ""
+```
+
+### Combined Bulk Changes
+
+```bash
+teax issue bulk 17-23 --repo homelab/myproject \
+    --add-labels "sprint/week1" \
+    --assignees "alice" \
+    --milestone 5
+```
+
+### Confirmation Prompt
+
+Bulk operations show a preview and ask for confirmation:
+
+```
+Bulk edit 7 issues in homelab/myproject
+Issues: #17, #18, #19, #20, #21, #22, #23
+
+Changes:
+  • Add labels: sprint/week1
+  • Set assignees: alice
+
+Proceed with changes? [y/N]
+```
+
+Skip with `--yes`:
+```bash
+teax issue bulk 17-23 --repo homelab/myproject --add-labels "done" --yes
+```
+
+## Epic Management
+
+Create and track epics following ADR-0005 patterns.
+
+### Create Epic
+
+```bash
+# Create epic with child issues
+teax epic create auth --repo homelab/myproject --title "Auth System" -c 17 -c 18 -c 19
+
+# Output:
+# Creating label epic/auth...
+#   ✓ Created label #42
+# Creating epic issue Auth System...
+#   ✓ Created issue #50
+# Applying epic/auth to child issues...
+#   ✓ #17
+#   ✓ #18
+#   ✓ #19
+#
+# Epic created successfully!
+#   Issue: #50
+#   Label: epic/auth
+#   Children: 3 issues labeled
+```
+
+This creates:
+1. An `epic/{name}` label (if it doesn't exist)
+2. A new issue with a checklist of child issues
+3. Applies the epic label to the epic and all child issues
+
+### Epic Status
+
+View progress of an epic:
+
+```bash
+teax epic status 50 --repo homelab/myproject
+
+# Output:
+# Epic #50: Auth System
+# Progress: 1/3 (33%)
+# █████████░░░░░░░░░░░░░░░░░░░░░
+#
+# Completed (1):
+#   ✓ #17 User login endpoint
+#
+# Open (2):
+#   [ ] #18 Session management
+#   [ ] #19 OAuth integration
+```
+
+### Add Issues to Epic
+
+```bash
+teax epic add 50 25 26 --repo homelab/myproject
+
+# Output:
+# ✓ Updated epic #50 body
+# Applying epic/auth to child issues...
+#   ✓ #25
+#   ✓ #26
+#
+# Added 2 issues to epic #50
 ```
 
 ## Using Multiple Gitea Instances

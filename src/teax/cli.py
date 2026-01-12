@@ -16,6 +16,14 @@ from teax.api import GiteaClient
 console = Console()
 err_console = Console(stderr=True)
 
+# Exception types caught by CLI commands
+CLI_ERRORS = (
+    httpx.HTTPStatusError,
+    httpx.RequestError,
+    ValueError,
+    FileNotFoundError,
+)
+
 
 def parse_repo(repo: str) -> tuple[str, str]:
     """Parse owner/repo string into components."""
@@ -206,7 +214,7 @@ def deps_list(ctx: click.Context, issue: int, repo: str) -> None:
             if blocks:
                 console.print()
                 output.print_deps(blocks, issue, "blocks")
-    except (httpx.HTTPStatusError, ValueError) as e:
+    except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -255,7 +263,7 @@ def deps_add(
                 assert blocks is not None
                 client.add_dependency(owner, repo_name, blocks, owner, repo_name, issue)
                 console.print(f"[green]Added:[/green] #{issue} now blocks #{blocks}")
-    except (httpx.HTTPStatusError, ValueError) as e:
+    except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -300,7 +308,7 @@ def deps_rm(
                 console.print(
                     f"[yellow]Removed:[/yellow] #{issue} no longer blocks #{blocks}"
                 )
-    except (httpx.HTTPStatusError, ValueError) as e:
+    except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -321,7 +329,7 @@ def issue() -> None:
 @click.option("--rm-labels", help="Labels to remove (comma-separated)")
 @click.option("--set-labels", help="Replace all labels (comma-separated)")
 @click.option("--assignees", help="Set assignees (comma-separated usernames)")
-@click.option("--milestone", help="Set milestone (name or ID, empty to clear)")
+@click.option("--milestone", help="Set milestone (ID, empty to clear)")
 @click.option("--title", help="Set new title")
 @click.pass_context
 def issue_edit(
@@ -341,7 +349,7 @@ def issue_edit(
         teax issue edit 25 --repo homelab/myproject --add-labels "epic/foo,prio/p1"
         teax issue edit 25 --repo homelab/myproject --rm-labels "needs-triage"
         teax issue edit 25 --repo homelab/myproject --assignees "user1,user2"
-        teax issue edit 25 --repo homelab/myproject --milestone "v1.0"
+        teax issue edit 25 --repo homelab/myproject --milestone 5
     """
     owner, repo_name = parse_repo(repo)
     changes_made = []
@@ -401,7 +409,7 @@ def issue_edit(
             else:
                 console.print("[yellow]No changes specified[/yellow]")
 
-    except (httpx.HTTPStatusError, ValueError) as e:
+    except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -423,7 +431,7 @@ def issue_labels(ctx: click.Context, issue_num: int, repo: str) -> None:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
             labels = client.get_issue_labels(owner, repo_name, issue_num)
             output.print_labels(labels)
-    except (httpx.HTTPStatusError, ValueError) as e:
+    except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -547,12 +555,12 @@ def issue_bulk(
                     console.print(f"  [green]✓[/green] #{issue_num}")
                     success_count += 1
 
-                except (httpx.HTTPStatusError, ValueError) as e:
+                except CLI_ERRORS as e:
                     console.print(f"  [red]✗[/red] #{issue_num}: {e}")
                     errors.append((issue_num, str(e)))
                     error_count += 1
 
-    except (httpx.HTTPStatusError, ValueError) as e:
+    except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -659,7 +667,7 @@ def epic_create(
                             owner, repo_name, child_num, [epic_label]
                         )
                         console.print(f"  [green]✓[/green] #{child_num}")
-                    except (httpx.HTTPStatusError, ValueError) as e:
+                    except CLI_ERRORS as e:
                         console.print(f"  [red]✗[/red] #{child_num}: {e}")
 
             # Print summary
@@ -670,7 +678,7 @@ def epic_create(
             if children:
                 console.print(f"  Children: {len(children)} issues labeled")
 
-    except (httpx.HTTPStatusError, ValueError) as e:
+    except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -768,7 +776,7 @@ def epic_status(
                 for num, title in open_issues:
                     console.print(f"  [ ] #{num} {title}")
 
-    except (httpx.HTTPStatusError, ValueError) as e:
+    except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 
@@ -880,7 +888,7 @@ def epic_add(
                             owner, repo_name, child_num, [epic_label]
                         )
                         console.print(f"  [green]✓[/green] #{child_num}")
-                    except (httpx.HTTPStatusError, ValueError) as e:
+                    except CLI_ERRORS as e:
                         console.print(f"  [red]✗[/red] #{child_num}: {e}")
 
             # Print summary
@@ -888,7 +896,7 @@ def epic_add(
             count = len(children)
             console.print(f"[bold]Added {count} issues to epic #{epic_issue}[/bold]")
 
-    except (httpx.HTTPStatusError, ValueError) as e:
+    except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {e}")
         sys.exit(1)
 

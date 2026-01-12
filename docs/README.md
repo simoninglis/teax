@@ -8,12 +8,24 @@ Documentation for the teax Gitea CLI companion tool.
 |----------|-------------|
 | [Usage Guide](usage.md) | How to use teax commands |
 | [API Reference](api.md) | Python API for programmatic use |
+| [Architecture](architecture.md) | System design and data flow |
 | [ADRs](adr/) | Architecture Decision Records |
+| [Issues](ISSUES.md) | Issue tracker |
+
+## Development Rules
+
+Rules in `.claude/rules/` provide active guidance for development:
+
+| Rule File | Purpose |
+|-----------|---------|
+| [development.md](../.claude/rules/development.md) | Workflow for adding commands |
+| [testing.md](../.claude/rules/testing.md) | Testing patterns and mocking |
 
 ## Quick Links
 
 - [README](../README.md) - Project overview and installation
 - [CLAUDE.md](../CLAUDE.md) - Development guide for AI assistants
+- [plan.md](../plan.md) - Current implementation plan
 
 ## External Resources
 

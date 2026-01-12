@@ -69,6 +69,72 @@ def test_client_base_url(client: GiteaClient):
     assert client.base_url == "https://test.example.com"
 
 
+@respx.mock
+def test_client_subpath_url_handling():
+    """Test API calls work with subpath URLs (e.g., https://example.com/gitea/)."""
+    # Gitea hosted at a subpath
+    subpath_login = TeaLogin(
+        name="subpath.example.com",
+        url="https://example.com/gitea/",
+        token="test-token-123",
+        default=True,
+        user="testuser",
+    )
+
+    # Mock the API endpoint at the subpath
+    respx.get("https://example.com/gitea/api/v1/repos/owner/repo/issues/25").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 100,
+                "number": 25,
+                "title": "Test Issue",
+                "state": "open",
+                "labels": [],
+                "assignees": [],
+                "milestone": None,
+            },
+        )
+    )
+
+    with GiteaClient(login=subpath_login) as client:
+        issue = client.get_issue("owner", "repo", 25)
+        assert issue.number == 25
+        assert issue.title == "Test Issue"
+
+
+@respx.mock
+def test_client_trailing_slash_handling():
+    """Test base URL trailing slash is handled correctly."""
+    # URL without trailing slash
+    no_slash_login = TeaLogin(
+        name="noslash.example.com",
+        url="https://example.com",
+        token="test-token-123",
+        default=True,
+        user="testuser",
+    )
+
+    respx.get("https://example.com/api/v1/repos/owner/repo/issues/25").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 100,
+                "number": 25,
+                "title": "Test Issue",
+                "state": "open",
+                "labels": [],
+                "assignees": [],
+                "milestone": None,
+            },
+        )
+    )
+
+    with GiteaClient(login=no_slash_login) as client:
+        issue = client.get_issue("owner", "repo", 25)
+        assert issue.number == 25
+
+
 # --- Issue Operations Tests ---
 
 
@@ -500,9 +566,11 @@ def test_create_label(client: GiteaClient):
 
 @respx.mock
 def test_list_repo_labels(client: GiteaClient):
-    """Test listing all repository labels."""
-    respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
-        return_value=httpx.Response(
+    """Test listing all repository labels with pagination."""
+    # Mock paginated label responses
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/labels")
+    route.side_effect = [
+        httpx.Response(
             200,
             json=[
                 {
@@ -524,14 +592,18 @@ def test_list_repo_labels(client: GiteaClient):
                     "description": "Documentation",
                 },
             ],
-        )
-    )
+        ),
+        # Empty second page signals end of pagination
+        httpx.Response(200, json=[]),
+    ]
 
     labels = client.list_repo_labels("owner", "repo")
 
     assert len(labels) == 3
     assert labels[0].name == "bug"
     assert labels[2].name == "docs"
+    # Verify pagination was used (2 requests: page 1 + empty page 2)
+    assert route.call_count == 2
 
 
 # --- Error Handling Tests ---

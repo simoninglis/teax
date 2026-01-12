@@ -34,8 +34,11 @@ class GiteaClient:
         else:
             self._login = get_default_login()
 
+        # Ensure base URL ends with / and includes /api/v1/ for correct path joining
+        # This handles subpath installations like https://example.com/gitea/
+        base = self._login.url.rstrip("/") + "/api/v1/"
         self._client = httpx.Client(
-            base_url=self._login.url.rstrip("/"),
+            base_url=base,
             headers={
                 "Authorization": f"token {self._login.token}",
                 "Accept": "application/json",
@@ -92,7 +95,7 @@ class GiteaClient:
             data["labels"] = labels
 
         response = self._client.post(
-            f"/api/v1/repos/{owner}/{repo}/issues",
+            f"repos/{owner}/{repo}/issues",
             json=data,
         )
         response.raise_for_status()
@@ -109,7 +112,7 @@ class GiteaClient:
         Returns:
             Issue details
         """
-        response = self._client.get(f"/api/v1/repos/{owner}/{repo}/issues/{index}")
+        response = self._client.get(f"repos/{owner}/{repo}/issues/{index}")
         response.raise_for_status()
         return Issue.model_validate(response.json())
 
@@ -149,7 +152,7 @@ class GiteaClient:
             data["milestone"] = milestone if milestone > 0 else None
 
         response = self._client.patch(
-            f"/api/v1/repos/{owner}/{repo}/issues/{index}",
+            f"repos/{owner}/{repo}/issues/{index}",
             json=data,
         )
         response.raise_for_status()
@@ -169,7 +172,7 @@ class GiteaClient:
             List of labels
         """
         response = self._client.get(
-            f"/api/v1/repos/{owner}/{repo}/issues/{index}/labels"
+            f"repos/{owner}/{repo}/issues/{index}/labels"
         )
         response.raise_for_status()
         return [Label.model_validate(item) for item in response.json()]
@@ -192,7 +195,7 @@ class GiteaClient:
         label_ids = self._resolve_label_ids(owner, repo, labels)
 
         response = self._client.post(
-            f"/api/v1/repos/{owner}/{repo}/issues/{index}/labels",
+            f"repos/{owner}/{repo}/issues/{index}/labels",
             json={"labels": label_ids},
         )
         response.raise_for_status()
@@ -211,7 +214,7 @@ class GiteaClient:
         label_ids = self._resolve_label_ids(owner, repo, [label])
 
         response = self._client.delete(
-            f"/api/v1/repos/{owner}/{repo}/issues/{index}/labels/{label_ids[0]}"
+            f"repos/{owner}/{repo}/issues/{index}/labels/{label_ids[0]}"
         )
         response.raise_for_status()
 
@@ -232,7 +235,7 @@ class GiteaClient:
         label_ids = self._resolve_label_ids(owner, repo, labels)
 
         response = self._client.put(
-            f"/api/v1/repos/{owner}/{repo}/issues/{index}/labels",
+            f"repos/{owner}/{repo}/issues/{index}/labels",
             json={"labels": label_ids},
         )
         response.raise_for_status()
@@ -260,7 +263,7 @@ class GiteaClient:
             page = 1
             while True:
                 response = self._client.get(
-                    f"/api/v1/repos/{owner}/{repo}/labels",
+                    f"repos/{owner}/{repo}/labels",
                     params={"page": page, "limit": 50},
                 )
                 response.raise_for_status()
@@ -295,7 +298,7 @@ class GiteaClient:
             List of dependency issues
         """
         response = self._client.get(
-            f"/api/v1/repos/{owner}/{repo}/issues/{index}/dependencies"
+            f"repos/{owner}/{repo}/issues/{index}/dependencies"
         )
         response.raise_for_status()
         return [Dependency.model_validate(d) for d in response.json()]
@@ -312,7 +315,7 @@ class GiteaClient:
             List of blocked issues
         """
         response = self._client.get(
-            f"/api/v1/repos/{owner}/{repo}/issues/{index}/blocks"
+            f"repos/{owner}/{repo}/issues/{index}/blocks"
         )
         response.raise_for_status()
         return [Dependency.model_validate(d) for d in response.json()]
@@ -337,7 +340,7 @@ class GiteaClient:
             depends_on_index: Issue number being depended on
         """
         response = self._client.post(
-            f"/api/v1/repos/{owner}/{repo}/issues/{index}/dependencies",
+            f"repos/{owner}/{repo}/issues/{index}/dependencies",
             json={
                 "owner": depends_on_owner,
                 "repo": depends_on_repo,
@@ -367,7 +370,7 @@ class GiteaClient:
         """
         response = self._client.request(
             "DELETE",
-            f"/api/v1/repos/{owner}/{repo}/issues/{index}/dependencies",
+            f"repos/{owner}/{repo}/issues/{index}/dependencies",
             json={
                 "owner": depends_on_owner,
                 "repo": depends_on_repo,
@@ -399,7 +402,7 @@ class GiteaClient:
             Created label
         """
         response = self._client.post(
-            f"/api/v1/repos/{owner}/{repo}/labels",
+            f"repos/{owner}/{repo}/labels",
             json={"name": name, "color": color, "description": description},
         )
         response.raise_for_status()
@@ -418,6 +421,17 @@ class GiteaClient:
         Returns:
             List of labels
         """
-        response = self._client.get(f"/api/v1/repos/{owner}/{repo}/labels")
-        response.raise_for_status()
-        return [Label.model_validate(item) for item in response.json()]
+        all_labels: list[Label] = []
+        page = 1
+        while True:
+            response = self._client.get(
+                f"repos/{owner}/{repo}/labels",
+                params={"page": page, "limit": 50},
+            )
+            response.raise_for_status()
+            items = response.json()
+            if not items:
+                break
+            all_labels.extend(Label.model_validate(item) for item in items)
+            page += 1
+        return all_labels

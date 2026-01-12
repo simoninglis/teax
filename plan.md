@@ -41,9 +41,9 @@ This plan addresses remaining quality improvements: 1 bug (base URL subpath), se
 **Solution:** Ensure base URL handling preserves subpaths when constructing API endpoints.
 
 **Acceptance Criteria:**
-- [ ] API calls work with `url: https://example.com/gitea/`
-- [ ] Trailing slashes handled correctly
-- [ ] Test added for subpath URL handling
+- [x] API calls work with `url: https://example.com/gitea/`
+- [x] Trailing slashes handled correctly
+- [x] Test added for subpath URL handling
 
 **Implementation:**
 1. Review URL construction in `GiteaClient.__init__` (api.py:37-38)
@@ -280,7 +280,7 @@ Before marking plan complete:
 
 Implementation sequence considering dependencies:
 
-1. ⏳ **Issue 9** - Base URL subpath handling (Phase 1) - critical bug
+1. ✅ **Issue 9** - Base URL subpath handling (Phase 1) - critical bug
 2. **Issue 19** - Remove unused model (Phase 3) - quick cleanup
 3. **Issue 11** - SecretStr for token (Phase 2) - security hardening
 4. **Issue 10** - Pre-validate milestone in bulk (Phase 2) - bug prevention
