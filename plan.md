@@ -120,11 +120,11 @@ This plan addresses code quality issues discovered during review (low test cover
 **Solution:** Add tests using respx or httpx mocking.
 
 **Acceptance Criteria:**
-- [ ] Tests for issue operations
-- [ ] Tests for label operations
-- [ ] Tests for dependency operations
-- [ ] Tests for error handling
-- [ ] api.py coverage reaches 80%+
+- [x] Tests for issue operations
+- [x] Tests for label operations
+- [x] Tests for dependency operations
+- [x] Tests for error handling
+- [x] api.py coverage reaches 80%+ (achieved 91%)
 
 **Implementation:**
 1. Add `respx` to dev dependencies
@@ -323,7 +323,7 @@ Implementation sequence considering dependencies:
 2. ✅ **Issue 10** - CSV escaping (Phase 2) - no dependencies
 3. ✅ **Issue 12** - README TEAX_INSECURE (Phase 2) - no dependencies
 4. ✅ **Issue 13** - get_login_by_name test (Phase 2) - no dependencies
-5. **Issue 9** - API client tests (Phase 2) - no dependencies
+5. ✅ **Issue 9** - API client tests (Phase 2) - no dependencies
 6. **Issue 2** - Range parsing utility (Phase 2) - foundation for bulk
 7. **Issue 3** - Bulk labels (Phase 2) - depends on #2
 8. **Issue 4** - Bulk assignees/milestone (Phase 2) - depends on #2
