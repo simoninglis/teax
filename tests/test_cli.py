@@ -82,6 +82,7 @@ def test_issue_bulk_help(runner: CliRunner):
     assert "--set-labels" in result.output
     assert "--assignees" in result.output
     assert "--milestone" in result.output
+    assert "--yes" in result.output or "-y" in result.output
     assert "ISSUES" in result.output
 
 
@@ -90,6 +91,82 @@ def test_issue_bulk_no_changes(runner: CliRunner):
     result = runner.invoke(main, ["issue", "bulk", "17", "--repo", "owner/repo"])
     assert result.exit_code == 0
     assert "No changes specified" in result.output
+
+
+def test_issue_bulk_shows_preview(runner: CliRunner):
+    """Test that bulk command shows preview of changes."""
+    result = runner.invoke(
+        main,
+        [
+            "issue", "bulk", "17-19",
+            "--repo", "owner/repo",
+            "--add-labels", "bug,feature",
+        ],
+        input="n\n",  # Respond 'no' to confirmation
+    )
+    assert result.exit_code == 0
+    assert "Bulk edit 3 issues" in result.output
+    assert "#17" in result.output
+    assert "#18" in result.output
+    assert "#19" in result.output
+    assert "Add labels: bug,feature" in result.output
+    assert "Aborted" in result.output
+
+
+def test_issue_bulk_confirmation_abort(runner: CliRunner):
+    """Test that bulk aborts when confirmation is declined."""
+    result = runner.invoke(
+        main,
+        ["issue", "bulk", "17", "--repo", "owner/repo", "--assignees", "user1"],
+        input="n\n",
+    )
+    assert result.exit_code == 0
+    assert "Aborted" in result.output
+
+
+def test_issue_bulk_preview_shows_all_changes(runner: CliRunner):
+    """Test that preview shows all types of changes."""
+    result = runner.invoke(
+        main,
+        [
+            "issue", "bulk", "17",
+            "--repo", "owner/repo",
+            "--set-labels", "bug",
+            "--add-labels", "urgent",
+            "--rm-labels", "stale",
+            "--assignees", "user1,user2",
+            "--milestone", "5",
+        ],
+        input="n\n",
+    )
+    assert result.exit_code == 0
+    assert "Set labels to: bug" in result.output
+    assert "Add labels: urgent" in result.output
+    assert "Remove labels: stale" in result.output
+    assert "Set assignees: user1,user2" in result.output
+    assert "Set milestone: 5" in result.output
+
+
+def test_issue_bulk_preview_clear_milestone(runner: CliRunner):
+    """Test that clearing milestone shows correct preview."""
+    result = runner.invoke(
+        main,
+        ["issue", "bulk", "17", "--repo", "owner/repo", "--milestone", "none"],
+        input="n\n",
+    )
+    assert result.exit_code == 0
+    assert "Clear milestone" in result.output
+
+
+def test_issue_bulk_truncates_long_issue_list(runner: CliRunner):
+    """Test that long issue lists are truncated in preview."""
+    result = runner.invoke(
+        main,
+        ["issue", "bulk", "1-15", "--repo", "owner/repo", "--add-labels", "test"],
+        input="n\n",
+    )
+    assert result.exit_code == 0
+    assert "and 5 more" in result.output
 
 
 def test_deps_add_requires_on_or_blocks(runner: CliRunner):

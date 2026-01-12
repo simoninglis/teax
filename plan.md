@@ -252,9 +252,9 @@ This plan addresses code quality issues discovered during review (low test cover
 **Solution:** Add confirmation prompt with `--yes` skip.
 
 **Acceptance Criteria:**
-- [ ] Shows preview of changes
-- [ ] Prompts for confirmation
-- [ ] `--yes` skips prompt
+- [x] Shows preview of changes
+- [x] Prompts for confirmation
+- [x] `--yes` skips prompt
 
 **Implementation:**
 1. Add `--yes/-y` flag to bulk
@@ -328,7 +328,7 @@ Implementation sequence considering dependencies:
 7. ✅ **Issue 3** - Bulk labels (Phase 2) - depends on #2
 8. ✅ **Issue 4** - Bulk assignees/milestone (Phase 2) - depends on #2
 9. ✅ **Issue 14** - Label caching (Phase 3) - optimization
-10. ⏳ **Issue 5** - Confirmation prompts (Phase 3) - depends on #3
+10. ✅ **Issue 5** - Confirmation prompts (Phase 3) - depends on #3
 11. ✅ **Issue 6** - Epic create (Phase 2) - depends on #3
 12. **Issue 7** - Epic status (Phase 3) - independent
 13. **Issue 8** - Epic add (Phase 3) - depends on #6

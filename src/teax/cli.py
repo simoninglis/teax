@@ -435,6 +435,7 @@ def issue_labels(ctx: click.Context, issue_num: int, repo: str) -> None:
 @click.option("--set-labels", help="Replace all labels (comma-separated)")
 @click.option("--assignees", help="Set assignees (comma-separated usernames)")
 @click.option("--milestone", help="Set milestone (ID, empty to clear)")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
 @click.pass_context
 def issue_bulk(
     ctx: click.Context,
@@ -445,6 +446,7 @@ def issue_bulk(
     set_labels: str | None,
     assignees: str | None,
     milestone: str | None,
+    yes: bool,
 ) -> None:
     """Apply changes to multiple issues.
 
@@ -465,6 +467,40 @@ def issue_bulk(
     if not any([add_labels, rm_labels, set_labels, assignees, milestone]):
         console.print("[yellow]No changes specified[/yellow]")
         return
+
+    # Build change preview
+    changes: list[str] = []
+    if set_labels is not None:
+        changes.append(f"Set labels to: {set_labels}")
+    if add_labels is not None:
+        changes.append(f"Add labels: {add_labels}")
+    if rm_labels is not None:
+        changes.append(f"Remove labels: {rm_labels}")
+    if assignees is not None:
+        changes.append(f"Set assignees: {assignees}")
+    if milestone is not None:
+        if milestone == "" or milestone.lower() == "none":
+            changes.append("Clear milestone")
+        else:
+            changes.append(f"Set milestone: {milestone}")
+
+    # Show preview
+    console.print(f"\n[bold]Bulk edit {len(issue_nums)} issues in {repo}[/bold]")
+    console.print(f"Issues: {', '.join(f'#{n}' for n in issue_nums[:10])}", end="")
+    if len(issue_nums) > 10:
+        console.print(f" ... and {len(issue_nums) - 10} more")
+    else:
+        console.print()
+    console.print("\n[bold]Changes:[/bold]")
+    for change in changes:
+        console.print(f"  • {change}")
+    console.print()
+
+    # Confirm unless --yes
+    if not yes:
+        if not click.confirm("Proceed with changes?"):
+            console.print("[yellow]Aborted[/yellow]")
+            return
 
     success_count = 0
     error_count = 0
