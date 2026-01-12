@@ -566,35 +566,18 @@ def test_create_label(client: GiteaClient):
 
 @respx.mock
 def test_list_repo_labels(client: GiteaClient):
-    """Test listing all repository labels with pagination."""
-    # Mock paginated label responses
+    """Test listing repository labels - stops early when items < limit."""
+    # Mock label response with fewer items than limit (50)
     route = respx.get("https://test.example.com/api/v1/repos/owner/repo/labels")
     route.side_effect = [
         httpx.Response(
             200,
             json=[
-                {
-                    "id": 1,
-                    "name": "bug",
-                    "color": "ff0000",
-                    "description": "Bug report",
-                },
-                {
-                    "id": 2,
-                    "name": "feature",
-                    "color": "00ff00",
-                    "description": "Feature",
-                },
-                {
-                    "id": 3,
-                    "name": "docs",
-                    "color": "0000ff",
-                    "description": "Documentation",
-                },
+                {"id": 1, "name": "bug", "color": "ff0000", "description": ""},
+                {"id": 2, "name": "feature", "color": "00ff00", "description": ""},
+                {"id": 3, "name": "docs", "color": "0000ff", "description": ""},
             ],
         ),
-        # Empty second page signals end of pagination
-        httpx.Response(200, json=[]),
     ]
 
     labels = client.list_repo_labels("owner", "repo")
@@ -602,7 +585,33 @@ def test_list_repo_labels(client: GiteaClient):
     assert len(labels) == 3
     assert labels[0].name == "bug"
     assert labels[2].name == "docs"
-    # Verify pagination was used (2 requests: page 1 + empty page 2)
+    # Only 1 request needed when items < limit (no extra empty page request)
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_list_repo_labels_pagination_full_page(client: GiteaClient):
+    """Test listing labels continues when items == limit."""
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/labels")
+    # Create exactly 50 labels for first page (to match limit)
+    page1_labels = [
+        {"id": i, "name": f"label-{i}", "color": "ff0000", "description": ""}
+        for i in range(1, 51)
+    ]
+    page2_labels = [
+        {"id": 51, "name": "label-51", "color": "ff0000", "description": ""}
+    ]
+    route.side_effect = [
+        httpx.Response(200, json=page1_labels),
+        httpx.Response(200, json=page2_labels),  # Less than limit, stops here
+    ]
+
+    labels = client.list_repo_labels("owner", "repo")
+
+    assert len(labels) == 51
+    assert labels[0].name == "label-1"
+    assert labels[50].name == "label-51"
+    # 2 requests: first page (50 items), second page (1 item < limit)
     assert route.call_count == 2
 
 
@@ -651,7 +660,6 @@ def test_label_cache_avoids_redundant_calls(client: GiteaClient):
                     {"id": 2, "name": "feature", "color": "00ff00", "description": ""},
                 ],
             ),
-            httpx.Response(200, json=[]),  # End of pagination
         ]
     )
     # Mock for adding labels
@@ -666,9 +674,8 @@ def test_label_cache_avoids_redundant_calls(client: GiteaClient):
     client.add_issue_labels("owner", "repo", 25, ["bug"])
     client.add_issue_labels("owner", "repo", 26, ["feature"])
 
-    # Label lookup should only be called twice (2 pages) due to caching
-    # (page 1 with labels + page 2 empty), second operation uses cache
-    assert label_route.call_count == 2
+    # Label lookup should only be called once due to caching (items < limit = 1 call)
+    assert label_route.call_count == 1
 
 
 @respx.mock
@@ -681,7 +688,6 @@ def test_label_cache_per_repo(client: GiteaClient):
                 200,
                 json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
             ),
-            httpx.Response(200, json=[]),  # End of pagination
         ]
     )
     label_route_2 = respx.get("https://test.example.com/api/v1/repos/owner/repo2/labels")
@@ -691,7 +697,6 @@ def test_label_cache_per_repo(client: GiteaClient):
                 200,
                 json=[{"id": 5, "name": "bug", "color": "ff0000", "description": ""}],
             ),
-            httpx.Response(200, json=[]),  # End of pagination
         ]
     )
     respx.post(
@@ -705,9 +710,9 @@ def test_label_cache_per_repo(client: GiteaClient):
     client.add_issue_labels("owner", "repo1", 1, ["bug"])
     client.add_issue_labels("owner", "repo2", 1, ["bug"])
 
-    # Each repo gets 2 calls (page 1 + page 2 empty)
-    assert label_route_1.call_count == 2
-    assert label_route_2.call_count == 2
+    # Each repo gets 1 call (items < limit = 1 call per repo)
+    assert label_route_1.call_count == 1
+    assert label_route_2.call_count == 1
 
 
 @respx.mock
@@ -720,7 +725,6 @@ def test_label_cache_cleared_on_close(client: GiteaClient):
                 200,
                 json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
             ),
-            httpx.Response(200, json=[]),  # End of pagination
         ]
     )
     respx.post(
@@ -729,7 +733,7 @@ def test_label_cache_cleared_on_close(client: GiteaClient):
 
     # Populate the cache
     client.add_issue_labels("owner", "repo", 25, ["bug"])
-    assert label_route.call_count == 2  # page 1 + empty page 2
+    assert label_route.call_count == 1  # items < limit = 1 call
 
     # Close and verify cache is cleared
     client.close()
@@ -742,18 +746,16 @@ def test_label_cache_invalidated_on_create_label(client: GiteaClient):
     label_route = respx.get("https://test.example.com/api/v1/repos/owner/repo/labels")
     label_route.mock(
         side_effect=[
-            # First population (2 calls for pagination)
+            # First population (items < limit = 1 call)
             httpx.Response(
                 200,
                 json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
             ),
-            httpx.Response(200, json=[]),  # End of pagination
-            # Second population after cache invalidation (2 calls)
+            # Second population after cache invalidation (items < limit = 1 call)
             httpx.Response(
                 200,
                 json=[{"id": 1, "name": "bug", "color": "ff0000", "description": ""}],
             ),
-            httpx.Response(200, json=[]),  # End of pagination
         ]
     )
     respx.post(
@@ -768,7 +770,7 @@ def test_label_cache_invalidated_on_create_label(client: GiteaClient):
 
     # First operation populates cache
     client.add_issue_labels("owner", "repo", 25, ["bug"])
-    assert label_route.call_count == 2  # page 1 + empty page 2
+    assert label_route.call_count == 1  # items < limit = 1 call
     assert "owner/repo" in client._label_cache
 
     # Creating a label should invalidate the cache
@@ -777,7 +779,7 @@ def test_label_cache_invalidated_on_create_label(client: GiteaClient):
 
     # Next operation should fetch labels again
     client.add_issue_labels("owner", "repo", 25, ["bug"])
-    assert label_route.call_count == 4  # 2 more for re-population
+    assert label_route.call_count == 2  # 1 more for re-population
 
 
 # --- Milestone Operations Tests ---

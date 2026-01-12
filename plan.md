@@ -133,9 +133,9 @@ This plan addresses remaining quality improvements: 1 bug (base URL subpath), se
 **Solution:** Check if returned items < limit to detect last page.
 
 **Acceptance Criteria:**
-- [ ] No extra empty-page request when items < limit
-- [ ] Still works correctly when items == limit (needs next page check)
-- [ ] Tests verify reduced API calls
+- [x] No extra empty-page request when items < limit
+- [x] Still works correctly when items == limit (needs next page check)
+- [x] Tests verify reduced API calls
 
 **Implementation:**
 1. In `_resolve_label_ids` and `list_repo_labels`, check `len(items) < limit`
@@ -285,7 +285,7 @@ Implementation sequence considering dependencies:
 3. ✅ **Issue 11** - SecretStr for token (Phase 2) - security hardening
 4. ✅ **Issue 10** - Pre-validate milestone in bulk (Phase 2) - bug prevention
 5. ✅ **Issue 16** - CLI test coverage (Phase 2) - foundation for other tests
-6. ⏳ **Issue 12** - Pagination efficiency (Phase 3) - optimization
+6. ✅ **Issue 12** - Pagination efficiency (Phase 3) - optimization
 7. **Issue 13** - Deduplicate epic children (Phase 3) - UX improvement
 8. **Issue 14** - Input validation (Phase 3) - robustness
 9. **Issue 15** - Reduce label fetches (Phase 3) - optimization

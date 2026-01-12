@@ -261,10 +261,11 @@ class GiteaClient:
             # Fetch all labels with pagination
             all_labels: dict[str, int] = {}
             page = 1
+            limit = 50
             while True:
                 response = self._client.get(
                     f"repos/{owner}/{repo}/labels",
-                    params={"page": page, "limit": 50},
+                    params={"page": page, "limit": limit},
                 )
                 response.raise_for_status()
                 items = response.json()
@@ -272,6 +273,9 @@ class GiteaClient:
                     break
                 for item in items:
                     all_labels[item["name"]] = item["id"]
+                # If we got fewer items than the limit, we're on the last page
+                if len(items) < limit:
+                    break
                 page += 1
             self._label_cache[cache_key] = all_labels
 
@@ -423,16 +427,20 @@ class GiteaClient:
         """
         all_labels: list[Label] = []
         page = 1
+        limit = 50
         while True:
             response = self._client.get(
                 f"repos/{owner}/{repo}/labels",
-                params={"page": page, "limit": 50},
+                params={"page": page, "limit": limit},
             )
             response.raise_for_status()
             items = response.json()
             if not items:
                 break
             all_labels.extend(Label.model_validate(item) for item in items)
+            # If we got fewer items than the limit, we're on the last page
+            if len(items) < limit:
+                break
             page += 1
         return all_labels
 
