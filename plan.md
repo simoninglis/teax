@@ -282,7 +282,7 @@ Implementation sequence considering dependencies:
 
 1. ✅ **Issue 9** - Base URL subpath handling (Phase 1) - critical bug
 2. ✅ **Issue 19** - Remove unused model (Phase 3) - quick cleanup
-3. **Issue 11** - SecretStr for token (Phase 2) - security hardening
+3. ⏳ **Issue 11** - SecretStr for token (Phase 2) - security hardening
 4. **Issue 10** - Pre-validate milestone in bulk (Phase 2) - bug prevention
 5. **Issue 16** - CLI test coverage (Phase 2) - foundation for other tests
 6. **Issue 12** - Pagination efficiency (Phase 3) - optimization
