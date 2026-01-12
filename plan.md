@@ -101,8 +101,8 @@ This plan addresses code quality issues discovered during review (low test cover
 **Solution:** Add tests to test_config.py.
 
 **Acceptance Criteria:**
-- [ ] Test for successful lookup
-- [ ] Test for error when not found
+- [x] Test for successful lookup
+- [x] Test for error when not found
 
 **Implementation:**
 1. Add `test_get_login_by_name` using sample_config fixture
@@ -322,7 +322,7 @@ Implementation sequence considering dependencies:
 1. ✅ **Issue 11** - deps rm bug fix (Phase 1) - no dependencies
 2. ✅ **Issue 10** - CSV escaping (Phase 2) - no dependencies
 3. ✅ **Issue 12** - README TEAX_INSECURE (Phase 2) - no dependencies
-4. **Issue 13** - get_login_by_name test (Phase 2) - no dependencies
+4. ✅ **Issue 13** - get_login_by_name test (Phase 2) - no dependencies
 5. **Issue 9** - API client tests (Phase 2) - no dependencies
 6. **Issue 2** - Range parsing utility (Phase 2) - foundation for bulk
 7. **Issue 3** - Bulk labels (Phase 2) - depends on #2

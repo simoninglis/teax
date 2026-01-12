@@ -5,7 +5,7 @@ from textwrap import dedent
 
 import pytest
 
-from teax.config import get_default_login, load_tea_config
+from teax.config import get_default_login, get_login_by_name, load_tea_config
 from teax.models import TeaConfig
 
 
@@ -98,3 +98,20 @@ def test_get_default_login_no_logins():
     config = TeaConfig(logins=[])
     with pytest.raises(ValueError, match="No tea logins configured"):
         get_default_login(config)
+
+
+def test_get_login_by_name(sample_config: Path):
+    """Test getting a specific login by name."""
+    config = load_tea_config(sample_config)
+    login = get_login_by_name("backup.example.com", config)
+
+    assert login.name == "backup.example.com"
+    assert login.token == "backup-token"
+    assert login.user == "backupuser"
+
+
+def test_get_login_by_name_not_found(sample_config: Path):
+    """Test error when login name not found."""
+    config = load_tea_config(sample_config)
+    with pytest.raises(ValueError, match="Login 'nonexistent' not found"):
+        get_login_by_name("nonexistent", config)
