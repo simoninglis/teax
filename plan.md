@@ -189,9 +189,9 @@ This plan addresses code quality issues discovered during review (low test cover
 **Solution:** Extend bulk command from #3.
 
 **Acceptance Criteria:**
-- [ ] `--assignees` sets assignees on all issues
-- [ ] `--milestone` sets milestone
-- [ ] Can combine with label options
+- [x] `--assignees` sets assignees on all issues
+- [x] `--milestone` sets milestone
+- [x] Can combine with label options
 
 **Implementation:**
 1. Add `--assignees` and `--milestone` options to bulk
@@ -326,7 +326,7 @@ Implementation sequence considering dependencies:
 5. ✅ **Issue 9** - API client tests (Phase 2) - no dependencies
 6. ✅ **Issue 2** - Range parsing utility (Phase 2) - foundation for bulk
 7. ✅ **Issue 3** - Bulk labels (Phase 2) - depends on #2
-8. **Issue 4** - Bulk assignees/milestone (Phase 2) - depends on #2
+8. ✅ **Issue 4** - Bulk assignees/milestone (Phase 2) - depends on #2
 9. **Issue 14** - Label caching (Phase 3) - optimization
 10. **Issue 5** - Confirmation prompts (Phase 3) - depends on #3
 11. **Issue 6** - Epic create (Phase 2) - depends on #3

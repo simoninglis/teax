@@ -80,6 +80,8 @@ def test_issue_bulk_help(runner: CliRunner):
     assert "--add-labels" in result.output
     assert "--rm-labels" in result.output
     assert "--set-labels" in result.output
+    assert "--assignees" in result.output
+    assert "--milestone" in result.output
     assert "ISSUES" in result.output
 
 

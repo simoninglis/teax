@@ -433,6 +433,8 @@ def issue_labels(ctx: click.Context, issue_num: int, repo: str) -> None:
 @click.option("--add-labels", help="Labels to add (comma-separated)")
 @click.option("--rm-labels", help="Labels to remove (comma-separated)")
 @click.option("--set-labels", help="Replace all labels (comma-separated)")
+@click.option("--assignees", help="Set assignees (comma-separated usernames)")
+@click.option("--milestone", help="Set milestone (ID, empty to clear)")
 @click.pass_context
 def issue_bulk(
     ctx: click.Context,
@@ -441,6 +443,8 @@ def issue_bulk(
     add_labels: str | None,
     rm_labels: str | None,
     set_labels: str | None,
+    assignees: str | None,
+    milestone: str | None,
 ) -> None:
     """Apply changes to multiple issues.
 
@@ -452,12 +456,13 @@ def issue_bulk(
 
     Examples:
         teax issue bulk 17-23 --repo owner/repo --add-labels "epic/foo"
-        teax issue bulk "17,18,25-30" --repo owner/repo --rm-labels "triage"
+        teax issue bulk "17,18,25-30" --repo owner/repo --assignees "user1"
+        teax issue bulk 17-20 --repo owner/repo --milestone 5
     """
     owner, repo_name = parse_repo(repo)
     issue_nums = parse_issue_spec(issues)
 
-    if not any([add_labels, rm_labels, set_labels]):
+    if not any([add_labels, rm_labels, set_labels, assignees, milestone]):
         console.print("[yellow]No changes specified[/yellow]")
         return
 
@@ -484,6 +489,22 @@ def issue_bulk(
                             client.remove_issue_label(
                                 owner, repo_name, issue_num, label
                             )
+
+                    # Handle other edits
+                    edit_kwargs: dict[str, Any] = {}
+
+                    if assignees is not None:
+                        usernames = [u.strip() for u in assignees.split(",") if u]
+                        edit_kwargs["assignees"] = usernames
+
+                    if milestone is not None:
+                        if milestone == "" or milestone.lower() == "none":
+                            edit_kwargs["milestone"] = 0
+                        else:
+                            edit_kwargs["milestone"] = int(milestone)
+
+                    if edit_kwargs:
+                        client.edit_issue(owner, repo_name, issue_num, **edit_kwargs)
 
                     console.print(f"  [green]✓[/green] #{issue_num}")
                     success_count += 1
