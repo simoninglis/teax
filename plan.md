@@ -153,9 +153,9 @@ This plan addresses remaining quality improvements: 1 bug (base URL subpath), se
 **Solution:** Deduplicate and sort child issue numbers before processing.
 
 **Acceptance Criteria:**
-- [ ] Duplicate child issues filtered out
-- [ ] Warning shown if duplicates removed
-- [ ] Test covers duplicate handling
+- [x] Duplicate child issues filtered out
+- [x] Warning shown if duplicates removed
+- [x] Test covers duplicate handling
 
 **Implementation:**
 1. In `epic_create`, convert `children` tuple to sorted set
@@ -286,7 +286,7 @@ Implementation sequence considering dependencies:
 4. ✅ **Issue 10** - Pre-validate milestone in bulk (Phase 2) - bug prevention
 5. ✅ **Issue 16** - CLI test coverage (Phase 2) - foundation for other tests
 6. ✅ **Issue 12** - Pagination efficiency (Phase 3) - optimization
-7. ⏳ **Issue 13** - Deduplicate epic children (Phase 3) - UX improvement
+7. ✅ **Issue 13** - Deduplicate epic children (Phase 3) - UX improvement
 8. **Issue 14** - Input validation (Phase 3) - robustness
 9. **Issue 15** - Reduce label fetches (Phase 3) - optimization
 10. **Issue 17** - Epic e2e tests (Phase 3) - test coverage

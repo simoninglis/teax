@@ -640,6 +640,14 @@ def epic_create(
     epic_label = f"epic/{name}"
     epic_title = title or f"Epic: {name}"
 
+    # Deduplicate and sort children
+    unique_children = sorted(set(children))
+    if len(unique_children) < len(children):
+        console.print(
+            f"[yellow]Warning:[/yellow] Duplicate child issues removed "
+            f"({len(children)} → {len(unique_children)})"
+        )
+
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
             # Check if epic label exists, create if not
@@ -656,8 +664,8 @@ def epic_create(
 
             # Build the epic body with checklist if there are children
             body_lines = [f"# {epic_title}", "", "## Child Issues", ""]
-            if children:
-                for child_num in children:
+            if unique_children:
+                for child_num in unique_children:
                     body_lines.append(f"- [ ] #{child_num}")
             else:
                 body_lines.append(
@@ -681,9 +689,9 @@ def epic_create(
             console.print(f"  [green]✓[/green] Created issue #{issue.number}")
 
             # Apply epic label to child issues
-            if children:
+            if unique_children:
                 console.print(f"Applying [cyan]{epic_label}[/cyan] to child issues...")
-                for child_num in children:
+                for child_num in unique_children:
                     try:
                         client.add_issue_labels(
                             owner, repo_name, child_num, [epic_label]
@@ -697,8 +705,8 @@ def epic_create(
             console.print("[bold]Epic created successfully![/bold]")
             console.print(f"  Issue: #{issue.number}")
             console.print(f"  Label: {epic_label}")
-            if children:
-                console.print(f"  Children: {len(children)} issues labeled")
+            if unique_children:
+                console.print(f"  Children: {len(unique_children)} issues labeled")
 
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {e}")
@@ -879,6 +887,14 @@ def epic_add(
     """
     owner, repo_name = parse_repo(repo)
 
+    # Deduplicate and sort children
+    unique_children = sorted(set(children))
+    if len(unique_children) < len(children):
+        console.print(
+            f"[yellow]Warning:[/yellow] Duplicate child issues removed "
+            f"({len(children)} → {len(unique_children)})"
+        )
+
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
             # Fetch the epic issue
@@ -897,14 +913,14 @@ def epic_add(
                 )
 
             # Update the epic body with new children
-            new_body = _append_children_to_body(epic.body, list(children))
+            new_body = _append_children_to_body(epic.body, unique_children)
             client.edit_issue(owner, repo_name, epic_issue, body=new_body)
             console.print(f"[green]✓[/green] Updated epic #{epic_issue} body")
 
             # Apply epic label to child issues
             if epic_label:
                 console.print(f"Applying [cyan]{epic_label}[/cyan] to child issues...")
-                for child_num in children:
+                for child_num in unique_children:
                     try:
                         client.add_issue_labels(
                             owner, repo_name, child_num, [epic_label]
@@ -915,7 +931,7 @@ def epic_add(
 
             # Print summary
             console.print()
-            count = len(children)
+            count = len(unique_children)
             console.print(f"[bold]Added {count} issues to epic #{epic_issue}[/bold]")
 
     except CLI_ERRORS as e:

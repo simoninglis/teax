@@ -1492,6 +1492,75 @@ def test_epic_create_with_children(runner: CliRunner):
 
 
 @pytest.mark.usefixtures("mock_client")
+def test_epic_create_deduplicates_children(runner: CliRunner, monkeypatch):
+    """Test epic create deduplicates child issues."""
+    from io import StringIO
+
+    import httpx
+    import respx
+    from rich.console import Console
+
+    from teax import cli
+
+    buffer = StringIO()
+    monkeypatch.setattr(cli, "console", Console(file=buffer, force_terminal=False))
+
+    with respx.mock:
+        # Mock label responses for:
+        # 1. list_repo_labels() check in epic_create
+        # 2. _resolve_label_ids() in add_issue_labels for children (uses cache)
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            side_effect=[
+                # list_repo_labels - label exists
+                httpx.Response(
+                    200,
+                    json=[{"id": 10, "name": "epic/test", "color": "9b59b6"}],
+                ),
+                # _resolve_label_ids for child labeling (not cached separately)
+                httpx.Response(
+                    200,
+                    json=[{"id": 10, "name": "epic/test", "color": "9b59b6"}],
+                ),
+            ]
+        )
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/17/labels").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/18/labels").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        # Pass duplicate children: 17, 18, 17 (will be deduplicated to 17, 18)
+        result = runner.invoke(
+            main,
+            [
+                "epic", "create", "test", "-r", "owner/repo",
+                "-c", "17", "-c", "18", "-c", "17",
+            ],
+        )
+
+        output = buffer.getvalue()
+        assert result.exit_code == 0
+        assert "Duplicate child issues removed" in output
+        assert "3 → 2" in output  # 3 inputs, 2 unique
+        assert "2 issues labeled" in output
+
+
+@pytest.mark.usefixtures("mock_client")
 def test_epic_create_label_exists(runner: CliRunner):
     """Test epic create when label already exists."""
     import httpx
@@ -1897,6 +1966,77 @@ def test_epic_add_multiple_children(runner: CliRunner):
 
         assert result.exit_code == 0
         assert "Added 2 issues" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_epic_add_deduplicates_children(runner: CliRunner, monkeypatch):
+    """Test epic add deduplicates child issues."""
+    from io import StringIO
+
+    import httpx
+    import respx
+    from rich.console import Console
+
+    from teax import cli
+
+    buffer = StringIO()
+    monkeypatch.setattr(cli, "console", Console(file=buffer, force_terminal=False))
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/50").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "body": "## Child Issues\n\n_No child issues yet._\n",
+                    "state": "open",
+                    "labels": [{"id": 10, "name": "epic/test", "color": "9b59b6"}],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/50").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 50,
+                    "title": "Epic: test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[{"id": 10, "name": "epic/test", "color": "9b59b6"}],
+                ),
+            ]
+        )
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/17/labels").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/18/labels").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        # Pass duplicate children: 17, 18, 17
+        result = runner.invoke(
+            main, ["epic", "add", "50", "17", "18", "17", "--repo", "owner/repo"]
+        )
+
+        output = buffer.getvalue()
+        assert result.exit_code == 0
+        assert "Duplicate child issues removed" in output
+        assert "3 → 2" in output  # 3 inputs, 2 unique
+        assert "Added 2 issues" in output
 
 
 @pytest.mark.usefixtures("mock_client")
