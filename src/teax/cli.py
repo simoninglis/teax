@@ -151,7 +151,9 @@ class OutputFormat:
 
             for label in labels:
                 table.add_row(
-                    escape(label.name), f"#{label.color}", escape(label.description)
+                    escape(label.name),
+                    f"#{escape(label.color)}",
+                    escape(label.description),
                 )
             console.print(table)
 
@@ -219,7 +221,7 @@ def deps_list(ctx: click.Context, issue: int, repo: str) -> None:
                 console.print()
                 output.print_deps(blocks, issue, "blocks")
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {e}")
+        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
         sys.exit(1)
 
 
@@ -268,7 +270,7 @@ def deps_add(
                 client.add_dependency(owner, repo_name, blocks, owner, repo_name, issue)
                 console.print(f"[green]Added:[/green] #{issue} now blocks #{blocks}")
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {e}")
+        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
         sys.exit(1)
 
 
@@ -313,7 +315,7 @@ def deps_rm(
                     f"[yellow]Removed:[/yellow] #{issue} no longer blocks #{blocks}"
                 )
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {e}")
+        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
         sys.exit(1)
 
 
@@ -404,12 +406,12 @@ def issue_edit(
             if changes_made:
                 console.print(f"[green]Updated issue #{issue_num}:[/green]")
                 for change in changes_made:
-                    console.print(f"  - {change}")
+                    console.print(f"  - {escape(change)}")
             else:
                 console.print("[yellow]No changes specified[/yellow]")
 
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {e}")
+        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
         sys.exit(1)
 
 
@@ -431,7 +433,7 @@ def issue_labels(ctx: click.Context, issue_num: int, repo: str) -> None:
             labels = client.get_issue_labels(owner, repo_name, issue_num)
             output.print_labels(labels)
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {e}")
+        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
         sys.exit(1)
 
 
@@ -493,7 +495,8 @@ def issue_bulk(
             changes.append(f"Set milestone: {milestone}")
 
     # Show preview
-    console.print(f"\n[bold]Bulk edit {len(issue_nums)} issues in {repo}[/bold]")
+    esc_repo = escape(repo)
+    console.print(f"\n[bold]Bulk edit {len(issue_nums)} issues in {esc_repo}[/bold]")
     console.print(f"Issues: {', '.join(f'#{n}' for n in issue_nums[:10])}", end="")
     if len(issue_nums) > 10:
         console.print(f" ... and {len(issue_nums) - 10} more")
@@ -501,7 +504,7 @@ def issue_bulk(
         console.print()
     console.print("\n[bold]Changes:[/bold]")
     for change in changes:
-        console.print(f"  • {change}")
+        console.print(f"  • {escape(change)}")
     console.print()
 
     # Confirm unless --yes
@@ -533,12 +536,13 @@ def issue_bulk(
                     if isinstance(e, httpx.HTTPStatusError):
                         if e.response.status_code == 404:
                             err_console.print(
-                                f"[red]Error:[/red] Milestone '{milestone}' not found"
+                                f"[red]Error:[/red] Milestone "
+                                f"'{escape(milestone)}' not found"
                             )
                         else:
-                            err_console.print(f"[red]Error:[/red] {e}")
+                            err_console.print(f"[red]Error:[/red] {escape(str(e))}")
                     else:
-                        err_console.print(f"[red]Error:[/red] {e}")
+                        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
                     sys.exit(1)
             for issue_num in issue_nums:
                 try:
@@ -580,12 +584,12 @@ def issue_bulk(
                     success_count += 1
 
                 except CLI_ERRORS as e:
-                    console.print(f"  [red]✗[/red] #{issue_num}: {e}")
+                    console.print(f"  [red]✗[/red] #{issue_num}: {escape(str(e))}")
                     errors.append((issue_num, str(e)))
                     error_count += 1
 
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {e}")
+        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
         sys.exit(1)
 
     # Print summary
@@ -665,7 +669,7 @@ def epic_create(
             label_names = {label.name: label.id for label in existing_labels}
 
             if epic_label not in label_names:
-                console.print(f"Creating label [cyan]{epic_label}[/cyan]...")
+                console.print(f"Creating label [cyan]{escape(epic_label)}[/cyan]...")
                 created_label = client.create_label(
                     owner, repo_name, epic_label, color, f"Epic: {name}"
                 )
@@ -692,7 +696,7 @@ def epic_create(
                 issue_labels.insert(0, type_epic_id)
 
             # Create the epic issue
-            console.print(f"Creating epic issue [cyan]{epic_title}[/cyan]...")
+            console.print(f"Creating epic issue [cyan]{escape(epic_title)}[/cyan]...")
             issue = client.create_issue(
                 owner, repo_name, epic_title, body, labels=issue_labels
             )
@@ -700,7 +704,8 @@ def epic_create(
 
             # Apply epic label to child issues
             if unique_children:
-                console.print(f"Applying [cyan]{epic_label}[/cyan] to child issues...")
+                escaped_label = escape(epic_label)
+                console.print(f"Applying [cyan]{escaped_label}[/cyan] to child issues…")
                 for child_num in unique_children:
                     try:
                         client.add_issue_labels(
@@ -708,18 +713,18 @@ def epic_create(
                         )
                         console.print(f"  [green]✓[/green] #{child_num}")
                     except CLI_ERRORS as e:
-                        console.print(f"  [red]✗[/red] #{child_num}: {e}")
+                        console.print(f"  [red]✗[/red] #{child_num}: {escape(str(e))}")
 
             # Print summary
             console.print()
             console.print("[bold]Epic created successfully![/bold]")
             console.print(f"  Issue: #{issue.number}")
-            console.print(f"  Label: {epic_label}")
+            console.print(f"  Label: {escape(epic_label)}")
             if unique_children:
                 console.print(f"  Children: {len(unique_children)} issues labeled")
 
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {e}")
+        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
         sys.exit(1)
 
 
@@ -818,7 +823,7 @@ def epic_status(
                     console.print(f"  [ ] #{num} {escape(title)}")
 
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {e}")
+        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
         sys.exit(1)
 
 
@@ -957,7 +962,7 @@ def epic_add(
                         )
                         console.print(f"  [green]✓[/green] #{child_num}")
                     except CLI_ERRORS as e:
-                        console.print(f"  [red]✗[/red] #{child_num}: {e}")
+                        console.print(f"  [red]✗[/red] #{child_num}: {escape(str(e))}")
 
             # Print summary
             console.print()
@@ -965,7 +970,7 @@ def epic_add(
             console.print(f"[bold]Added {count} issues to epic #{epic_issue}[/bold]")
 
     except CLI_ERRORS as e:
-        err_console.print(f"[red]Error:[/red] {e}")
+        err_console.print(f"[red]Error:[/red] {escape(str(e))}")
         sys.exit(1)
 
 

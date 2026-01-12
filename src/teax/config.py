@@ -37,16 +37,18 @@ def load_tea_config(config_path: Path | None = None) -> TeaConfig:
     try:
         with path.open(encoding="utf-8") as f:
             raw_config = yaml.safe_load(f)
-    except yaml.YAMLError as e:
-        raise ValueError(f"Invalid YAML in tea config: {e}") from e
+    except yaml.YAMLError:
+        # Don't include raw error - may contain secrets from config file
+        raise ValueError(f"Invalid YAML in tea config at {path}") from None
 
     if raw_config is None:
         return TeaConfig()
 
     try:
         return TeaConfig.model_validate(raw_config)
-    except ValidationError as e:
-        raise ValueError(f"Invalid tea config format: {e}") from e
+    except ValidationError:
+        # Don't include validation details - may contain token values
+        raise ValueError(f"Invalid tea config format in {path}") from None
 
 
 def get_default_login(config: TeaConfig | None = None) -> TeaLogin:

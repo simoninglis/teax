@@ -255,6 +255,7 @@ class GiteaClient:
         """Resolve label names to IDs.
 
         Uses per-repo caching to avoid redundant API calls within a session.
+        Automatically refreshes cache once if a label is not found.
 
         Args:
             owner: Repository owner
@@ -265,8 +266,9 @@ class GiteaClient:
             List of label IDs
         """
         cache_key = f"{owner}/{repo}"
-        if cache_key not in self._label_cache:
-            # Fetch all labels with pagination
+
+        def fetch_labels() -> dict[str, int]:
+            """Fetch all labels with pagination."""
             all_labels: dict[str, int] = {}
             page = 1
             limit = 50
@@ -285,15 +287,30 @@ class GiteaClient:
                 if len(items) < limit:
                     break
                 page += 1
-            self._label_cache[cache_key] = all_labels
+            return all_labels
+
+        if cache_key not in self._label_cache:
+            self._label_cache[cache_key] = fetch_labels()
 
         all_labels = self._label_cache[cache_key]
         ids = []
+        missing: list[str] = []
         for name in label_names:
             if name in all_labels:
                 ids.append(all_labels[name])
             else:
-                raise ValueError(f"Label '{name}' not found in repository")
+                missing.append(name)
+
+        # Retry once by refreshing cache if labels are missing
+        if missing:
+            self._label_cache[cache_key] = fetch_labels()
+            all_labels = self._label_cache[cache_key]
+            for name in missing:
+                if name in all_labels:
+                    ids.append(all_labels[name])
+                else:
+                    raise ValueError(f"Label '{name}' not found in repository")
+
         return ids
 
     # --- Dependency Operations ---
@@ -567,6 +584,12 @@ class GiteaClient:
             # Fetch all milestones to populate cache
             self.list_milestones(owner, repo, state="all")
 
+        all_milestones = self._milestone_cache.get(cache_key, {})
+        if milestone_ref in all_milestones:
+            return all_milestones[milestone_ref]
+
+        # Retry once by refreshing cache if milestone not found
+        self.list_milestones(owner, repo, state="all")
         all_milestones = self._milestone_cache.get(cache_key, {})
         if milestone_ref in all_milestones:
             return all_milestones[milestone_ref]
