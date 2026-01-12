@@ -418,6 +418,8 @@ class GiteaClient:
     def list_repo_labels(self, owner: str, repo: str) -> list[Label]:
         """List all labels in a repository.
 
+        Also populates the label cache for subsequent _resolve_label_ids calls.
+
         Args:
             owner: Repository owner
             repo: Repository name
@@ -442,6 +444,11 @@ class GiteaClient:
             if len(items) < limit:
                 break
             page += 1
+
+        # Populate label cache for subsequent _resolve_label_ids calls
+        cache_key = f"{owner}/{repo}"
+        self._label_cache[cache_key] = {label.name: label.id for label in all_labels}
+
         return all_labels
 
     # --- Milestone Operations ---

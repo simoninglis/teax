@@ -194,8 +194,8 @@ This plan addresses remaining quality improvements: 1 bug (base URL subpath), se
 **Solution:** Use the label cache for existence checking.
 
 **Acceptance Criteria:**
-- [ ] Only one label fetch per repo in epic_create flow
-- [ ] Label existence check uses cache
+- [x] Only one label fetch per repo in epic_create flow
+- [x] Label existence check uses cache (list_repo_labels now populates cache)
 
 **Implementation:**
 1. In `epic_create`, use `_resolve_label_ids` for label existence check
@@ -288,7 +288,7 @@ Implementation sequence considering dependencies:
 6. ✅ **Issue 12** - Pagination efficiency (Phase 3) - optimization
 7. ✅ **Issue 13** - Deduplicate epic children (Phase 3) - UX improvement
 8. ✅ **Issue 14** - Input validation (Phase 3) - robustness
-9. ⏳ **Issue 15** - Reduce label fetches (Phase 3) - optimization
+9. ✅ **Issue 15** - Reduce label fetches (Phase 3) - optimization
 10. **Issue 17** - Epic e2e tests (Phase 3) - test coverage
 11. **Issue 18** - Milestone lookup by name (Phase 3) - feature enhancement
 

@@ -644,6 +644,38 @@ def test_http_error_401(client: GiteaClient):
     assert exc_info.value.response.status_code == 401
 
 
+@respx.mock
+def test_list_repo_labels_populates_cache(client: GiteaClient):
+    """Test that list_repo_labels populates the label cache for resolve_label_ids."""
+    label_route = respx.get("https://test.example.com/api/v1/repos/owner/repo/labels")
+    label_route.mock(
+        side_effect=[
+            httpx.Response(
+                200,
+                json=[
+                    {"id": 1, "name": "bug", "color": "ff0000", "description": ""},
+                    {"id": 2, "name": "feature", "color": "00ff00", "description": ""},
+                ],
+            ),
+        ]
+    )
+    respx.post(
+        "https://test.example.com/api/v1/repos/owner/repo/issues/25/labels"
+    ).mock(return_value=httpx.Response(200, json=[]))
+
+    # First, call list_repo_labels (should populate cache)
+    labels = client.list_repo_labels("owner", "repo")
+    assert len(labels) == 2
+    assert label_route.call_count == 1
+    assert "owner/repo" in client._label_cache  # Cache populated
+
+    # Now add_issue_labels should use the cache, not fetch again
+    client.add_issue_labels("owner", "repo", 25, ["bug"])
+
+    # Still only 1 label fetch (the initial list_repo_labels)
+    assert label_route.call_count == 1
+
+
 # --- Label Caching Tests ---
 
 
