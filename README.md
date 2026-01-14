@@ -81,6 +81,16 @@ teax deps add 17 --repo homelab/myproject --blocks 25
 teax deps rm 25 --repo homelab/myproject --on 17
 ```
 
+### Issue Viewing
+
+```bash
+# View issue details (body, labels, assignees, milestone)
+teax issue view 25 --repo homelab/myproject
+
+# View issue with comments
+teax issue view 25 --repo homelab/myproject --comments
+```
+
 ### Issue Editing
 
 ```bash
@@ -237,7 +247,8 @@ just release patch
 | Feature | tea Support | teax Scope |
 |---------|-------------|------------|
 | Issue create | Full | Out of scope |
-| Issue list/view | Full | Out of scope |
+| Issue list | Full | Out of scope |
+| Issue view | Buggy¹ | **Implemented** |
 | Issue edit | Missing | **Implemented** |
 | Issue dependencies | Missing | **Implemented** |
 | Issue bulk ops | Missing | **Implemented** |
@@ -247,6 +258,8 @@ just release patch
 | Milestone CRUD | Full | Out of scope |
 | Milestone assign | Missing | Via issue edit |
 | PR operations | Full | Out of scope |
+
+¹ tea's issue view breaks with `--fields` or `--comments` flags, returning a list instead of issue details.
 
 ## Related Documentation
 

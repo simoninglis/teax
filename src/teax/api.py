@@ -7,7 +7,7 @@ from urllib.parse import quote
 import httpx
 
 from teax.config import get_default_login, get_login_by_name
-from teax.models import Dependency, Issue, Label, Milestone, TeaLogin
+from teax.models import Comment, Dependency, Issue, Label, Milestone, TeaLogin
 
 
 def _get_ssl_verify() -> bool | str:
@@ -159,6 +159,34 @@ class GiteaClient:
         response = self._client.get(f"repos/{_seg(owner)}/{_seg(repo)}/issues/{index}")
         response.raise_for_status()
         return Issue.model_validate(response.json())
+
+    def list_comments(self, owner: str, repo: str, index: int) -> list[Comment]:
+        """List all comments on an issue.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            index: Issue number
+
+        Returns:
+            List of comments on the issue
+        """
+        comments: list[Comment] = []
+        page = 1
+        while True:
+            response = self._client.get(
+                f"repos/{_seg(owner)}/{_seg(repo)}/issues/{index}/comments",
+                params={"page": page, "limit": 50},
+            )
+            response.raise_for_status()
+            data = response.json()
+            if not data:
+                break
+            comments.extend(Comment.model_validate(c) for c in data)
+            if len(data) < 50:
+                break
+            page += 1
+        return comments
 
     def edit_issue(
         self,

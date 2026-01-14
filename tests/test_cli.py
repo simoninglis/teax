@@ -1237,6 +1237,143 @@ def test_issue_edit_error_handling(runner: CliRunner):
         assert "Error" in result.output
 
 
+# --- issue view tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_view_basic(runner: CliRunner):
+    """Test issue view command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/42").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "number": 42,
+                    "title": "Test Issue",
+                    "state": "open",
+                    "body": "Issue body content",
+                    "labels": [{"id": 1, "name": "bug", "color": "ff0000"}],
+                    "assignees": [{"id": 1, "login": "user1", "full_name": "User One"}],
+                    "milestone": {"id": 1, "title": "v1.0", "state": "open"},
+                },
+            )
+        )
+
+        result = runner.invoke(main, ["issue", "view", "42", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        assert "#42" in result.output
+        assert "Test Issue" in result.output
+        assert "open" in result.output
+        assert "bug" in result.output
+        assert "user1" in result.output
+        assert "v1.0" in result.output
+        assert "Issue body content" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_view_with_comments(runner: CliRunner):
+    """Test issue view command with --comments flag."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/42").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "number": 42,
+                    "title": "Test Issue",
+                    "state": "open",
+                    "body": "Issue body",
+                    "labels": None,
+                    "assignees": None,
+                    "milestone": None,
+                },
+            )
+        )
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/42/comments"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 1,
+                        "body": "First comment",
+                        "user": {"id": 1, "login": "commenter", "full_name": ""},
+                        "created_at": "2026-01-14T10:00:00Z",
+                        "updated_at": "",
+                    }
+                ],
+            )
+        )
+
+        result = runner.invoke(
+            main, ["issue", "view", "42", "--repo", "owner/repo", "--comments"]
+        )
+
+        assert result.exit_code == 0
+        assert "Comments (1)" in result.output
+        assert "commenter" in result.output
+        assert "First comment" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_view_no_comments(runner: CliRunner):
+    """Test issue view shows 'No comments' when none exist."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/42").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "number": 42,
+                    "title": "Test Issue",
+                    "state": "closed",
+                    "body": "",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/42/comments"
+        ).mock(return_value=httpx.Response(200, json=[]))
+
+        result = runner.invoke(
+            main, ["issue", "view", "42", "--repo", "owner/repo", "--comments"]
+        )
+
+        assert result.exit_code == 0
+        assert "No comments" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_view_error_handling(runner: CliRunner):
+    """Test issue view error handling."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/999").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(main, ["issue", "view", "999", "--repo", "owner/repo"])
+
+        assert result.exit_code == 1
+
+
 # --- issue labels tests ---
 
 

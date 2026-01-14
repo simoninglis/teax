@@ -27,8 +27,8 @@ class Issue(BaseModel):
     title: str
     state: str
     body: str = ""
-    labels: list["Label"] = Field(default_factory=list)
-    assignees: list["User"] = Field(default_factory=list)
+    labels: list["Label"] | None = Field(default_factory=list)
+    assignees: list["User"] | None = Field(default_factory=list)
     milestone: "Milestone | None" = None
 
 
@@ -74,3 +74,13 @@ class Repository(BaseModel):
     name: str
     full_name: str
     owner: "User | str | None" = None
+
+
+class Comment(BaseModel):
+    """Gitea issue comment."""
+
+    id: int
+    body: str
+    user: User
+    created_at: str
+    updated_at: str = ""

@@ -406,8 +406,80 @@ def deps_rm(
 
 @main.group()
 def issue() -> None:
-    """Edit issues (labels, assignees, milestones)."""
+    """View and edit issues (labels, assignees, milestones)."""
     pass
+
+
+@issue.command("view")
+@click.argument("issue_num", type=int)
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--comments", "-c", is_flag=True, help="Show comments")
+@click.pass_context
+def issue_view(
+    ctx: click.Context, issue_num: int, repo: str, comments: bool
+) -> None:
+    """View issue details and optionally comments.
+
+    Example:
+        teax issue view 42 --repo owner/repo
+        teax issue view 42 --repo owner/repo --comments
+    """
+    login_name = ctx.obj.get("login")
+    owner, repo_name = parse_repo(repo)
+
+    try:
+        with GiteaClient(login_name=login_name) as client:
+            issue = client.get_issue(owner, repo_name, issue_num)
+
+            # Header
+            state_color = "green" if issue.state == "open" else "red"
+            console.print(
+                f"[bold]#{issue.number}[/bold] {safe_rich(issue.title)} "
+                f"[{state_color}]({issue.state})[/{state_color}]"
+            )
+            console.print()
+
+            # Labels
+            if issue.labels and len(issue.labels) > 0:
+                label_str = ", ".join(safe_rich(lb.name) for lb in issue.labels)
+                console.print(f"[dim]Labels:[/dim] {label_str}")
+
+            # Assignees
+            if issue.assignees and len(issue.assignees) > 0:
+                assignee_str = ", ".join(safe_rich(a.login) for a in issue.assignees)
+                console.print(f"[dim]Assignees:[/dim] {assignee_str}")
+
+            # Milestone
+            if issue.milestone:
+                ms_title = safe_rich(issue.milestone.title)
+                console.print(f"[dim]Milestone:[/dim] {ms_title}")
+
+            # Body
+            if issue.body:
+                console.print()
+                console.print(terminal_safe(issue.body))
+
+            # Comments
+            if comments:
+                issue_comments = client.list_comments(owner, repo_name, issue_num)
+                if issue_comments:
+                    console.print()
+                    count = len(issue_comments)
+                    console.print(f"[bold]--- Comments ({count}) ---[/bold]")
+                    for comment in issue_comments:
+                        console.print()
+                        console.print(
+                            f"[dim]{safe_rich(comment.user.login)} "
+                            f"({comment.created_at[:10]}):[/dim]"
+                        )
+                        console.print(terminal_safe(comment.body))
+                else:
+                    console.print()
+                    console.print("[dim]No comments[/dim]")
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
 
 
 @issue.command("edit")
@@ -1003,7 +1075,7 @@ def epic_add(
 
             # Find the epic label from the issue's labels
             epic_label = None
-            for label in epic.labels:
+            for label in epic.labels or []:
                 if label.name.startswith("epic/"):
                     epic_label = label.name
                     break
