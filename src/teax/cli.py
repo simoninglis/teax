@@ -424,7 +424,7 @@ def issue_view(
         teax issue view 42 --repo owner/repo
         teax issue view 42 --repo owner/repo --comments
     """
-    login_name = ctx.obj.get("login")
+    login_name = ctx.obj.get("login_name")
     owner, repo_name = parse_repo(repo)
 
     try:
@@ -433,9 +433,10 @@ def issue_view(
 
             # Header
             state_color = "green" if issue.state == "open" else "red"
+            state_display = safe_rich(issue.state)
             console.print(
                 f"[bold]#{issue.number}[/bold] {safe_rich(issue.title)} "
-                f"[{state_color}]({issue.state})[/{state_color}]"
+                f"[{state_color}]({state_display})[/{state_color}]"
             )
             console.print()
 
@@ -454,10 +455,10 @@ def issue_view(
                 ms_title = safe_rich(issue.milestone.title)
                 console.print(f"[dim]Milestone:[/dim] {ms_title}")
 
-            # Body
+            # Body (use markup=False to prevent Rich markup injection)
             if issue.body:
                 console.print()
-                console.print(terminal_safe(issue.body))
+                console.print(terminal_safe(issue.body), markup=False)
 
             # Comments
             if comments:
@@ -468,11 +469,14 @@ def issue_view(
                     console.print(f"[bold]--- Comments ({count}) ---[/bold]")
                     for comment in issue_comments:
                         console.print()
+                        # Sanitize all server-provided fields
+                        date_display = safe_rich(comment.created_at[:10])
                         console.print(
                             f"[dim]{safe_rich(comment.user.login)} "
-                            f"({comment.created_at[:10]}):[/dim]"
+                            f"({date_display}):[/dim]"
                         )
-                        console.print(terminal_safe(comment.body))
+                        # Use markup=False to prevent Rich markup injection
+                        console.print(terminal_safe(comment.body), markup=False)
                 else:
                     console.print()
                     console.print("[dim]No comments[/dim]")

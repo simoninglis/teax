@@ -1241,6 +1241,90 @@ def test_issue_edit_error_handling(runner: CliRunner):
 
 
 @pytest.mark.usefixtures("mock_client")
+def test_issue_view_markup_not_interpreted(runner: CliRunner):
+    """Test that Rich markup in issue body is not interpreted (security)."""
+    import httpx
+    import respx
+
+    # Issue body contains Rich markup that could be a phishing vector
+    malicious_body = "[link=https://evil.com]Click here[/link] [red]Alert![/red]"
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/42").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "number": 42,
+                    "title": "Test Issue",
+                    "state": "open",
+                    "body": malicious_body,
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(main, ["issue", "view", "42", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        # The markup should be printed literally, not interpreted
+        assert "[link=" in result.output or "link=" in result.output
+        assert "[red]" in result.output or "red]" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_view_comment_markup_not_interpreted(runner: CliRunner):
+    """Test that Rich markup in comments is not interpreted (security)."""
+    import httpx
+    import respx
+
+    malicious_comment = "[link=https://phishing.com]Login here[/link]"
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/42").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "number": 42,
+                    "title": "Test",
+                    "state": "open",
+                    "body": "",
+                    "labels": None,
+                    "assignees": None,
+                    "milestone": None,
+                },
+            )
+        )
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/42/comments"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 1,
+                        "body": malicious_comment,
+                        "user": {"id": 1, "login": "attacker", "full_name": ""},
+                        "created_at": "2026-01-14T10:00:00Z",
+                        "updated_at": "",
+                    }
+                ],
+            )
+        )
+
+        result = runner.invoke(
+            main, ["issue", "view", "42", "--repo", "owner/repo", "--comments"]
+        )
+
+        assert result.exit_code == 0
+        # The markup should be printed literally
+        assert "[link=" in result.output or "link=" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
 def test_issue_view_basic(runner: CliRunner):
     """Test issue view command."""
     import httpx

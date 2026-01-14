@@ -1,6 +1,7 @@
 """Gitea API client for teax operations."""
 
 import os
+import warnings
 from typing import Any
 from urllib.parse import quote
 
@@ -24,6 +25,13 @@ def _get_ssl_verify() -> bool | str:
     if ca_bundle:
         return ca_bundle
     if os.environ.get("TEAX_INSECURE", "").lower() in ("1", "true", "yes"):
+        warnings.warn(
+            "TEAX_INSECURE is set: SSL certificate verification is disabled. "
+            "This makes connections vulnerable to man-in-the-middle attacks. "
+            "Consider using TEAX_CA_BUNDLE with a custom CA certificate instead.",
+            UserWarning,
+            stacklevel=3,
+        )
         return False
     return True
 
@@ -73,6 +81,16 @@ class GiteaClient:
 
         # Normalize base URL to handle various formats (with/without /api/v1)
         base = _normalize_base_url(self._login.url)
+
+        # Warn if using plain HTTP - tokens will be sent unencrypted
+        if base.startswith("http://"):
+            warnings.warn(
+                f"Using insecure HTTP connection to {self._login.name}. "
+                "API token will be sent unencrypted. Consider using HTTPS.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         self._client = httpx.Client(
             base_url=base,
             headers={
@@ -160,20 +178,25 @@ class GiteaClient:
         response.raise_for_status()
         return Issue.model_validate(response.json())
 
-    def list_comments(self, owner: str, repo: str, index: int) -> list[Comment]:
+    def list_comments(
+        self, owner: str, repo: str, index: int, *, max_pages: int = 100
+    ) -> list[Comment]:
         """List all comments on an issue.
 
         Args:
             owner: Repository owner
             repo: Repository name
             index: Issue number
+            max_pages: Maximum pages to fetch (default 100, prevents DoS from
+                misbehaving servers)
 
         Returns:
             List of comments on the issue
         """
         comments: list[Comment] = []
         page = 1
-        while True:
+        truncated = False
+        while page <= max_pages:
             response = self._client.get(
                 f"repos/{_seg(owner)}/{_seg(repo)}/issues/{index}/comments",
                 params={"page": page, "limit": 50},
@@ -186,6 +209,16 @@ class GiteaClient:
             if len(data) < 50:
                 break
             page += 1
+        else:
+            # Loop completed without break - hit max_pages ceiling
+            truncated = True
+        if truncated:
+            warnings.warn(
+                f"Comments list truncated at {max_pages} pages "
+                f"({len(comments)} items). Results may be incomplete.",
+                UserWarning,
+                stacklevel=2,
+            )
         return comments
 
     def edit_issue(
@@ -332,11 +365,13 @@ class GiteaClient:
         cache_key = f"{owner}/{repo}"
 
         def fetch_labels() -> dict[str, int]:
-            """Fetch all labels with pagination."""
+            """Fetch all labels with pagination (max 100 pages)."""
             all_labels: dict[str, int] = {}
             page = 1
             limit = 50
-            while True:
+            max_pages = 100  # Prevent DoS from misbehaving servers
+            truncated = False
+            while page <= max_pages:
                 response = self._client.get(
                     f"repos/{_seg(owner)}/{_seg(repo)}/labels",
                     params={"page": page, "limit": limit},
@@ -351,6 +386,15 @@ class GiteaClient:
                 if len(items) < limit:
                     break
                 page += 1
+            else:
+                truncated = True
+            if truncated:
+                warnings.warn(
+                    f"Labels list truncated at {max_pages} pages "
+                    f"({len(all_labels)} items). Results may be incomplete.",
+                    UserWarning,
+                    stacklevel=4,  # Account for nested function
+                )
             return all_labels
 
         if cache_key not in self._label_cache:
@@ -506,7 +550,9 @@ class GiteaClient:
             self._label_cache[cache_key][label.name] = label.id
         return label
 
-    def list_repo_labels(self, owner: str, repo: str) -> list[Label]:
+    def list_repo_labels(
+        self, owner: str, repo: str, *, max_pages: int = 100
+    ) -> list[Label]:
         """List all labels in a repository.
 
         Also populates the label cache for subsequent _resolve_label_ids calls.
@@ -514,6 +560,8 @@ class GiteaClient:
         Args:
             owner: Repository owner
             repo: Repository name
+            max_pages: Maximum pages to fetch (default 100, prevents DoS from
+                misbehaving servers)
 
         Returns:
             List of labels
@@ -521,7 +569,8 @@ class GiteaClient:
         all_labels: list[Label] = []
         page = 1
         limit = 50
-        while True:
+        truncated = False
+        while page <= max_pages:
             response = self._client.get(
                 f"repos/{_seg(owner)}/{_seg(repo)}/labels",
                 params={"page": page, "limit": limit},
@@ -535,6 +584,15 @@ class GiteaClient:
             if len(items) < limit:
                 break
             page += 1
+        else:
+            truncated = True
+        if truncated:
+            warnings.warn(
+                f"Labels list truncated at {max_pages} pages "
+                f"({len(all_labels)} items). Results may be incomplete.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         # Populate label cache for subsequent _resolve_label_ids calls
         cache_key = f"{owner}/{repo}"
@@ -565,7 +623,7 @@ class GiteaClient:
         return Milestone.model_validate(response.json())
 
     def list_milestones(
-        self, owner: str, repo: str, state: str = "all"
+        self, owner: str, repo: str, state: str = "all", *, max_pages: int = 100
     ) -> list[Milestone]:
         """List all milestones in a repository.
 
@@ -575,6 +633,8 @@ class GiteaClient:
             owner: Repository owner
             repo: Repository name
             state: Filter by state: 'open', 'closed', or 'all' (default)
+            max_pages: Maximum pages to fetch (default 100, prevents DoS from
+                misbehaving servers)
 
         Returns:
             List of milestones
@@ -582,7 +642,8 @@ class GiteaClient:
         all_milestones: list[Milestone] = []
         page = 1
         limit = 50
-        while True:
+        truncated = False
+        while page <= max_pages:
             response = self._client.get(
                 f"repos/{_seg(owner)}/{_seg(repo)}/milestones",
                 params={"page": page, "limit": limit, "state": state},
@@ -596,6 +657,15 @@ class GiteaClient:
             if len(items) < limit:
                 break
             page += 1
+        else:
+            truncated = True
+        if truncated:
+            warnings.warn(
+                f"Milestones list truncated at {max_pages} pages "
+                f"({len(all_milestones)} items). Results may be incomplete.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         # Populate milestone cache for subsequent resolve_milestone calls
         cache_key = f"{owner}/{repo}"
