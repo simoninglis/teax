@@ -1,3 +1,9 @@
 """teax - Gitea CLI companion for tea feature gaps."""
 
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("teax")
+except PackageNotFoundError:
+    # Package not installed (running from source)
+    __version__ = "0.0.0.dev"

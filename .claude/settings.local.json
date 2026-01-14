@@ -38,7 +38,10 @@
       "Bash(env)",
       "Bash(git pull:*)",
       "Bash(git stash:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(poetry version:*)",
+      "Bash(poetry build:*)",
+      "Bash(poetry publish:*)"
     ]
   }
 }
