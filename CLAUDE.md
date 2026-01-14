@@ -25,7 +25,7 @@ just run deps list 25 --repo owner/repo
 
 **In Scope:**
 - `teax deps list|add|rm` - Dependency management
-- `teax issue edit|labels|bulk` - Issue editing
+- `teax issue view|edit|labels|bulk` - Issue operations (view works around tea v0.9.2 bugs)
 - `teax epic create|status|add` - Epic management
 
 **Out of Scope:** Anything tea does (issue create, list, PR ops, label CRUD)
@@ -70,6 +70,50 @@ When adding output or error messages, verify:
 - [ ] Click BadParameter messages sanitise user input via `terminal_safe()`
 - [ ] Config error messages don't expose token values
 - [ ] API paths use `_seg()` for owner/repo to prevent traversal
+
+### Pagination Pattern
+
+All API pagination loops MUST:
+1. Accept `max_pages: int = 100` parameter to prevent DoS
+2. Use `while page <= max_pages:` (not `while True:`)
+3. Emit `warnings.warn()` when ceiling is reached with item count
+4. Break early when `len(items) < limit` (last page detection)
+
+Example:
+```python
+truncated = False
+while page <= max_pages:
+    # ... fetch and process ...
+    if len(items) < limit:
+        break
+    page += 1
+else:
+    truncated = True
+if truncated:
+    warnings.warn(f"List truncated at {max_pages} pages ({len(results)} items)...")
+```
+
+### Publishing to Gitea PyPI
+
+Poetry requires explicit configuration for Gitea package registry:
+
+```bash
+# Configure repository URL (use org name, not username)
+poetry config repositories.gitea https://prod-vm-gitea.../api/packages/homelab-teams/pypi
+
+# Configure credentials (__token__ as username, API token as password)
+poetry config http-basic.gitea __token__ <token>
+
+# If SSL cert issues, temporarily disable (not recommended for production)
+poetry config certificates.gitea.cert false
+
+# Build and publish
+poetry build && poetry publish --repository gitea
+```
+
+Common errors:
+- `reqPackageAccess`: Token lacks `write:package` scope
+- `Error connecting to repository`: Usually SSL cert verification issue
 
 ## tea CLI Reference
 
