@@ -50,10 +50,11 @@ def _normalize_base_url(url: str) -> str:
     """Normalize a base URL for API requests.
 
     Handles various URL formats:
+    - Strips leading/trailing whitespace
     - Strips trailing slashes and /api/v1 if already present
     - Returns a clean base URL ending with /api/v1/
     """
-    url = url.rstrip("/")
+    url = url.strip().rstrip("/")
     # Remove any existing /api/v1 suffix to avoid duplication
     if url.endswith("/api/v1"):
         url = url[:-7]

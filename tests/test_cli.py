@@ -140,11 +140,12 @@ def test_parse_repo_valid():
     assert repo == "myproject"
 
 
-def test_parse_repo_with_slashes():
-    """Test parsing repo with extra slashes in name."""
-    owner, repo = parse_repo("homelab/my/nested/project")
-    assert owner == "homelab"
-    assert repo == "my/nested/project"
+def test_parse_repo_with_extra_slashes():
+    """Test parsing repo with extra slashes is rejected."""
+    from click import BadParameter
+
+    with pytest.raises(BadParameter, match="owner/repo"):
+        parse_repo("homelab/my/nested/project")
 
 
 def test_parse_repo_invalid():

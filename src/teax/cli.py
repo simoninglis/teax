@@ -78,14 +78,17 @@ CLI_ERRORS = (
 
 
 def parse_repo(repo: str) -> tuple[str, str]:
-    """Parse owner/repo string into components."""
+    """Parse owner/repo string into components.
+
+    Enforces exactly one slash - rejects nested paths like owner/my/repo.
+    """
     repo = repo.strip()
-    if "/" not in repo:
+    if repo.count("/") != 1:
         raise click.BadParameter(
             f"Repository must be in 'owner/repo' format, got: {terminal_safe(repo)}"
         )
-    parts = repo.split("/", 1)
-    owner, repo_name = parts[0].strip(), parts[1].strip()
+    owner, repo_name = repo.split("/")
+    owner, repo_name = owner.strip(), repo_name.strip()
     if not owner or not repo_name:
         raise click.BadParameter(
             f"Repository must be in 'owner/repo' format, got: {terminal_safe(repo)}"

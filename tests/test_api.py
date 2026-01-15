@@ -209,6 +209,17 @@ def test_normalize_base_url_subpath_with_api_v1():
     assert "/api/v1/api/v1" not in result
 
 
+def test_normalize_base_url_strips_whitespace():
+    """Test URL normalization strips leading/trailing whitespace."""
+    from teax.api import _normalize_base_url
+
+    result = _normalize_base_url("  https://example.com  ")
+    assert result == "https://example.com/api/v1/"
+
+    result = _normalize_base_url("\thttps://example.com/gitea\n")
+    assert result == "https://example.com/gitea/api/v1/"
+
+
 # --- Client Initialization Tests ---
 
 
@@ -1144,3 +1155,78 @@ def test_milestone_cache_cleared_on_close(client: GiteaClient):
     # Close should clear cache
     client.close()
     assert client._milestone_cache == {}
+
+
+# --- Security Configuration Tests ---
+
+
+def test_client_trust_env_disabled(mock_login: TeaLogin):
+    """Test that httpx client has trust_env=False to prevent proxy token leakage."""
+    client = GiteaClient(login=mock_login)
+    # Verify trust_env is disabled to prevent HTTP_PROXY/HTTPS_PROXY from leaking tokens
+    assert client._client._trust_env is False
+    client.close()
+
+
+# --- Truncation Warning Tests ---
+
+
+@respx.mock
+def test_list_comments_truncation_warning(client: GiteaClient):
+    """Test truncation warning when comments exceed max_pages."""
+    route = respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/issues/25/comments"
+    )
+    # Return exactly 50 items per page to simulate max_pages hit
+    page_data = [
+        {
+            "id": i,
+            "body": f"Comment {i}",
+            "user": {"id": 1, "login": "user", "full_name": ""},
+            "created_at": "2024-01-01T00:00:00Z",
+        }
+        for i in range(50)
+    ]
+    # With max_pages=2, we need 2 pages of 50 items each
+    route.side_effect = [
+        httpx.Response(200, json=page_data),
+        httpx.Response(200, json=page_data),  # Full page triggers next iteration
+    ]
+
+    with pytest.warns(UserWarning, match="Comments list truncated at 2 pages"):
+        client.list_comments("owner", "repo", 25, max_pages=2)
+
+
+@respx.mock
+def test_list_repo_labels_truncation_warning(client: GiteaClient):
+    """Test truncation warning when labels exceed max_pages."""
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/labels")
+    # Return exactly 50 items per page to simulate max_pages hit
+    page_data = [
+        {"id": i, "name": f"label-{i}", "color": "ff0000", "description": ""}
+        for i in range(50)
+    ]
+    route.side_effect = [
+        httpx.Response(200, json=page_data),
+        httpx.Response(200, json=page_data),  # Full page triggers next iteration
+    ]
+
+    with pytest.warns(UserWarning, match="Labels list truncated at 2 pages"):
+        client.list_repo_labels("owner", "repo", max_pages=2)
+
+
+@respx.mock
+def test_list_milestones_truncation_warning(client: GiteaClient):
+    """Test truncation warning when milestones exceed max_pages."""
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones")
+    # Return exactly 50 items per page to simulate max_pages hit
+    page_data = [
+        {"id": i, "title": f"Milestone {i}", "state": "open"} for i in range(50)
+    ]
+    route.side_effect = [
+        httpx.Response(200, json=page_data),
+        httpx.Response(200, json=page_data),  # Full page triggers next iteration
+    ]
+
+    with pytest.warns(UserWarning, match="Milestones list truncated at 2 pages"):
+        client.list_milestones("owner", "repo", max_pages=2)

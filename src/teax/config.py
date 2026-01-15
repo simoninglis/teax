@@ -24,7 +24,7 @@ def load_tea_config(config_path: Path | None = None) -> TeaConfig:
 
     Raises:
         FileNotFoundError: If config file doesn't exist
-        ValueError: If config file is invalid
+        ValueError: If config file is invalid or unreadable
     """
     path = config_path or get_tea_config_path()
 
@@ -40,6 +40,13 @@ def load_tea_config(config_path: Path | None = None) -> TeaConfig:
     except yaml.YAMLError:
         # Don't include raw error - may contain secrets from config file
         raise ValueError(f"Invalid YAML in tea config at {path}") from None
+    except PermissionError:
+        raise ValueError(f"Permission denied reading tea config at {path}") from None
+    except IsADirectoryError:
+        raise ValueError(f"Expected file but found directory at {path}") from None
+    except OSError as e:
+        # Catch other OS-level errors (disk errors, etc.) without leaking details
+        raise ValueError(f"Cannot read tea config at {path}: {e.strerror}") from None
 
     if raw_config is None:
         return TeaConfig()

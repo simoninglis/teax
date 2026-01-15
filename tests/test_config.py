@@ -129,3 +129,79 @@ def test_token_not_exposed_in_repr(sample_config: Path):
 
     # Can still access the actual value when needed
     assert login.token.get_secret_value() == "secret-token-123"
+
+
+# --- Config error handling tests ---
+
+
+def test_load_invalid_yaml(tmp_path: Path):
+    """Test loading a file with invalid YAML."""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text("invalid: yaml: content: [unclosed")
+
+    with pytest.raises(ValueError, match="Invalid YAML in tea config"):
+        load_tea_config(config_path)
+
+
+def test_load_invalid_schema(tmp_path: Path):
+    """Test loading a file with invalid schema."""
+    config_path = tmp_path / "config.yml"
+    # logins should be a list, not a dict
+    config_path.write_text(
+        dedent("""
+        logins:
+          invalid_key: not_a_list
+        """).strip()
+    )
+
+    with pytest.raises(ValueError, match="Invalid tea config format"):
+        load_tea_config(config_path)
+
+
+def test_load_permission_denied(tmp_path: Path, monkeypatch):
+    """Test loading when permission is denied."""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text("logins: []")
+
+    # Mock open to raise PermissionError
+    original_open = Path.open
+
+    def mock_open(self, *args, **kwargs):
+        if self == config_path:
+            raise PermissionError("Permission denied")
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", mock_open)
+
+    with pytest.raises(ValueError, match="Permission denied reading tea config"):
+        load_tea_config(config_path)
+
+
+def test_load_is_directory(tmp_path: Path):
+    """Test loading when path is a directory."""
+    dir_path = tmp_path / "config.yml"
+    dir_path.mkdir()
+
+    with pytest.raises(ValueError, match="Expected file but found directory"):
+        load_tea_config(dir_path)
+
+
+def test_load_other_os_error(tmp_path: Path, monkeypatch):
+    """Test loading when other OS error occurs."""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text("logins: []")
+
+    # Mock open to raise a generic OSError
+    original_open = Path.open
+
+    def mock_open(self, *args, **kwargs):
+        if self == config_path:
+            err = OSError("Disk error")
+            err.strerror = "Input/output error"
+            raise err
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", mock_open)
+
+    with pytest.raises(ValueError, match="Cannot read tea config.*Input/output error"):
+        load_tea_config(config_path)
