@@ -155,6 +155,22 @@ def test_parse_repo_invalid():
         parse_repo("invalid-format")
 
 
+def test_parse_repo_empty_repo():
+    """Test parsing repo with empty repo name."""
+    from click import BadParameter
+
+    with pytest.raises(BadParameter, match="owner/repo"):
+        parse_repo("owner/")
+
+
+def test_parse_repo_empty_owner():
+    """Test parsing repo with empty owner."""
+    from click import BadParameter
+
+    with pytest.raises(BadParameter, match="owner/repo"):
+        parse_repo("/repo")
+
+
 def test_main_version(runner: CliRunner):
     """Test --version flag outputs valid SemVer."""
     import re

@@ -99,9 +99,9 @@ This plan addresses security hardening (HTTP token exposure), developer experien
 **Solution:** Add non-empty validation after split.
 
 **Acceptance Criteria:**
-- [ ] `parse_repo("owner/")` raises BadParameter
-- [ ] `parse_repo("/repo")` raises BadParameter
-- [ ] Tests added for edge cases
+- [x] `parse_repo("owner/")` raises BadParameter
+- [x] `parse_repo("/repo")` raises BadParameter
+- [x] Tests added for edge cases
 
 **Implementation:**
 1. Add validation: `if not owner or not repo_name: raise BadParameter`
@@ -184,7 +184,7 @@ Dependencies and recommended sequence:
 
 1. ✅ **Issue 23** - Fix version test (Low, unblocks CI confidence)
 2. ✅ **Issue 22** - Fix bump automation (Low, developer experience)
-3. ⏳ **Issue 24** - Validate parse_repo (Low, prevents confusing errors)
+3. ✅ **Issue 24** - Validate parse_repo (Low, prevents confusing errors)
 4. **Issue 21** - HTTP fail-closed (Medium, security critical)
 5. **Issue 20** - Add --body flag (Low, feature request)
 6. **Issue 19** - Remove DependencyRequest (Low, cleanup)

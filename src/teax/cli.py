@@ -85,7 +85,12 @@ def parse_repo(repo: str) -> tuple[str, str]:
             f"Repository must be in 'owner/repo' format, got: {terminal_safe(repo)}"
         )
     parts = repo.split("/", 1)
-    return parts[0].strip(), parts[1].strip()
+    owner, repo_name = parts[0].strip(), parts[1].strip()
+    if not owner or not repo_name:
+        raise click.BadParameter(
+            f"Repository must be in 'owner/repo' format, got: {terminal_safe(repo)}"
+        )
+    return owner, repo_name
 
 
 # Maximum number of issues allowed in a single bulk operation
