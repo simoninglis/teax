@@ -10,18 +10,23 @@ Canonical issue list for teax development. Primary tracking in Gitea.
 
 | Gitea # | Title | Priority | Status |
 |---------|-------|----------|--------|
-| 21 | Fail closed on HTTP URLs (token over plain HTTP) | CRITICAL | New |
-| 22 | Fix version bump automation for metadata-based versioning | IMPORTANT | New |
-| 23 | Fix hardcoded version string in CLI test | IMPORTANT | New |
-| 24 | Validate parse_repo rejects empty owner/repo segments | IMPORTANT | New |
-| 20 | Add --body flag to issue edit command | p2 | Open |
-| 19 | Remove unused DependencyRequest model | p3 | Open |
 | 17 | Add end-to-end tests for epic commands | p3 | Open |
 | 15 | Reduce redundant label fetches in epic_create | p3 | Open |
 | 14 | Improve input validation for color and repo | p3 | Open |
 | 13 | Deduplicate child issues in epic commands | p3 | Open |
 | 12 | Improve pagination efficiency | p3 | Open |
 | 9 | Fix base URL subpath handling for non-root Gitea | p1 | Open |
+
+## Recently Closed (2026-01-15)
+
+| Gitea # | Title | Priority | Resolution |
+|---------|-------|----------|------------|
+| 21 | Fail closed on HTTP URLs (token over plain HTTP) | CRITICAL | Fixed |
+| 22 | Fix version bump automation for metadata-based versioning | IMPORTANT | Fixed |
+| 23 | Fix hardcoded version string in CLI test | IMPORTANT | Fixed |
+| 24 | Validate parse_repo rejects empty owner/repo segments | IMPORTANT | Fixed |
+| 20 | Add --body flag to issue edit command | p2 | Fixed |
+| 19 | Remove unused DependencyRequest model | p3 | Already done |
 
 ---
 
@@ -119,15 +124,15 @@ Canonical issue list for teax development. Primary tracking in Gitea.
 
 ### 19. Remove unused DependencyRequest model
 
-**Status:** Open
+**Status:** Closed (model never existed or was previously removed)
 
 **Problem:** `DependencyRequest` in models.py is defined but never used.
 
 **Solution:** Remove the unused model.
 
 **Acceptance Criteria:**
-- [ ] DependencyRequest removed
-- [ ] Tests still pass
+- [x] DependencyRequest removed
+- [x] Tests still pass
 
 **Files affected:**
 - src/teax/models.py

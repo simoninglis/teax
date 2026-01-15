@@ -140,12 +140,14 @@ This plan addresses security hardening (HTTP token exposure), developer experien
 **Solution:** Delete the class.
 
 **Acceptance Criteria:**
-- [ ] DependencyRequest removed
-- [ ] Tests still pass
+- [x] DependencyRequest removed
+- [x] Tests still pass
 
 **Implementation:**
 1. Remove `DependencyRequest` class from models.py
 2. Run tests to verify no regressions
+
+**Note:** Already completed - DependencyRequest never existed or was previously removed.
 
 ---
 
@@ -187,7 +189,7 @@ Dependencies and recommended sequence:
 3. ✅ **Issue 24** - Validate parse_repo (Low, prevents confusing errors)
 4. ✅ **Issue 21** - HTTP fail-closed (Medium, security critical)
 5. ✅ **Issue 20** - Add --body flag (Low, feature request)
-6. ⏳ **Issue 19** - Remove DependencyRequest (Low, cleanup)
+6. ✅ **Issue 19** - Remove DependencyRequest (Low, cleanup - already done)
 7. **Issue 9** - Fix base URL subpath (Medium, edge case)
 
 ---
