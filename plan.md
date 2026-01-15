@@ -61,9 +61,9 @@ This plan addresses security hardening (HTTP token exposure), developer experien
 **Solution:** Remove sed command from justfile, update README.
 
 **Acceptance Criteria:**
-- [ ] `just bump patch` correctly bumps version
-- [ ] README documentation updated
-- [ ] No attempt to edit `__init__.py`
+- [x] `just bump patch` correctly bumps version
+- [x] README documentation updated
+- [x] No attempt to edit `__init__.py`
 
 **Implementation:**
 1. Edit `justfile` bump recipe - remove sed command
@@ -183,7 +183,7 @@ Before marking plan complete:
 Dependencies and recommended sequence:
 
 1. ✅ **Issue 23** - Fix version test (Low, unblocks CI confidence)
-2. ⏳ **Issue 22** - Fix bump automation (Low, developer experience)
+2. ✅ **Issue 22** - Fix bump automation (Low, developer experience)
 3. **Issue 24** - Validate parse_repo (Low, prevents confusing errors)
 4. **Issue 21** - HTTP fail-closed (Medium, security critical)
 5. **Issue 20** - Add --body flag (Low, feature request)

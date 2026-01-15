@@ -95,7 +95,6 @@ bump LEVEL:
     esac
     new="${major}.${minor}.${patch}"
     sed -i "s/^version = \"${current}\"/version = \"${new}\"/" pyproject.toml
-    sed -i "s/^__version__ = \"${current}\"/__version__ = \"${new}\"/" src/teax/__init__.py
     echo "Bumped ${current} → ${new}"
 
 # Release workflow: check → bump → commit → tag → publish
@@ -104,7 +103,7 @@ release LEVEL: check
     set -euo pipefail
     just bump {{LEVEL}}
     new=$(just version)
-    git add pyproject.toml src/teax/__init__.py
+    git add pyproject.toml
     git commit -m "chore: release v${new}"
     git tag "v${new}"
     just publish

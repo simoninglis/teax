@@ -226,7 +226,7 @@ just setup-publish
 # Show current version
 just version
 
-# Bump version (updates pyproject.toml and src/teax/__init__.py)
+# Bump version (updates pyproject.toml; __version__ is dynamic)
 just bump patch     # 0.1.0 → 0.1.1
 just bump minor     # 0.1.0 → 0.2.0
 just bump major     # 0.1.0 → 1.0.0
