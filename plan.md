@@ -185,7 +185,7 @@ Dependencies and recommended sequence:
 1. ✅ **Issue 23** - Fix version test (Low, unblocks CI confidence)
 2. ✅ **Issue 22** - Fix bump automation (Low, developer experience)
 3. ✅ **Issue 24** - Validate parse_repo (Low, prevents confusing errors)
-4. **Issue 21** - HTTP fail-closed (Medium, security critical)
+4. ⏳ **Issue 21** - HTTP fail-closed (Medium, security critical)
 5. **Issue 20** - Add --body flag (Low, feature request)
 6. **Issue 19** - Remove DependencyRequest (Low, cleanup)
 7. **Issue 9** - Fix base URL subpath (Medium, edge case)
