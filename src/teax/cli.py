@@ -500,6 +500,7 @@ def issue_view(
 @click.option("--assignees", help="Set assignees (comma-separated usernames)")
 @click.option("--milestone", help="Set milestone (ID, empty to clear)")
 @click.option("--title", help="Set new title")
+@click.option("--body", help="Set new body text")
 @click.pass_context
 def issue_edit(
     ctx: click.Context,
@@ -511,6 +512,7 @@ def issue_edit(
     assignees: str | None,
     milestone: str | None,
     title: str | None,
+    body: str | None,
 ) -> None:
     """Edit an existing issue.
 
@@ -519,6 +521,7 @@ def issue_edit(
         teax issue edit 25 --repo homelab/myproject --rm-labels "needs-triage"
         teax issue edit 25 --repo homelab/myproject --assignees "user1,user2"
         teax issue edit 25 --repo homelab/myproject --milestone 5
+        teax issue edit 25 --repo homelab/myproject --body "Updated description"
     """
     owner, repo_name = parse_repo(repo)
     changes_made = []
@@ -547,6 +550,12 @@ def issue_edit(
             if title is not None:
                 edit_kwargs["title"] = title
                 changes_made.append(f"title: {title}")
+
+            if body is not None:
+                edit_kwargs["body"] = body
+                # Truncate body preview for change log
+                preview = body[:50] + "..." if len(body) > 50 else body
+                changes_made.append(f"body: {preview}")
 
             if assignees is not None:
                 usernames = [u.strip() for u in assignees.split(",") if u.strip()]

@@ -1120,6 +1120,39 @@ def test_issue_edit_with_title_and_assignees(runner: CliRunner):
 
 
 @pytest.mark.usefixtures("mock_client")
+def test_issue_edit_with_body(runner: CliRunner):
+    """Test issue edit with body."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock edit issue
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/25").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 100,
+                    "number": 25,
+                    "title": "Test",
+                    "body": "New body text",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "edit", "25", "--repo", "owner/repo", "--body", "New body text"],
+        )
+
+        assert result.exit_code == 0
+        assert "body: New body text" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
 def test_issue_edit_with_milestone(runner: CliRunner):
     """Test issue edit with milestone ID."""
     import httpx
