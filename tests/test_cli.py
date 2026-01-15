@@ -156,11 +156,12 @@ def test_parse_repo_invalid():
 
 
 def test_main_version(runner: CliRunner):
-    """Test --version flag."""
+    """Test --version flag outputs valid SemVer."""
+    import re
+
     result = runner.invoke(main, ["--version"])
     assert result.exit_code == 0
-    assert "teax" in result.output
-    assert "0.1.0" in result.output
+    assert re.search(r"teax, version \d+\.\d+\.\d+", result.output)
 
 
 def test_main_help(runner: CliRunner):

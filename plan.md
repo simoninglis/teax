@@ -81,8 +81,8 @@ This plan addresses security hardening (HTTP token exposure), developer experien
 **Solution:** Use regex or dynamic version comparison.
 
 **Acceptance Criteria:**
-- [ ] Test passes regardless of current version
-- [ ] Validates version format is valid SemVer
+- [x] Test passes regardless of current version
+- [x] Validates version format is valid SemVer
 
 **Implementation:**
 1. Change assertion to regex: `r"teax, version \d+\.\d+\.\d+"`
@@ -182,7 +182,7 @@ Before marking plan complete:
 
 Dependencies and recommended sequence:
 
-1. ⏳ **Issue 23** - Fix version test (Low, unblocks CI confidence)
+1. ✅ **Issue 23** - Fix version test (Low, unblocks CI confidence)
 2. **Issue 22** - Fix bump automation (Low, developer experience)
 3. **Issue 24** - Validate parse_repo (Low, prevents confusing errors)
 4. **Issue 21** - HTTP fail-closed (Medium, security critical)
