@@ -37,10 +37,10 @@ This plan addresses security hardening (HTTP token exposure), developer experien
 **Solution:** Raise `ValueError` by default for `http://` URLs, require `TEAX_ALLOW_INSECURE_HTTP=1` to proceed.
 
 **Acceptance Criteria:**
-- [ ] HTTP URLs raise error by default
-- [ ] `TEAX_ALLOW_INSECURE_HTTP=1` allows proceeding with warning
-- [ ] Clear error message explaining the risk
-- [ ] Tests for both paths
+- [x] HTTP URLs raise error by default
+- [x] `TEAX_ALLOW_INSECURE_HTTP=1` allows proceeding with warning
+- [x] Clear error message explaining the risk
+- [x] Tests for both paths
 
 **Implementation:**
 1. Modify `GiteaClient.__init__` to check scheme after normalization
@@ -185,7 +185,7 @@ Dependencies and recommended sequence:
 1. ✅ **Issue 23** - Fix version test (Low, unblocks CI confidence)
 2. ✅ **Issue 22** - Fix bump automation (Low, developer experience)
 3. ✅ **Issue 24** - Validate parse_repo (Low, prevents confusing errors)
-4. ⏳ **Issue 21** - HTTP fail-closed (Medium, security critical)
+4. ✅ **Issue 21** - HTTP fail-closed (Medium, security critical)
 5. **Issue 20** - Add --body flag (Low, feature request)
 6. **Issue 19** - Remove DependencyRequest (Low, cleanup)
 7. **Issue 9** - Fix base URL subpath (Medium, edge case)

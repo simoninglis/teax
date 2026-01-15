@@ -94,6 +94,48 @@ def test_ssl_ca_bundle_takes_precedence_over_insecure():
             os.environ.pop("TEAX_CA_BUNDLE", None)
 
 
+def test_http_url_blocked_by_default():
+    """Test plain HTTP URLs are blocked by default."""
+    env_backup = os.environ.get("TEAX_ALLOW_INSECURE_HTTP")
+    try:
+        os.environ.pop("TEAX_ALLOW_INSECURE_HTTP", None)
+        http_login = TeaLogin(
+            name="insecure",
+            url="http://insecure.example.com",
+            token="test-token",
+            default=True,
+            user="testuser",
+        )
+        with pytest.raises(ValueError, match="Refusing to connect.*over plain HTTP"):
+            GiteaClient(login=http_login)
+    finally:
+        if env_backup is not None:
+            os.environ["TEAX_ALLOW_INSECURE_HTTP"] = env_backup
+
+
+def test_http_url_allowed_with_env_var():
+    """Test plain HTTP URLs allowed when TEAX_ALLOW_INSECURE_HTTP is set."""
+    env_backup = os.environ.get("TEAX_ALLOW_INSECURE_HTTP")
+    try:
+        os.environ["TEAX_ALLOW_INSECURE_HTTP"] = "1"
+        http_login = TeaLogin(
+            name="insecure",
+            url="http://insecure.example.com",
+            token="test-token",
+            default=True,
+            user="testuser",
+        )
+        # Should emit warning but not raise
+        with pytest.warns(UserWarning, match="insecure HTTP connection"):
+            client = GiteaClient(login=http_login)
+        assert client is not None
+    finally:
+        if env_backup is not None:
+            os.environ["TEAX_ALLOW_INSECURE_HTTP"] = env_backup
+        else:
+            os.environ.pop("TEAX_ALLOW_INSECURE_HTTP", None)
+
+
 # --- Path Encoding Tests (Security) ---
 
 

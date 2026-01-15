@@ -71,6 +71,11 @@ class GiteaClient:
         Args:
             login: Optional pre-loaded login config
             login_name: Optional login name to use (looks up from tea config)
+
+        Raises:
+            ValueError: If the login URL uses HTTP (not HTTPS) and
+                TEAX_ALLOW_INSECURE_HTTP is not set. Plain HTTP would send
+                API tokens unencrypted, risking credential exposure.
         """
         if login is not None:
             self._login = login
@@ -82,14 +87,25 @@ class GiteaClient:
         # Normalize base URL to handle various formats (with/without /api/v1)
         base = _normalize_base_url(self._login.url)
 
-        # Warn if using plain HTTP - tokens will be sent unencrypted
+        # Block HTTP by default - tokens would be sent unencrypted
         if base.startswith("http://"):
-            warnings.warn(
-                f"Using insecure HTTP connection to {self._login.name}. "
-                "API token will be sent unencrypted. Consider using HTTPS.",
-                UserWarning,
-                stacklevel=2,
-            )
+            if os.environ.get("TEAX_ALLOW_INSECURE_HTTP", "").lower() in (
+                "1",
+                "true",
+                "yes",
+            ):
+                warnings.warn(
+                    f"Using insecure HTTP connection to {self._login.name}. "
+                    "API token will be sent unencrypted. Consider using HTTPS.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            else:
+                raise ValueError(
+                    f"Refusing to connect to {self._login.name} over plain HTTP. "
+                    "API tokens would be sent unencrypted, risking credential exposure. "
+                    "Use HTTPS, or set TEAX_ALLOW_INSECURE_HTTP=1 to proceed anyway."
+                )
 
         self._client = httpx.Client(
             base_url=base,
