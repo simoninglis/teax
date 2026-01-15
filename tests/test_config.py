@@ -205,3 +205,86 @@ def test_load_other_os_error(tmp_path: Path, monkeypatch):
 
     with pytest.raises(ValueError, match="Cannot read tea config.*Input/output error"):
         load_tea_config(config_path)
+
+
+# --- URL validation tests ---
+
+
+def test_login_url_validation_empty(tmp_path: Path):
+    """Test that empty URL is rejected."""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        dedent("""
+        logins:
+          - name: test
+            url: ""
+            token: test-token
+        """).strip()
+    )
+
+    with pytest.raises(ValueError, match="Invalid tea config format"):
+        load_tea_config(config_path)
+
+
+def test_login_url_validation_invalid_scheme(tmp_path: Path):
+    """Test that URLs without http:// or https:// are rejected."""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        dedent("""
+        logins:
+          - name: test
+            url: ftp://example.com
+            token: test-token
+        """).strip()
+    )
+
+    with pytest.raises(ValueError, match="Invalid tea config format"):
+        load_tea_config(config_path)
+
+
+def test_login_url_validation_valid_https(tmp_path: Path):
+    """Test that https:// URLs are accepted."""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        dedent("""
+        logins:
+          - name: test
+            url: https://example.com
+            token: test-token
+        """).strip()
+    )
+
+    config = load_tea_config(config_path)
+    assert config.logins[0].url == "https://example.com"
+
+
+def test_login_url_validation_valid_http(tmp_path: Path):
+    """Test that http:// URLs are accepted (though insecure)."""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        dedent("""
+        logins:
+          - name: test
+            url: http://example.com
+            token: test-token
+        """).strip()
+    )
+
+    config = load_tea_config(config_path)
+    assert config.logins[0].url == "http://example.com"
+
+
+def test_login_url_validation_strips_whitespace(tmp_path: Path):
+    """Test that URL whitespace is stripped."""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text(
+        dedent("""
+        logins:
+          - name: test
+            url: "  https://example.com  "
+            token: test-token
+        """).strip()
+    )
+
+    config = load_tea_config(config_path)
+    assert config.logins[0].url == "https://example.com"

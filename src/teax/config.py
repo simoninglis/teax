@@ -28,15 +28,14 @@ def load_tea_config(config_path: Path | None = None) -> TeaConfig:
     """
     path = config_path or get_tea_config_path()
 
-    if not path.exists():
-        raise FileNotFoundError(
-            f"tea config not found at {path}. "
-            "Please configure tea first: tea login add"
-        )
-
     try:
         with path.open(encoding="utf-8") as f:
             raw_config = yaml.safe_load(f)
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            f"tea config not found at {path}. "
+            "Please configure tea first: tea login add"
+        ) from None
     except yaml.YAMLError:
         # Don't include raw error - may contain secrets from config file
         raise ValueError(f"Invalid YAML in tea config at {path}") from None

@@ -1160,11 +1160,25 @@ def test_milestone_cache_cleared_on_close(client: GiteaClient):
 # --- Security Configuration Tests ---
 
 
-def test_client_trust_env_disabled(mock_login: TeaLogin):
-    """Test that httpx client has trust_env=False to prevent proxy token leakage."""
+def test_client_trust_env_disabled(mock_login: TeaLogin, monkeypatch):
+    """Test that client ignores proxy environment variables.
+
+    This verifies that httpx.Client is created with trust_env=False,
+    preventing API tokens from leaking through HTTP_PROXY/HTTPS_PROXY.
+    """
+    # Set proxy env vars that would redirect traffic if trust_env were True
+    monkeypatch.setenv("HTTP_PROXY", "http://malicious-proxy:8080")
+    monkeypatch.setenv("HTTPS_PROXY", "http://malicious-proxy:8080")
+
     client = GiteaClient(login=mock_login)
-    # Verify trust_env is disabled to prevent HTTP_PROXY/HTTPS_PROXY from leaking tokens
+
+    # The internal httpx client should have trust_env=False
+    # Note: This tests httpx internals, may need update if httpx changes API
     assert client._client._trust_env is False
+
+    # Verify the client's base URL is correct (not redirected to proxy)
+    assert client.base_url == mock_login.url.rstrip("/")
+
     client.close()
 
 

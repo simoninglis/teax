@@ -1,6 +1,6 @@
 """Pydantic models for Gitea API responses."""
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr, field_validator
 
 
 class TeaLogin(BaseModel):
@@ -11,6 +11,17 @@ class TeaLogin(BaseModel):
     token: SecretStr
     default: bool = False
     user: str = ""
+
+    @field_validator("url")
+    @classmethod
+    def validate_url_scheme(cls, v: str) -> str:
+        """Validate URL has http:// or https:// scheme."""
+        v = v.strip()
+        if not v:
+            raise ValueError("URL cannot be empty")
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("URL must start with http:// or https://")
+        return v
 
 
 class TeaConfig(BaseModel):
