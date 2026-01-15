@@ -184,6 +184,31 @@ def test_normalize_base_url_subpath():
     assert result == "https://example.com/gitea/api/v1/"
 
 
+def test_normalize_base_url_subpath_trailing_slash():
+    """Test URL normalization with subpath and trailing slash."""
+    from teax.api import _normalize_base_url
+
+    result = _normalize_base_url("https://example.com/gitea/")
+    assert result == "https://example.com/gitea/api/v1/"
+
+
+def test_normalize_base_url_deep_subpath():
+    """Test URL normalization with deep subpath."""
+    from teax.api import _normalize_base_url
+
+    result = _normalize_base_url("https://example.com/apps/gitea")
+    assert result == "https://example.com/apps/gitea/api/v1/"
+
+
+def test_normalize_base_url_subpath_with_api_v1():
+    """Test subpath URL with /api/v1 doesn't double up."""
+    from teax.api import _normalize_base_url
+
+    result = _normalize_base_url("https://example.com/gitea/api/v1")
+    assert result == "https://example.com/gitea/api/v1/"
+    assert "/api/v1/api/v1" not in result
+
+
 # --- Client Initialization Tests ---
 
 

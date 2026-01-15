@@ -15,7 +15,6 @@ Canonical issue list for teax development. Primary tracking in Gitea.
 | 14 | Improve input validation for color and repo | p3 | Open |
 | 13 | Deduplicate child issues in epic commands | p3 | Open |
 | 12 | Improve pagination efficiency | p3 | Open |
-| 9 | Fix base URL subpath handling for non-root Gitea | p1 | Open |
 
 ## Recently Closed (2026-01-15)
 
@@ -27,6 +26,7 @@ Canonical issue list for teax development. Primary tracking in Gitea.
 | 24 | Validate parse_repo rejects empty owner/repo segments | IMPORTANT | Fixed |
 | 20 | Add --body flag to issue edit command | p2 | Fixed |
 | 19 | Remove unused DependencyRequest model | p3 | Already done |
+| 9 | Fix base URL subpath handling for non-root Gitea | p1 | Verified |
 
 ---
 

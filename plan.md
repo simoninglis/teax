@@ -160,12 +160,14 @@ This plan addresses security hardening (HTTP token exposure), developer experien
 **Solution:** Improve URL normalization logic.
 
 **Acceptance Criteria:**
-- [ ] URLs like `https://host/gitea/` work correctly
-- [ ] Tests for subpath scenarios
+- [x] URLs like `https://host/gitea/` work correctly
+- [x] Tests for subpath scenarios
 
 **Implementation:**
 1. Review and fix `_normalize_base_url()`
 2. Add tests for subpath URLs
+
+**Note:** Implementation already correct, added comprehensive tests for edge cases.
 
 ---
 
@@ -190,7 +192,7 @@ Dependencies and recommended sequence:
 4. ✅ **Issue 21** - HTTP fail-closed (Medium, security critical)
 5. ✅ **Issue 20** - Add --body flag (Low, feature request)
 6. ✅ **Issue 19** - Remove DependencyRequest (Low, cleanup - already done)
-7. ⏳ **Issue 9** - Fix base URL subpath (Medium, edge case)
+7. ✅ **Issue 9** - Fix base URL subpath (Medium, edge case)
 
 ---
 

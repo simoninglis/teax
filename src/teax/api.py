@@ -103,8 +103,8 @@ class GiteaClient:
             else:
                 raise ValueError(
                     f"Refusing to connect to {self._login.name} over plain HTTP. "
-                    "API tokens would be sent unencrypted, risking credential exposure. "
-                    "Use HTTPS, or set TEAX_ALLOW_INSECURE_HTTP=1 to proceed anyway."
+                    "API tokens would be sent unencrypted, risking credential "
+                    "exposure. Use HTTPS, or set TEAX_ALLOW_INSECURE_HTTP=1."
                 )
 
         self._client = httpx.Client(

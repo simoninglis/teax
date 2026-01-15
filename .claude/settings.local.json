@@ -41,7 +41,9 @@
       "Bash(git reset:*)",
       "Bash(poetry version:*)",
       "Bash(poetry build:*)",
-      "Bash(poetry publish:*)"
+      "Bash(poetry publish:*)",
+      "Bash(python -c:*)",
+      "Bash(poetry run python:*)"
     ]
   }
 }
