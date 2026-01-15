@@ -190,7 +190,7 @@ Dependencies and recommended sequence:
 4. ✅ **Issue 21** - HTTP fail-closed (Medium, security critical)
 5. ✅ **Issue 20** - Add --body flag (Low, feature request)
 6. ✅ **Issue 19** - Remove DependencyRequest (Low, cleanup - already done)
-7. **Issue 9** - Fix base URL subpath (Medium, edge case)
+7. ⏳ **Issue 9** - Fix base URL subpath (Medium, edge case)
 
 ---
 
