@@ -10,32 +10,9 @@ Canonical issue list for teax development. Primary tracking in Gitea.
 
 | Gitea # | Title | Priority | Status |
 |---------|-------|----------|--------|
-| 25 | Add batch issue view command for Claude Code integration | p2 | Open |
 | 17 | Add end-to-end tests for epic commands | p3 | Open |
 | 15 | Reduce redundant label fetches in epic_create | p3 | Open |
 | 12 | Improve pagination efficiency | p3 | Open |
-
----
-
-### 25. Add batch issue view command for Claude Code integration
-
-**Status:** Open (created 2026-01-16)
-
-**Problem:** No way to fetch details for multiple issues at once. Claude Code and other automation tools need to call `teax issue view` multiple times to understand several issues.
-
-**Solution:** Add `teax issue batch <spec> --repo owner/repo` command that fetches and displays multiple issues in one operation.
-
-**Acceptance Criteria:**
-- [ ] Command accepts issue spec (1-5,10,12 format)
-- [ ] Output includes: number, title, state, labels, assignees, milestone, body
-- [ ] Supports --output table|csv|json
-- [ ] JSON output ideal for programmatic consumption
-- [ ] Body truncated to ~200 chars for table/csv, full for json
-
-**Files affected:**
-- src/teax/cli.py
-- src/teax/api.py (may need get_issues method)
-- tests/test_cli.py
 
 ---
 
@@ -96,6 +73,7 @@ Canonical issue list for teax development. Primary tracking in Gitea.
 
 | Gitea # | Title | Priority | Resolution |
 |---------|-------|----------|------------|
+| 25 | Add batch issue view command | p2 | Implemented |
 | 21 | Fail closed on HTTP URLs (token over plain HTTP) | CRITICAL | Fixed - blocks HTTP by default |
 | 22 | Fix version bump automation for metadata-based versioning | IMPORTANT | Fixed - justfile simplified |
 | 23 | Fix hardcoded version string in CLI test | IMPORTANT | Fixed - uses SemVer regex |
