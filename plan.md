@@ -68,10 +68,10 @@ This plan focuses on implementing the batch issue view command (#25) requested f
 **Solution:** Add comprehensive CLI tests with respx mocking for all epic commands.
 
 **Acceptance Criteria:**
-- [ ] Tests for `epic create` basic and with children
-- [ ] Tests for `epic status` with open/closed children
-- [ ] Tests for `epic add` with new and existing children
-- [ ] Error handling tests (label not found, issue not found)
+- [x] Tests for `epic create` basic and with children (6 tests)
+- [x] Tests for `epic status` with open/closed children (4 tests)
+- [x] Tests for `epic add` with new and existing children (6 tests)
+- [x] Error handling tests (label not found, issue not found) (already covered)
 
 **Implementation:**
 1. Add test fixtures for epic-related API responses
@@ -144,7 +144,7 @@ Before marking plan complete:
 ## Execution Order
 
 1. ✅ **Issue 25** - Add batch issue view command (Phase 1) - PRIMARY FOCUS
-2. ⏳ **Issue 17** - Add epic command tests (Phase 2)
+2. ✅ **Issue 17** - Add epic command tests (Phase 2) - Already covered
 3. **Issue 15** - Optimize label fetches (Phase 3)
 4. **Issue 12** - Optimize pagination (Phase 3)
 
