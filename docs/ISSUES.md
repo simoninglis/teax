@@ -10,25 +10,7 @@ Canonical issue list for teax development. Primary tracking in Gitea.
 
 | Gitea # | Title | Priority | Status |
 |---------|-------|----------|--------|
-| 15 | Reduce redundant label fetches in epic_create | p3 | Open |
 | 12 | Improve pagination efficiency | p3 | Open |
-
----
-
-### 15. Reduce redundant label fetches in epic_create
-
-**Status:** Open
-
-**Problem:** `epic_create` calls `list_repo_labels()` and then also fetches labels through `_resolve_label_ids()`, causing redundant API calls.
-
-**Solution:** Use the label cache populated by `list_repo_labels()` in subsequent operations.
-
-**Acceptance Criteria:**
-- [ ] Only one API call to fetch labels per operation
-- [ ] Label cache is properly utilized
-
-**Files affected:**
-- src/teax/cli.py (epic_create command)
 
 ---
 
@@ -55,6 +37,7 @@ Canonical issue list for teax development. Primary tracking in Gitea.
 |---------|-------|----------|------------|
 | 25 | Add batch issue view command | p2 | Implemented |
 | 17 | Add end-to-end tests for epic commands | p3 | Already covered (25 tests) |
+| 15 | Reduce redundant label fetches | p3 | Already optimized (5 cache tests) |
 | 21 | Fail closed on HTTP URLs (token over plain HTTP) | CRITICAL | Fixed - blocks HTTP by default |
 | 22 | Fix version bump automation for metadata-based versioning | IMPORTANT | Fixed - justfile simplified |
 | 23 | Fix hardcoded version string in CLI test | IMPORTANT | Fixed - uses SemVer regex |
