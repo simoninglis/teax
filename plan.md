@@ -1,14 +1,14 @@
-# teax Implementation Plan v3
+# teax Implementation Plan v4
 
-**Created:** 2026-01-15
+**Created:** 2026-01-16
 **Status:** Active Development
-**Source:** Fresh Codex review 2026-01-15
+**Source:** Fresh Codex review 2026-01-16, Issue #25 focus
 
 ---
 
 ## Executive Summary
 
-This plan addresses security hardening (HTTP token exposure), developer experience fixes (broken version automation, flaky tests), and input validation gaps. Four new critical/important issues identified, plus cleanup of existing backlog.
+This plan focuses on implementing the batch issue view command (#25) requested for Claude Code integration, followed by maintenance items (epic tests, optimization). The codebase is in excellent shape (Grade A, 96% coverage) after recent security hardening.
 
 ---
 
@@ -16,158 +16,118 @@ This plan addresses security hardening (HTTP token exposure), developer experien
 
 | # | Priority | Issue | File(s) | Effort |
 |---|----------|-------|---------|--------|
-| 21 | CRITICAL | Fail closed on HTTP URLs | api.py | Medium |
-| 22 | IMPORTANT | Fix version bump automation | justfile, README | Low |
-| 23 | IMPORTANT | Fix hardcoded version test | test_cli.py | Low |
-| 24 | IMPORTANT | Validate parse_repo empty segments | cli.py, test_cli.py | Low |
-| 20 | p2 | Add --body flag to issue edit | cli.py | Low |
-| 19 | p3 | Remove unused DependencyRequest | models.py | Low |
-| 9 | p1 | Fix base URL subpath handling | api.py | Medium |
+| 25 | IMPORTANT | Add batch issue view command | cli.py, api.py | Medium |
+| 17 | NICE-TO-HAVE | Add end-to-end tests for epic commands | test_cli.py | Medium |
+| 15 | NICE-TO-HAVE | Reduce redundant label fetches | cli.py | Low |
+| 12 | NICE-TO-HAVE | Improve pagination efficiency | api.py | Low |
 
 ---
 
-## Phase 1: Critical Security
+## Phase 1: Feature Development
 
-### Issue 21: Fail closed on HTTP URLs
+### Issue 25: Add batch issue view command for Claude Code integration
 
-**References:** docs/ISSUES.md #21
+**References:** docs/ISSUES.md #25, Gitea #25
 
-**Problem:** API tokens sent over plain HTTP with only a warning, risking credential disclosure.
+**Problem:** No way to fetch details for multiple issues at once. Claude Code and other automation tools need to call `teax issue view` multiple times.
 
-**Solution:** Raise `ValueError` by default for `http://` URLs, require `TEAX_ALLOW_INSECURE_HTTP=1` to proceed.
+**Solution:** Add `teax issue batch <spec> --repo owner/repo` command with JSON output support.
 
 **Acceptance Criteria:**
-- [x] HTTP URLs raise error by default
-- [x] `TEAX_ALLOW_INSECURE_HTTP=1` allows proceeding with warning
-- [x] Clear error message explaining the risk
-- [x] Tests for both paths
+- [ ] Command accepts issue spec (1-5,10,12 format) using existing `parse_issue_spec()`
+- [ ] Output includes: number, title, state, labels, assignees, milestone, body
+- [ ] Supports --output table|csv|json (extend OutputFormat class)
+- [ ] JSON output includes full body, table/csv truncates to ~200 chars
+- [ ] Error handling for individual issue fetch failures (continue with others)
+- [ ] Tests with respx mocking
 
 **Implementation:**
-1. Modify `GiteaClient.__init__` to check scheme after normalization
-2. Raise `ValueError` if `http://` and env var not set
-3. Emit warning if env var is set (existing behavior)
-4. Add tests for both code paths
+1. Add `get_issues()` method to GiteaClient (batch fetch with error handling per issue)
+2. Add JSON support to OutputFormat class with `print_issues()` method
+3. Add `issue batch` command to cli.py using parse_issue_spec
+4. Add comprehensive tests for batch command
+5. Update README with batch command examples
+
+**Files affected:**
+- src/teax/api.py - add get_issues() method
+- src/teax/cli.py - add issue batch command, extend OutputFormat
+- tests/test_cli.py - add batch command tests
+- tests/test_api.py - add get_issues tests
+- README.md - document new command
 
 ---
 
-## Phase 2: Important Fixes
+## Phase 2: Test Coverage
 
-### Issue 22: Fix version bump automation
+### Issue 17: Add end-to-end tests for epic commands
 
-**References:** docs/ISSUES.md #22
+**References:** docs/ISSUES.md #17, Gitea #17
 
-**Problem:** `just bump` tries to edit `__init__.py` which now uses dynamic versioning.
+**Problem:** Epic commands lack integration tests exercising the full flow.
 
-**Solution:** Remove sed command from justfile, update README.
+**Solution:** Add comprehensive CLI tests with respx mocking for all epic commands.
 
 **Acceptance Criteria:**
-- [x] `just bump patch` correctly bumps version
-- [x] README documentation updated
-- [x] No attempt to edit `__init__.py`
+- [ ] Tests for `epic create` basic and with children
+- [ ] Tests for `epic status` with open/closed children
+- [ ] Tests for `epic add` with new and existing children
+- [ ] Error handling tests (label not found, issue not found)
 
 **Implementation:**
-1. Edit `justfile` bump recipe - remove sed command
-2. Update README.md "Releasing" section
-3. Test `just bump patch` works correctly
+1. Add test fixtures for epic-related API responses
+2. Add test_epic_create_* tests covering various scenarios
+3. Add test_epic_status_* tests for progress display
+4. Add test_epic_add_* tests for adding children
+
+**Files affected:**
+- tests/test_cli.py
 
 ---
 
-### Issue 23: Fix hardcoded version test
+## Phase 3: Optimization (Nice-to-Haves)
 
-**References:** docs/ISSUES.md #23
+### Issue 15: Reduce redundant label fetches in epic_create
 
-**Problem:** `test_main_version` asserts `"0.1.0"` which breaks on version bumps.
+**References:** docs/ISSUES.md #15, Gitea #15
 
-**Solution:** Use regex or dynamic version comparison.
+**Problem:** `epic_create` calls `list_repo_labels()` then `_resolve_label_ids()` separately.
+
+**Solution:** The label cache from `list_repo_labels()` should be used by subsequent operations. Verify and optimize if needed.
 
 **Acceptance Criteria:**
-- [x] Test passes regardless of current version
-- [x] Validates version format is valid SemVer
+- [ ] Only one label fetch API call per epic create operation
+- [ ] Label cache properly utilized
 
 **Implementation:**
-1. Change assertion to regex: `r"teax, version \d+\.\d+\.\d+"`
-2. Optionally compare against `importlib.metadata.version("teax")`
+1. Trace API calls in epic_create flow
+2. Ensure list_repo_labels populates cache before add_issue_labels
+3. Verify with test that only expected API calls are made
+
+**Files affected:**
+- src/teax/cli.py
 
 ---
 
-### Issue 24: Validate parse_repo empty segments
+### Issue 12: Improve pagination efficiency
 
-**References:** docs/ISSUES.md #24
+**References:** docs/ISSUES.md #12, Gitea #12
 
-**Problem:** `"owner/"` and `"/repo"` pass validation with empty strings.
+**Problem:** Pagination may make extra empty-page request.
 
-**Solution:** Add non-empty validation after split.
-
-**Acceptance Criteria:**
-- [x] `parse_repo("owner/")` raises BadParameter
-- [x] `parse_repo("/repo")` raises BadParameter
-- [x] Tests added for edge cases
-
-**Implementation:**
-1. Add validation: `if not owner or not repo_name: raise BadParameter`
-2. Add test cases for empty owner and empty repo
-
----
-
-### Issue 20: Add --body flag to issue edit
-
-**References:** docs/ISSUES.md #20
-
-**Problem:** `--body` option missing from CLI despite API support.
-
-**Solution:** Add `--body` option to `issue_edit` command.
+**Solution:** Verify all pagination sites use `len(items) < limit` early exit.
 
 **Acceptance Criteria:**
-- [x] `teax issue edit 25 --repo o/r --body "text"` updates body
-- [x] Tests added
+- [ ] All pagination loops exit without extra request
+- [ ] Tests verify call counts
 
 **Implementation:**
-1. Add `@click.option("--body", help="Set new body text")`
-2. Pass to `client.edit_issue(..., body=body)`
-3. Add to changes_made list
-4. Add tests
+1. Audit all pagination loops in api.py
+2. Ensure `if len(items) < limit: break` before incrementing page
+3. Add tests verifying pagination call counts
 
----
-
-## Phase 3: Cleanup
-
-### Issue 19: Remove unused DependencyRequest
-
-**References:** docs/ISSUES.md #19
-
-**Problem:** `DependencyRequest` model never used.
-
-**Solution:** Delete the class.
-
-**Acceptance Criteria:**
-- [x] DependencyRequest removed
-- [x] Tests still pass
-
-**Implementation:**
-1. Remove `DependencyRequest` class from models.py
-2. Run tests to verify no regressions
-
-**Note:** Already completed - DependencyRequest never existed or was previously removed.
-
----
-
-### Issue 9: Fix base URL subpath handling
-
-**References:** docs/ISSUES.md #9
-
-**Problem:** Non-root Gitea installations (e.g., `/gitea/`) may not work correctly.
-
-**Solution:** Improve URL normalization logic.
-
-**Acceptance Criteria:**
-- [x] URLs like `https://host/gitea/` work correctly
-- [x] Tests for subpath scenarios
-
-**Implementation:**
-1. Review and fix `_normalize_base_url()`
-2. Add tests for subpath URLs
-
-**Note:** Implementation already correct, added comprehensive tests for edge cases.
+**Files affected:**
+- src/teax/api.py
+- tests/test_api.py
 
 ---
 
@@ -178,26 +138,20 @@ Before marking plan complete:
 2. Linting clean: `just lint`
 3. Types check: `just typecheck`
 4. Coverage maintained: ≥94%
-5. All acceptance criteria checked
 
 ---
 
 ## Execution Order
 
-Dependencies and recommended sequence:
-
-1. ✅ **Issue 23** - Fix version test (Low, unblocks CI confidence)
-2. ✅ **Issue 22** - Fix bump automation (Low, developer experience)
-3. ✅ **Issue 24** - Validate parse_repo (Low, prevents confusing errors)
-4. ✅ **Issue 21** - HTTP fail-closed (Medium, security critical)
-5. ✅ **Issue 20** - Add --body flag (Low, feature request)
-6. ✅ **Issue 19** - Remove DependencyRequest (Low, cleanup - already done)
-7. ✅ **Issue 9** - Fix base URL subpath (Medium, edge case)
+1. **Issue 25** - Add batch issue view command (Phase 1) - PRIMARY FOCUS
+2. **Issue 17** - Add epic command tests (Phase 2)
+3. **Issue 15** - Optimize label fetches (Phase 3)
+4. **Issue 12** - Optimize pagination (Phase 3)
 
 ---
 
 ## References
 
 - docs/ISSUES.md - Canonical issue tracker
-- archive/ - Previous plan versions
-- Gitea: https://prod-vm-gitea.internal.kellgari.com.au/homelab-teams/teax/issues
+- archive/ - Previous plan versions (v1-v3)
+- Gitea #25 - Batch issue view feature request
