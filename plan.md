@@ -145,7 +145,7 @@ Before marking plan complete:
 
 1. ✅ **Issue 25** - Add batch issue view command (Phase 1) - PRIMARY FOCUS
 2. ✅ **Issue 17** - Add epic command tests (Phase 2) - Already covered
-3. **Issue 15** - Optimize label fetches (Phase 3)
+3. ⏳ **Issue 15** - Optimize label fetches (Phase 3)
 4. **Issue 12** - Optimize pagination (Phase 3)
 
 ---
