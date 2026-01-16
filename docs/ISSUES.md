@@ -10,28 +10,8 @@ Canonical issue list for teax development. Primary tracking in Gitea.
 
 | Gitea # | Title | Priority | Status |
 |---------|-------|----------|--------|
-| 17 | Add end-to-end tests for epic commands | p3 | Open |
 | 15 | Reduce redundant label fetches in epic_create | p3 | Open |
 | 12 | Improve pagination efficiency | p3 | Open |
-
----
-
-### 17. Add end-to-end tests for epic commands
-
-**Status:** Open
-
-**Problem:** Epic commands (`epic create`, `epic status`, `epic add`) lack integration tests that exercise the full flow with mocked API responses.
-
-**Solution:** Add comprehensive CLI tests for epic commands with respx mocking.
-
-**Acceptance Criteria:**
-- [ ] Tests for `epic create` with various options
-- [ ] Tests for `epic status` progress display
-- [ ] Tests for `epic add` with existing/new children
-- [ ] Error handling tests for each command
-
-**Files affected:**
-- tests/test_cli.py
 
 ---
 
@@ -74,6 +54,7 @@ Canonical issue list for teax development. Primary tracking in Gitea.
 | Gitea # | Title | Priority | Resolution |
 |---------|-------|----------|------------|
 | 25 | Add batch issue view command | p2 | Implemented |
+| 17 | Add end-to-end tests for epic commands | p3 | Already covered (25 tests) |
 | 21 | Fail closed on HTTP URLs (token over plain HTTP) | CRITICAL | Fixed - blocks HTTP by default |
 | 22 | Fix version bump automation for metadata-based versioning | IMPORTANT | Fixed - justfile simplified |
 | 23 | Fix hardcoded version string in CLI test | IMPORTANT | Fixed - uses SemVer regex |
