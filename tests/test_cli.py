@@ -1509,6 +1509,360 @@ def test_issue_view_error_handling(runner: CliRunner):
         assert result.exit_code == 1
 
 
+# --- issue batch tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_batch_basic(runner: CliRunner):
+    """Test issue batch command with multiple issues."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "number": 1,
+                    "title": "First Issue",
+                    "state": "open",
+                    "body": "Body of first issue",
+                    "labels": [{"id": 1, "name": "bug", "color": "ff0000"}],
+                    "assignees": [{"id": 1, "login": "user1", "full_name": ""}],
+                    "milestone": {"id": 1, "title": "v1.0", "state": "open"},
+                },
+            )
+        )
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/2").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 2,
+                    "number": 2,
+                    "title": "Second Issue",
+                    "state": "closed",
+                    "body": "",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(main, ["issue", "batch", "1,2", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        assert "First Issue" in result.output
+        assert "Second Issue" in result.output
+        assert "bug" in result.output
+        assert "v1.0" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_batch_json_output(runner: CliRunner):
+    """Test issue batch with JSON output format."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "number": 1,
+                    "title": "Test Issue",
+                    "state": "open",
+                    "body": "Full body text that should not be truncated in JSON",
+                    "labels": [{"id": 1, "name": "enhancement", "color": "00ff00"}],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "json", "issue", "batch", "1", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert len(data["issues"]) == 1
+        assert data["issues"][0]["number"] == 1
+        assert data["issues"][0]["title"] == "Test Issue"
+        assert data["issues"][0]["state"] == "open"
+        assert data["issues"][0]["labels"] == ["enhancement"]
+        assert "Full body text" in data["issues"][0]["body"]
+        assert data["errors"] == {}
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_batch_csv_output(runner: CliRunner):
+    """Test issue batch with CSV output format."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "number": 1,
+                    "title": "CSV Test",
+                    "state": "open",
+                    "body": "Short body",
+                    "labels": [{"id": 1, "name": "bug", "color": "ff0000"}],
+                    "assignees": [{"id": 1, "login": "dev", "full_name": ""}],
+                    "milestone": {"id": 1, "title": "Sprint", "state": "open"},
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "csv", "issue", "batch", "1", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "number,title,state,labels,assignees,milestone,body" in result.output
+        assert "1,CSV Test,open,bug,dev,Sprint" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_batch_simple_output(runner: CliRunner):
+    """Test issue batch with simple output format."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "number": 1,
+                    "title": "Simple Test",
+                    "state": "open",
+                    "body": "",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "simple", "issue", "batch", "1", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "#1 Simple Test" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_batch_with_range(runner: CliRunner):
+    """Test issue batch with range specification."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        for i in range(1, 4):
+            respx.get(
+                f"https://test.example.com/api/v1/repos/owner/repo/issues/{i}"
+            ).mock(
+                return_value=httpx.Response(
+                    200,
+                    json={
+                        "id": i,
+                        "number": i,
+                        "title": f"Issue {i}",
+                        "state": "open",
+                        "body": "",
+                        "labels": [],
+                        "assignees": [],
+                        "milestone": None,
+                    },
+                )
+            )
+
+        result = runner.invoke(main, ["issue", "batch", "1-3", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        assert "Issue 1" in result.output
+        assert "Issue 2" in result.output
+        assert "Issue 3" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_batch_partial_failure(runner: CliRunner):
+    """Test issue batch continues on individual failures."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "number": 1,
+                    "title": "Existing Issue",
+                    "state": "open",
+                    "body": "",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/999").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(
+            main, ["issue", "batch", "1,999", "--repo", "owner/repo"]
+        )
+
+        # Exit code 1 because there were errors
+        assert result.exit_code == 1
+        assert "Existing Issue" in result.output
+        # Should show error for missing issue
+        assert "999" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_batch_json_with_errors(runner: CliRunner):
+    """Test issue batch JSON output includes errors."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "number": 1,
+                    "title": "Valid Issue",
+                    "state": "open",
+                    "body": "",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/404").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(
+            main, ["-o", "json", "issue", "batch", "1,404", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 1
+        data = json.loads(result.output)
+        assert len(data["issues"]) == 1
+        assert data["issues"][0]["number"] == 1
+        assert "404" in data["errors"]
+        assert "not found" in data["errors"]["404"].lower()
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_batch_empty_result(runner: CliRunner):
+    """Test issue batch when all issues fail."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/999").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
+
+        result = runner.invoke(
+            main, ["issue", "batch", "999", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 1
+        assert "999" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_batch_body_truncation_table(runner: CliRunner):
+    """Test issue batch truncates body in table output."""
+    import httpx
+    import respx
+
+    long_body = "A" * 300  # Longer than 200 chars
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "number": 1,
+                    "title": "Long Body",
+                    "state": "open",
+                    "body": long_body,
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(main, ["issue", "batch", "1", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        # Should be truncated - Rich uses ellipsis character (…) or ...
+        assert "…" in result.output or "..." in result.output
+        # Full body should not appear
+        assert long_body not in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_batch_body_full_in_json(runner: CliRunner):
+    """Test issue batch includes full body in JSON output."""
+    import json
+
+    import httpx
+    import respx
+
+    long_body = "B" * 300  # Longer than 200 chars
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/1").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "number": 1,
+                    "title": "Long Body",
+                    "state": "open",
+                    "body": long_body,
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "json", "issue", "batch", "1", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        # JSON should have full body
+        assert data["issues"][0]["body"] == long_body
+
+
 # --- issue labels tests ---
 
 

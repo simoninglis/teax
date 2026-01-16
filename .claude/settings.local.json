@@ -43,7 +43,9 @@
       "Bash(poetry build:*)",
       "Bash(poetry publish:*)",
       "Bash(python -c:*)",
-      "Bash(poetry run python:*)"
+      "Bash(poetry run python:*)",
+      "Bash(teax issue edit:*)",
+      "Bash(TEAX_INSECURE=1 teax issue edit:*)"
     ]
   }
 }

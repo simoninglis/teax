@@ -34,12 +34,12 @@ This plan focuses on implementing the batch issue view command (#25) requested f
 **Solution:** Add `teax issue batch <spec> --repo owner/repo` command with JSON output support.
 
 **Acceptance Criteria:**
-- [ ] Command accepts issue spec (1-5,10,12 format) using existing `parse_issue_spec()`
-- [ ] Output includes: number, title, state, labels, assignees, milestone, body
-- [ ] Supports --output table|csv|json (extend OutputFormat class)
-- [ ] JSON output includes full body, table/csv truncates to ~200 chars
-- [ ] Error handling for individual issue fetch failures (continue with others)
-- [ ] Tests with respx mocking
+- [x] Command accepts issue spec (1-5,10,12 format) using existing `parse_issue_spec()`
+- [x] Output includes: number, title, state, labels, assignees, milestone, body
+- [x] Supports --output table|csv|json (extend OutputFormat class)
+- [x] JSON output includes full body, table/csv truncates to ~200 chars
+- [x] Error handling for individual issue fetch failures (continue with others)
+- [x] Tests with respx mocking (12 tests added)
 
 **Implementation:**
 1. Add `get_issues()` method to GiteaClient (batch fetch with error handling per issue)
@@ -143,7 +143,7 @@ Before marking plan complete:
 
 ## Execution Order
 
-1. ⏳ **Issue 25** - Add batch issue view command (Phase 1) - PRIMARY FOCUS
+1. ✅ **Issue 25** - Add batch issue view command (Phase 1) - PRIMARY FOCUS
 2. **Issue 17** - Add epic command tests (Phase 2)
 3. **Issue 15** - Optimize label fetches (Phase 3)
 4. **Issue 12** - Optimize pagination (Phase 3)

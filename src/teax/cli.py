@@ -2,6 +2,7 @@
 
 import csv
 import io
+import json
 import re
 import sys
 from typing import Any
@@ -247,6 +248,133 @@ class OutputFormat:
                 )
             console.print(table)
 
+    def print_issues(
+        self, issues: list[Any], errors: dict[int, str] | None = None
+    ) -> None:
+        """Print issue list for batch view command.
+
+        Args:
+            issues: List of Issue objects to display
+            errors: Optional dict of issue_num -> error message for failed fetches
+        """
+        errors = errors or {}
+
+        if self.format_type == "json":
+            # JSON output - full data including body
+            output_data = {
+                "issues": [
+                    {
+                        "number": issue.number,
+                        "title": terminal_safe(issue.title),
+                        "state": issue.state,
+                        "labels": [
+                            terminal_safe(lb.name) for lb in (issue.labels or [])
+                        ],
+                        "assignees": [
+                            terminal_safe(a.login) for a in (issue.assignees or [])
+                        ],
+                        "milestone": (
+                            terminal_safe(issue.milestone.title)
+                            if issue.milestone
+                            else None
+                        ),
+                        "body": terminal_safe(issue.body or ""),
+                    }
+                    for issue in issues
+                ],
+                "errors": {
+                    str(num): terminal_safe(msg) for num, msg in errors.items()
+                },
+            }
+            click.echo(json.dumps(output_data, indent=2))
+
+        elif self.format_type == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow([
+                "number", "title", "state", "labels", "assignees", "milestone", "body"
+            ])
+            for issue in issues:
+                labels_str = ",".join(
+                    csv_safe(lb.name) for lb in (issue.labels or [])
+                )
+                assignees_str = ",".join(
+                    csv_safe(a.login) for a in (issue.assignees or [])
+                )
+                milestone_str = (
+                    csv_safe(issue.milestone.title) if issue.milestone else ""
+                )
+                # Truncate body for CSV
+                body = issue.body or ""
+                body_preview = body[:200] + "..." if len(body) > 200 else body
+                writer.writerow([
+                    issue.number,
+                    csv_safe(issue.title),
+                    csv_safe(issue.state),
+                    labels_str,
+                    assignees_str,
+                    milestone_str,
+                    csv_safe(body_preview),
+                ])
+            # Add error rows if any
+            for num, msg in errors.items():
+                writer.writerow([num, f"ERROR: {csv_safe(msg)}", "", "", "", "", ""])
+            click.echo(output.getvalue().rstrip())
+
+        elif self.format_type == "simple":
+            for issue in issues:
+                click.echo(f"#{issue.number} {terminal_safe(issue.title)}")
+            for num, msg in errors.items():
+                click.echo(f"#{num} ERROR: {terminal_safe(msg)}")
+
+        else:  # table (default)
+            if not issues and not errors:
+                console.print("[dim]No issues found[/dim]")
+                return
+
+            table = Table(title="Issues")
+            table.add_column("#", style="cyan")
+            table.add_column("Title")
+            table.add_column("State")
+            table.add_column("Labels", style="dim")
+            table.add_column("Assignees", style="dim")
+            table.add_column("Milestone", style="dim")
+            table.add_column("Body", style="dim", max_width=40)
+
+            for issue in issues:
+                state_style = "green" if issue.state == "open" else "red"
+                labels_str = ", ".join(
+                    safe_rich(lb.name) for lb in (issue.labels or [])
+                )
+                assignees_str = ", ".join(
+                    safe_rich(a.login) for a in (issue.assignees or [])
+                )
+                milestone_str = (
+                    safe_rich(issue.milestone.title) if issue.milestone else ""
+                )
+                # Truncate body for table
+                body = issue.body or ""
+                body_preview = body[:200] + "..." if len(body) > 200 else body
+                table.add_row(
+                    str(issue.number),
+                    safe_rich(issue.title),
+                    f"[{state_style}]{safe_rich(issue.state)}[/{state_style}]",
+                    labels_str,
+                    assignees_str,
+                    milestone_str,
+                    safe_rich(body_preview),
+                )
+
+            # Add error rows
+            for num, msg in errors.items():
+                table.add_row(
+                    str(num),
+                    f"[red]ERROR: {safe_rich(msg)}[/red]",
+                    "", "", "", "", ""
+                )
+
+            console.print(table)
+
 
 # --- Main CLI Group ---
 
@@ -257,7 +385,7 @@ class OutputFormat:
 @click.option(
     "--output",
     "-o",
-    type=click.Choice(["table", "simple", "csv"]),
+    type=click.Choice(["table", "simple", "csv", "json"]),
     default="table",
     help="Output format",
 )
@@ -491,6 +619,59 @@ def issue_view(
 
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@issue.command("batch")
+@click.argument("issues", type=str)
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.pass_context
+def issue_batch(ctx: click.Context, issues: str, repo: str) -> None:
+    """View multiple issues at once.
+
+    ISSUES can be:
+      - Single: 17
+      - Range: 17-23
+      - List: 17,18,19
+      - Mixed: 17-19,25,30-32
+
+    Useful for automation tools like Claude Code that need to fetch
+    multiple issue details in one operation.
+
+    Examples:
+        teax issue batch 1-5 --repo owner/repo
+        teax issue batch "17,18,25-30" --repo owner/repo --output json
+        teax -o json issue batch 1,2,3 --repo owner/repo
+    """
+    owner, repo_name = parse_repo(repo)
+    issue_nums = parse_issue_spec(issues)
+    output: OutputFormat = ctx.obj["output"]
+
+    fetched_issues = []
+    errors: dict[int, str] = {}
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            for issue_num in issue_nums:
+                try:
+                    issue = client.get_issue(owner, repo_name, issue_num)
+                    fetched_issues.append(issue)
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 404:
+                        errors[issue_num] = "Issue not found"
+                    else:
+                        errors[issue_num] = f"HTTP {e.response.status_code}"
+                except httpx.RequestError as e:
+                    errors[issue_num] = f"Request error: {type(e).__name__}"
+
+            output.print_issues(fetched_issues, errors)
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+    # Exit with error code if any issues failed
+    if errors:
         sys.exit(1)
 
 
