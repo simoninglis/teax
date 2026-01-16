@@ -8,26 +8,7 @@ Canonical issue list for teax development. Primary tracking in Gitea.
 
 ## Open Issues
 
-| Gitea # | Title | Priority | Status |
-|---------|-------|----------|--------|
-| 12 | Improve pagination efficiency | p3 | Open |
-
----
-
-### 12. Improve pagination efficiency
-
-**Status:** Open
-
-**Problem:** Pagination loops make an extra request to get an empty page before terminating.
-
-**Solution:** Check `len(items) < limit` to detect last page and break early (already partially implemented, but verify all pagination sites).
-
-**Acceptance Criteria:**
-- [ ] All pagination loops exit without extra empty-page request
-- [ ] Tests verify efficient pagination
-
-**Files affected:**
-- src/teax/api.py
+No open issues.
 
 ---
 
@@ -38,6 +19,7 @@ Canonical issue list for teax development. Primary tracking in Gitea.
 | 25 | Add batch issue view command | p2 | Implemented |
 | 17 | Add end-to-end tests for epic commands | p3 | Already covered (25 tests) |
 | 15 | Reduce redundant label fetches | p3 | Already optimized (5 cache tests) |
+| 12 | Improve pagination efficiency | p3 | Already optimized (early-exit pattern) |
 | 21 | Fail closed on HTTP URLs (token over plain HTTP) | CRITICAL | Fixed - blocks HTTP by default |
 | 22 | Fix version bump automation for metadata-based versioning | IMPORTANT | Fixed - justfile simplified |
 | 23 | Fix hardcoded version string in CLI test | IMPORTANT | Fixed - uses SemVer regex |
