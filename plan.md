@@ -95,8 +95,8 @@ This plan focuses on implementing the batch issue view command (#25) requested f
 **Solution:** The label cache from `list_repo_labels()` should be used by subsequent operations. Verify and optimize if needed.
 
 **Acceptance Criteria:**
-- [ ] Only one label fetch API call per epic create operation
-- [ ] Label cache properly utilized
+- [x] Only one label fetch API call per epic create operation (cache used)
+- [x] Label cache properly utilized (5 tests verify: test_list_repo_labels_populates_cache, test_label_cache_avoids_redundant_calls, test_label_cache_per_repo, test_label_cache_cleared_on_close, test_label_cache_updated_on_create_label)
 
 **Implementation:**
 1. Trace API calls in epic_create flow
@@ -145,7 +145,7 @@ Before marking plan complete:
 
 1. ✅ **Issue 25** - Add batch issue view command (Phase 1) - PRIMARY FOCUS
 2. ✅ **Issue 17** - Add epic command tests (Phase 2) - Already covered
-3. ⏳ **Issue 15** - Optimize label fetches (Phase 3)
+3. ✅ **Issue 15** - Optimize label fetches (Phase 3) - Already optimized
 4. **Issue 12** - Optimize pagination (Phase 3)
 
 ---
