@@ -10,6 +10,7 @@ Gitea CLI companion for tea feature gaps.
 - **Dependency management**: Set and manage issue blockers/blocked-by relationships
 - **Bulk operations**: Apply changes to multiple issues at once
 - **Epic management**: Create and track parent issues with child issue checklists
+- **Runner management**: List, inspect, and manage Gitea Actions runners
 
 Uses tea's configuration for authentication - no additional setup required.
 
@@ -147,6 +148,32 @@ teax epic add 25 17 18 19 --repo homelab/myproject
 teax epic status 25 --repo homelab/myproject
 ```
 
+### Runner Management
+
+Manage Gitea Actions runners across repos, orgs, or globally (admin).
+
+```bash
+# List runners for a repository
+teax runners list --repo owner/repo
+
+# List runners for an organisation
+teax runners list --org myorg
+
+# List global runners (admin only)
+teax runners list --global
+
+# Get runner details
+teax runners get 42 --repo owner/repo
+
+# Delete a runner (prompts for confirmation)
+teax runners delete 42 --repo owner/repo
+teax runners delete 42 --repo owner/repo -y  # Skip confirmation
+
+# Get registration token for adding new runners
+teax runners token --repo owner/repo
+teax -o simple runners token --repo owner/repo  # For scripting with act_runner
+```
+
 ### Global Options
 
 ```bash
@@ -253,6 +280,7 @@ just release patch
 | Issue dependencies | Missing | **Implemented** |
 | Issue bulk ops | Missing | **Implemented** |
 | Epic management | Missing | **Implemented** |
+| Runner management | Missing | **Implemented** |
 | Label CRUD | Full | Out of scope |
 | Label assign | Missing | Via issue edit |
 | Milestone CRUD | Full | Out of scope |

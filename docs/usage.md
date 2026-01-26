@@ -426,8 +426,87 @@ with GiteaClient() as c:
 "
 ```
 
+## Runner Management
+
+Manage Gitea Actions runners for repositories, organisations, or globally.
+
+### List Runners
+
+```bash
+# List runners for a repository
+teax runners list --repo homelab/myproject
+
+# List runners for an organisation
+teax runners list --org myorg
+
+# List global runners (admin only)
+teax runners list --global
+```
+
+**Output (table format)**:
+```
+                    Runners
+┏━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ ID ┃ Name           ┃ Status ┃ Busy ┃ Labels          ┃ Version┃
+┡━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ 1  │ runner-linux-1 │ online │ False│ ubuntu-latest   │ v0.2.6 │
+│ 2  │ runner-arm64   │ offline│ False│ self-hosted,arm │ v0.2.5 │
+└────┴────────────────┴────────┴──────┴─────────────────┴────────┘
+```
+
+**Simple format** (for scripting):
+```bash
+teax runners list --repo homelab/myproject -o simple
+# 1 runner-linux-1
+# 2 runner-arm64
+```
+
+### Get Runner Details
+
+```bash
+teax runners get 42 --repo homelab/myproject
+```
+
+### Delete Runner
+
+Runners can be removed when decommissioning or replacing them:
+
+```bash
+# Delete with confirmation prompt
+teax runners delete 42 --repo homelab/myproject
+
+# Skip confirmation (for scripting)
+teax runners delete 42 --repo homelab/myproject -y
+```
+
+### Get Registration Token
+
+Generate a token for registering new runners with `act_runner`:
+
+```bash
+# Interactive mode (shows warning about token secrecy)
+teax runners token --repo homelab/myproject
+
+# For scripting (just outputs the token)
+teax -o simple runners token --repo homelab/myproject
+
+# Use directly with act_runner
+act_runner register --token $(teax -o simple runners token -r owner/repo)
+```
+
+### Scope Options
+
+All runner commands require exactly one scope:
+
+| Option | Description |
+|--------|-------------|
+| `--repo owner/repo` | Repository-level runners |
+| `--org orgname` | Organisation-level runners |
+| `--global` | Instance-level runners (admin only) |
+
 ## Related Documentation
 
 - [API Reference](api.md) - Using teax as a Python library
 - [ADR-0005: Epic Tracking](~/work/dev-manual/docs/adr/ADR-0005-gitea-epic-tracking.md) - Label taxonomy and workflow
 - [ADR-0006: teax Design](adr/ADR-0006-teax-design.md) - Design decisions
+- [ADR-0007: Gitea Actions Support](adr/ADR-0007-gitea-actions-support.md) - Runner management design
