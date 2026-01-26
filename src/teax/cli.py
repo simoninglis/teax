@@ -375,6 +375,69 @@ class OutputFormat:
 
             console.print(table)
 
+    def print_runners(self, runners: list[Any]) -> None:
+        """Print runner list."""
+        if self.format_type == "json":
+            output_data = [
+                {
+                    "id": r.id,
+                    "name": terminal_safe(r.name),
+                    "status": terminal_safe(r.status),
+                    "busy": r.busy,
+                    "labels": [terminal_safe(lb) for lb in r.labels],
+                    "version": terminal_safe(r.version),
+                }
+                for r in runners
+            ]
+            click.echo(json.dumps(output_data, indent=2))
+
+        elif self.format_type == "simple":
+            for r in runners:
+                click.echo(f"{r.id} {terminal_safe(r.name)}")
+
+        elif self.format_type == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["id", "name", "status", "busy", "labels", "version"])
+            for r in runners:
+                labels_str = ",".join(csv_safe(lb) for lb in r.labels)
+                writer.writerow([
+                    r.id,
+                    csv_safe(r.name),
+                    csv_safe(r.status),
+                    r.busy,
+                    labels_str,
+                    csv_safe(r.version),
+                ])
+            click.echo(output.getvalue().rstrip())
+
+        else:  # table (default)
+            if not runners:
+                console.print("[dim]No runners found[/dim]")
+                return
+
+            table = Table(title="Runners")
+            table.add_column("ID", style="cyan")
+            table.add_column("Name")
+            table.add_column("Status")
+            table.add_column("Busy")
+            table.add_column("Labels", style="dim")
+            table.add_column("Version", style="dim")
+
+            for r in runners:
+                status_style = "green" if r.status == "online" else "dim"
+                busy_style = "yellow" if r.busy else "dim"
+                labels_str = ", ".join(safe_rich(lb) for lb in r.labels)
+                table.add_row(
+                    str(r.id),
+                    safe_rich(r.name),
+                    f"[{status_style}]{safe_rich(r.status)}[/{status_style}]",
+                    f"[{busy_style}]{r.busy}[/{busy_style}]",
+                    labels_str,
+                    safe_rich(r.version),
+                )
+            console.print(table)
+
 
 # --- Main CLI Group ---
 
@@ -1328,6 +1391,224 @@ def epic_add(
             console.print()
             count = len(new_children)
             console.print(f"[bold]Added {count} issues to epic #{epic_issue}[/bold]")
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+# --- Runners Group ---
+
+
+def validate_scope(
+    repo: str | None, org: str | None, global_scope: bool
+) -> tuple[str | None, str | None, str | None, bool]:
+    """Validate and parse scope options.
+
+    Args:
+        repo: Repository in owner/repo format
+        org: Organisation name
+        global_scope: If True, use global scope
+
+    Returns:
+        Tuple of (owner, repo_name, org, global_scope)
+
+    Raises:
+        click.UsageError: If scope is invalid
+    """
+    scope_count = sum([bool(repo), bool(org), global_scope])
+
+    if scope_count == 0:
+        raise click.UsageError("Must specify --repo, --org, or --global")
+    if scope_count > 1:
+        raise click.UsageError("Specify only one of --repo, --org, or --global")
+
+    owner = None
+    repo_name = None
+    if repo:
+        owner, repo_name = parse_repo(repo)
+
+    return owner, repo_name, org, global_scope
+
+
+@main.group()
+def runners() -> None:
+    """Manage Gitea Actions runners."""
+    pass
+
+
+@runners.command("list")
+@click.option("--repo", "-r", help="Repository (owner/repo)")
+@click.option("--org", help="Organisation name")
+@click.option("--global", "global_scope", is_flag=True, help="Global scope (admin)")
+@click.pass_context
+def runners_list(
+    ctx: click.Context, repo: str | None, org: str | None, global_scope: bool
+) -> None:
+    """List runners for a repository, organisation, or globally.
+
+    Specify scope with --repo, --org, or --global.
+
+    Examples:
+        teax runners list --repo owner/repo
+        teax runners list --org myorg
+        teax runners list --global
+    """
+    owner, repo_name, org_name, is_global = validate_scope(repo, org, global_scope)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            runner_list = client.list_runners(
+                owner=owner,
+                repo=repo_name,
+                org=org_name,
+                global_scope=is_global,
+            )
+            output.print_runners(runner_list)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@runners.command("get")
+@click.argument("runner_id", type=int)
+@click.option("--repo", "-r", help="Repository (owner/repo)")
+@click.option("--org", help="Organisation name")
+@click.option("--global", "global_scope", is_flag=True, help="Global scope (admin)")
+@click.pass_context
+def runners_get(
+    ctx: click.Context,
+    runner_id: int,
+    repo: str | None,
+    org: str | None,
+    global_scope: bool,
+) -> None:
+    """Get details for a specific runner.
+
+    Examples:
+        teax runners get 42 --repo owner/repo
+        teax runners get 42 --org myorg
+    """
+    owner, repo_name, org_name, is_global = validate_scope(repo, org, global_scope)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            runner = client.get_runner(
+                runner_id,
+                owner=owner,
+                repo=repo_name,
+                org=org_name,
+                global_scope=is_global,
+            )
+            # Print as single-item list for consistent formatting
+            output.print_runners([runner])
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@runners.command("delete")
+@click.argument("runner_id", type=int)
+@click.option("--repo", "-r", help="Repository (owner/repo)")
+@click.option("--org", help="Organisation name")
+@click.option("--global", "global_scope", is_flag=True, help="Global scope (admin)")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+@click.pass_context
+def runners_delete(
+    ctx: click.Context,
+    runner_id: int,
+    repo: str | None,
+    org: str | None,
+    global_scope: bool,
+    yes: bool,
+) -> None:
+    """Delete a runner.
+
+    Examples:
+        teax runners delete 42 --repo owner/repo
+        teax runners delete 42 --org myorg -y
+    """
+    owner, repo_name, org_name, is_global = validate_scope(repo, org, global_scope)
+
+    # Build scope description for confirmation (sanitize user input)
+    if is_global:
+        scope_desc = "global"
+    elif org_name:
+        scope_desc = f"org '{terminal_safe(org_name)}'"
+    else:
+        scope_desc = f"repo '{terminal_safe(repo or '')}'"
+
+    if not yes:
+        if not click.confirm(f"Delete runner {runner_id} from {scope_desc}?"):
+            console.print("[yellow]Aborted[/yellow]")
+            return
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            client.delete_runner(
+                runner_id,
+                owner=owner,
+                repo=repo_name,
+                org=org_name,
+                global_scope=is_global,
+            )
+            console.print(f"[green]Deleted runner {runner_id}[/green]")
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@runners.command("token")
+@click.option("--repo", "-r", help="Repository (owner/repo)")
+@click.option("--org", help="Organisation name")
+@click.option("--global", "global_scope", is_flag=True, help="Global scope (admin)")
+@click.pass_context
+def runners_token(
+    ctx: click.Context, repo: str | None, org: str | None, global_scope: bool
+) -> None:
+    """Get a runner registration token.
+
+    The token is used to register new runners with act_runner.
+
+    Examples:
+        teax runners token --repo owner/repo
+        teax runners token --org myorg
+        teax runners token --global
+
+    Use with act_runner:
+        act_runner register --token $(teax -o simple runners token -r owner/repo)
+    """
+    owner, repo_name, org_name, is_global = validate_scope(repo, org, global_scope)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            token = client.get_runner_registration_token(
+                owner=owner,
+                repo=repo_name,
+                org=org_name,
+                global_scope=is_global,
+            )
+
+            if output.format_type == "simple":
+                # Simple format - just the token (for scripting)
+                click.echo(terminal_safe(token.token))
+            elif output.format_type == "json":
+                click.echo(json.dumps({"token": terminal_safe(token.token)}, indent=2))
+            elif output.format_type == "csv":
+                click.echo("token")
+                click.echo(csv_safe(token.token))
+            else:  # table
+                # Show warning in table mode (interactive)
+                console.print(
+                    "[yellow]Warning:[/yellow] This token should be kept secret. "
+                    "Use -o simple for scripting."
+                )
+                console.print()
+                token_display = safe_rich(token.token)
+                console.print(f"[bold]Registration Token:[/bold] {token_display}")
 
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")

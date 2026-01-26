@@ -8,7 +8,16 @@ from urllib.parse import quote
 import httpx
 
 from teax.config import get_default_login, get_login_by_name
-from teax.models import Comment, Dependency, Issue, Label, Milestone, TeaLogin
+from teax.models import (
+    Comment,
+    Dependency,
+    Issue,
+    Label,
+    Milestone,
+    RegistrationToken,
+    Runner,
+    TeaLogin,
+)
 
 
 def _get_ssl_verify() -> bool | str:
@@ -42,7 +51,15 @@ def _seg(s: str) -> str:
     Encodes special characters including '/' which prevents path traversal
     attacks (e.g., '../admin' becomes '..%2Fadmin'). The encoded slash
     is treated as part of the segment, not a path separator.
+
+    Also rejects '.' and '..' which are special path segments that could
+    cause path normalization to collapse into unintended endpoints.
+
+    Raises:
+        ValueError: If segment is '.' or '..' (dot-segment traversal)
     """
+    if s in (".", ".."):
+        raise ValueError(f"Invalid path segment: '{s}' (dot-segment traversal)")
     return quote(s, safe="")
 
 
@@ -746,3 +763,185 @@ class GiteaClient:
             return all_milestones[milestone_ref]
 
         raise ValueError(f"Milestone '{milestone_ref}' not found in repository")
+
+    # --- Actions/Runner Operations ---
+
+    def _actions_base_path(
+        self,
+        owner: str | None = None,
+        repo: str | None = None,
+        org: str | None = None,
+        global_scope: bool = False,
+    ) -> str:
+        """Build base path for Actions API endpoints.
+
+        Args:
+            owner: Repository owner (required with repo)
+            repo: Repository name (required with owner)
+            org: Organisation name (for org-level scope)
+            global_scope: If True, use admin/global scope
+
+        Returns:
+            Base path like 'repos/{o}/{r}/actions', 'orgs/{o}/actions',
+            or 'admin/actions'
+
+        Raises:
+            ValueError: If scope is ambiguous or missing
+        """
+        scope_count = sum([
+            bool(owner and repo),
+            bool(org),
+            global_scope,
+        ])
+
+        if scope_count == 0:
+            raise ValueError("Must specify --repo, --org, or --global scope")
+        if scope_count > 1:
+            raise ValueError("Specify only one of --repo, --org, or --global")
+
+        if global_scope:
+            return "admin/actions"
+        elif org:
+            return f"orgs/{_seg(org)}/actions"
+        else:
+            assert owner and repo  # Type guard
+            return f"repos/{_seg(owner)}/{_seg(repo)}/actions"
+
+    def list_runners(
+        self,
+        owner: str | None = None,
+        repo: str | None = None,
+        org: str | None = None,
+        global_scope: bool = False,
+        *,
+        max_pages: int = 100,
+    ) -> list[Runner]:
+        """List runners for a repository, organisation, or globally.
+
+        Args:
+            owner: Repository owner (required with repo)
+            repo: Repository name (required with owner)
+            org: Organisation name (for org-level scope)
+            global_scope: If True, list global runners (admin only)
+            max_pages: Maximum pages to fetch (default 100, prevents DoS)
+
+        Returns:
+            List of runners
+        """
+        base = self._actions_base_path(owner, repo, org, global_scope)
+        runners: list[Runner] = []
+        page = 1
+        limit = 50
+        truncated = False
+
+        while page <= max_pages:
+            response = self._client.get(
+                f"{base}/runners",
+                params={"page": page, "limit": limit},
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            # Handle Gitea's response format (may be {"runners": [...]} or [...])
+            items = data.get("runners", data) if isinstance(data, dict) else data
+            if not items:
+                break
+
+            for item in items:
+                # Normalize labels field (may be list of strings or list of dicts)
+                if "labels" in item and item["labels"]:
+                    if isinstance(item["labels"][0], dict):
+                        item["labels"] = [lb.get("name", "") for lb in item["labels"]]
+                runners.append(Runner.model_validate(item))
+
+            if len(items) < limit:
+                break
+            page += 1
+        else:
+            truncated = True
+
+        if truncated:
+            warnings.warn(
+                f"Runners list truncated at {max_pages} pages "
+                f"({len(runners)} items). Results may be incomplete.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        return runners
+
+    def get_runner(
+        self,
+        runner_id: int,
+        owner: str | None = None,
+        repo: str | None = None,
+        org: str | None = None,
+        global_scope: bool = False,
+    ) -> Runner:
+        """Get a runner by ID.
+
+        Args:
+            runner_id: The runner ID
+            owner: Repository owner (required with repo)
+            repo: Repository name (required with owner)
+            org: Organisation name (for org-level scope)
+            global_scope: If True, use global scope (admin only)
+
+        Returns:
+            Runner details
+        """
+        base = self._actions_base_path(owner, repo, org, global_scope)
+        response = self._client.get(f"{base}/runners/{runner_id}")
+        response.raise_for_status()
+        data = response.json()
+
+        # Normalize labels field
+        if "labels" in data and data["labels"]:
+            if isinstance(data["labels"][0], dict):
+                data["labels"] = [lb.get("name", "") for lb in data["labels"]]
+
+        return Runner.model_validate(data)
+
+    def delete_runner(
+        self,
+        runner_id: int,
+        owner: str | None = None,
+        repo: str | None = None,
+        org: str | None = None,
+        global_scope: bool = False,
+    ) -> None:
+        """Delete a runner by ID.
+
+        Args:
+            runner_id: The runner ID
+            owner: Repository owner (required with repo)
+            repo: Repository name (required with owner)
+            org: Organisation name (for org-level scope)
+            global_scope: If True, use global scope (admin only)
+        """
+        base = self._actions_base_path(owner, repo, org, global_scope)
+        response = self._client.delete(f"{base}/runners/{runner_id}")
+        response.raise_for_status()
+
+    def get_runner_registration_token(
+        self,
+        owner: str | None = None,
+        repo: str | None = None,
+        org: str | None = None,
+        global_scope: bool = False,
+    ) -> RegistrationToken:
+        """Get or create a runner registration token.
+
+        Args:
+            owner: Repository owner (required with repo)
+            repo: Repository name (required with owner)
+            org: Organisation name (for org-level scope)
+            global_scope: If True, use global scope (admin only)
+
+        Returns:
+            Registration token
+        """
+        base = self._actions_base_path(owner, repo, org, global_scope)
+        response = self._client.get(f"{base}/runners/registration-token")
+        response.raise_for_status()
+        return RegistrationToken.model_validate(response.json())

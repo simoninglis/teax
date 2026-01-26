@@ -95,3 +95,20 @@ class Comment(BaseModel):
     user: User
     created_at: str
     updated_at: str = ""
+
+
+class Runner(BaseModel):
+    """Gitea Actions runner."""
+
+    id: int
+    name: str
+    status: str  # online, offline, idle, active
+    busy: bool
+    labels: list[str] = Field(default_factory=list)
+    version: str = ""
+
+
+class RegistrationToken(BaseModel):
+    """Runner registration token."""
+
+    token: str

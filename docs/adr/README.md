@@ -7,6 +7,7 @@ ADRs for the teax project.
 | ADR | Title | Status | Date |
 |-----|-------|--------|------|
 | [ADR-0006](ADR-0006-teax-design.md) | teax Design Decision | Accepted | 2026-01-12 |
+| [ADR-0007](ADR-0007-gitea-actions-support.md) | Gitea Actions Support | Implementing | 2026-01-26 |
 
 ## Related ADRs (in dev-manual)
 

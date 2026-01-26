@@ -2986,3 +2986,457 @@ def test_epic_add_error_handling(runner: CliRunner):
 
         assert result.exit_code == 1
         assert "Error" in result.output
+
+
+# --- Runners Tests ---
+
+
+def test_runners_help(runner: CliRunner):
+    """Test runners group help shows commands."""
+    result = runner.invoke(main, ["runners", "--help"])
+
+    assert result.exit_code == 0
+    assert "list" in result.output
+    assert "get" in result.output
+    assert "delete" in result.output
+    assert "token" in result.output
+
+
+def test_runners_list_help(runner: CliRunner):
+    """Test runners list command help."""
+    result = runner.invoke(main, ["runners", "list", "--help"])
+
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+    assert "--org" in result.output
+    assert "--global" in result.output
+
+
+def test_runners_list_requires_scope(runner: CliRunner):
+    """Test runners list requires scope option."""
+    result = runner.invoke(main, ["runners", "list"])
+
+    assert result.exit_code != 0
+    assert "Must specify --repo, --org, or --global" in result.output
+
+
+def test_runners_list_rejects_multiple_scopes(runner: CliRunner):
+    """Test runners list rejects multiple scope options."""
+    result = runner.invoke(
+        main, ["runners", "list", "--repo", "owner/repo", "--org", "myorg"]
+    )
+
+    assert result.exit_code != 0
+    assert "Specify only one of" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runners_list_repo_scope(runner: CliRunner):
+    """Test runners list with repo scope."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runners"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 1,
+                        "name": "runner-1",
+                        "status": "online",
+                        "busy": False,
+                        "labels": ["ubuntu-latest"],
+                        "version": "v0.2.6",
+                    },
+                ],
+            )
+        )
+
+        result = runner.invoke(main, ["runners", "list", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        assert "runner-1" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runners_list_org_scope(runner: CliRunner):
+    """Test runners list with org scope."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/orgs/myorg/actions/runners"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 10,
+                        "name": "org-runner",
+                        "status": "online",
+                        "busy": True,
+                        "labels": [],
+                        "version": "",
+                    },
+                ],
+            )
+        )
+
+        result = runner.invoke(main, ["runners", "list", "--org", "myorg"])
+
+        assert result.exit_code == 0
+        assert "org-runner" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runners_list_global_scope(runner: CliRunner):
+    """Test runners list with global scope."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/admin/actions/runners").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 100,
+                        "name": "global-runner",
+                        "status": "idle",
+                        "busy": False,
+                        "labels": [],
+                        "version": "",
+                    },
+                ],
+            )
+        )
+
+        result = runner.invoke(main, ["runners", "list", "--global"])
+
+        assert result.exit_code == 0
+        assert "global-runner" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runners_list_simple_output(runner: CliRunner):
+    """Test runners list with simple output format."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runners"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 1,
+                        "name": "runner-1",
+                        "status": "online",
+                        "busy": False,
+                        "labels": [],
+                        "version": "",
+                    },
+                ],
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "simple", "runners", "list", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "1 runner-1" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runners_list_json_output(runner: CliRunner):
+    """Test runners list with JSON output format."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runners"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 1,
+                        "name": "runner-1",
+                        "status": "online",
+                        "busy": False,
+                        "labels": ["ubuntu-latest"],
+                        "version": "v0.2.6",
+                    },
+                ],
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "json", "runners", "list", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert len(data) == 1
+        assert data[0]["id"] == 1
+        assert data[0]["name"] == "runner-1"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runners_get_basic(runner: CliRunner):
+    """Test runners get command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runners/42"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "name": "my-runner",
+                    "status": "online",
+                    "busy": True,
+                    "labels": ["ubuntu-latest"],
+                    "version": "v0.2.6",
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["runners", "get", "42", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "my-runner" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runners_get_error(runner: CliRunner):
+    """Test runners get error handling."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runners/999"
+        ).mock(return_value=httpx.Response(404, json={"message": "Not found"}))
+
+        result = runner.invoke(
+            main, ["runners", "get", "999", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 1
+        assert "Error" in result.output
+
+
+def test_runners_delete_requires_scope(runner: CliRunner):
+    """Test runners delete requires scope option."""
+    result = runner.invoke(main, ["runners", "delete", "42"])
+
+    assert result.exit_code != 0
+    assert "Must specify --repo, --org, or --global" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runners_delete_confirmation(runner: CliRunner):
+    """Test runners delete prompts for confirmation."""
+    result = runner.invoke(
+        main, ["runners", "delete", "42", "--repo", "owner/repo"], input="n\n"
+    )
+
+    assert result.exit_code == 0
+    assert "Aborted" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runners_delete_with_yes_flag(runner: CliRunner):
+    """Test runners delete with -y flag skips confirmation."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.delete(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runners/42"
+        )
+        route.mock(return_value=httpx.Response(204))
+
+        result = runner.invoke(
+            main, ["runners", "delete", "42", "--repo", "owner/repo", "-y"]
+        )
+
+        assert result.exit_code == 0
+        assert "Deleted" in result.output
+        assert route.called
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runners_delete_error(runner: CliRunner):
+    """Test runners delete error handling."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.delete(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runners/999"
+        ).mock(return_value=httpx.Response(404, json={"message": "Not found"}))
+
+        result = runner.invoke(
+            main, ["runners", "delete", "999", "--repo", "owner/repo", "-y"]
+        )
+
+        assert result.exit_code == 1
+        assert "Error" in result.output
+
+
+def test_runners_token_requires_scope(runner: CliRunner):
+    """Test runners token requires scope option."""
+    result = runner.invoke(main, ["runners", "token"])
+
+    assert result.exit_code != 0
+    assert "Must specify --repo, --org, or --global" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runners_token_table_shows_warning(runner: CliRunner):
+    """Test runners token shows warning in table mode."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runners/registration-token"
+        ).mock(
+            return_value=httpx.Response(
+                200, json={"token": "AAABBBCCCDDD123456"}
+            )
+        )
+
+        result = runner.invoke(
+            main, ["runners", "token", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "Warning" in result.output
+        assert "secret" in result.output
+        assert "AAABBBCCCDDD123456" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runners_token_simple_no_warning(runner: CliRunner):
+    """Test runners token simple output has no warning."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runners/registration-token"
+        ).mock(
+            return_value=httpx.Response(
+                200, json={"token": "AAABBBCCCDDD123456"}
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "simple", "runners", "token", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "Warning" not in result.output
+        assert result.output.strip() == "AAABBBCCCDDD123456"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runners_token_json_output(runner: CliRunner):
+    """Test runners token JSON output."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runners/registration-token"
+        ).mock(
+            return_value=httpx.Response(
+                200, json={"token": "JSON_TOKEN_123"}
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "json", "runners", "token", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["token"] == "JSON_TOKEN_123"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runners_token_error(runner: CliRunner):
+    """Test runners token error handling."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runners/registration-token"
+        ).mock(return_value=httpx.Response(403, json={"message": "Forbidden"}))
+
+        result = runner.invoke(
+            main, ["runners", "token", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 1
+        assert "Error" in result.output
+
+
+def test_output_format_print_runners_simple(capsys):
+    """Test OutputFormat.print_runners simple format."""
+    runner = SimpleNamespace(
+        id=1, name="runner-1", status="online", busy=False, labels=[], version=""
+    )
+    output = OutputFormat("simple")
+    output.print_runners([runner])
+
+    captured = capsys.readouterr()
+    assert "1 runner-1" in captured.out
+
+
+def test_output_format_print_runners_empty(capsys):
+    """Test OutputFormat.print_runners with empty list."""
+    output = OutputFormat("table")
+    output.print_runners([])
+
+    captured = capsys.readouterr()
+    assert "No runners found" in captured.out
+
+
+def test_output_format_print_runners_csv(capsys):
+    """Test OutputFormat.print_runners CSV format."""
+    runner = SimpleNamespace(
+        id=1, name="runner-1", status="online", busy=False,
+        labels=["ubuntu-latest", "self-hosted"], version="v0.2.6"
+    )
+    output = OutputFormat("csv")
+    output.print_runners([runner])
+
+    captured = capsys.readouterr()
+    reader = csv.reader(io.StringIO(captured.out))
+    rows = list(reader)
+    assert rows[0] == ["id", "name", "status", "busy", "labels", "version"]
+    assert rows[1][0] == "1"
+    assert rows[1][1] == "runner-1"
+    assert "ubuntu-latest" in rows[1][4]

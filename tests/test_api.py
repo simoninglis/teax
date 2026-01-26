@@ -158,6 +158,24 @@ def test_seg_encodes_special_chars():
     assert _seg("repo#anchor") == "repo%23anchor"
 
 
+def test_seg_rejects_dot_segments():
+    """Test _seg rejects '.' and '..' to prevent path traversal."""
+    from teax.api import _seg
+
+    # Single dot (current directory reference)
+    with pytest.raises(ValueError, match="dot-segment traversal"):
+        _seg(".")
+
+    # Double dot (parent directory reference)
+    with pytest.raises(ValueError, match="dot-segment traversal"):
+        _seg("..")
+
+    # Valid segments containing dots should still work
+    assert _seg(".gitignore") == ".gitignore"
+    assert _seg("test..file") == "test..file"
+    assert _seg("a.b.c") == "a.b.c"
+
+
 def test_normalize_base_url_standard():
     """Test URL normalization for standard URLs."""
     from teax.api import _normalize_base_url
@@ -1244,3 +1262,338 @@ def test_list_milestones_truncation_warning(client: GiteaClient):
 
     with pytest.warns(UserWarning, match="Milestones list truncated at 2 pages"):
         client.list_milestones("owner", "repo", max_pages=2)
+
+
+# --- Actions/Runner Operations Tests ---
+
+
+def test_actions_base_path_repo_scope(client: GiteaClient):
+    """Test _actions_base_path with repo scope."""
+    path = client._actions_base_path(owner="myowner", repo="myrepo")
+    assert path == "repos/myowner/myrepo/actions"
+
+
+def test_actions_base_path_org_scope(client: GiteaClient):
+    """Test _actions_base_path with org scope."""
+    path = client._actions_base_path(org="myorg")
+    assert path == "orgs/myorg/actions"
+
+
+def test_actions_base_path_global_scope(client: GiteaClient):
+    """Test _actions_base_path with global scope."""
+    path = client._actions_base_path(global_scope=True)
+    assert path == "admin/actions"
+
+
+def test_actions_base_path_requires_scope(client: GiteaClient):
+    """Test _actions_base_path raises error when no scope provided."""
+    with pytest.raises(ValueError, match="Must specify --repo, --org, or --global"):
+        client._actions_base_path()
+
+
+def test_actions_base_path_rejects_multiple_scopes(client: GiteaClient):
+    """Test _actions_base_path raises error with multiple scopes."""
+    with pytest.raises(ValueError, match="Specify only one of"):
+        client._actions_base_path(owner="owner", repo="repo", org="org")
+
+
+def test_actions_base_path_encodes_special_chars(client: GiteaClient):
+    """Test _actions_base_path encodes special characters."""
+    path = client._actions_base_path(owner="my/owner", repo="my/repo")
+    assert path == "repos/my%2Fowner/my%2Frepo/actions"
+
+
+@respx.mock
+def test_list_runners_repo_scope(client: GiteaClient):
+    """Test listing runners with repo scope."""
+    respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/runners"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": 1,
+                    "name": "runner-1",
+                    "status": "online",
+                    "busy": False,
+                    "labels": ["ubuntu-latest"],
+                    "version": "v0.2.6",
+                },
+                {
+                    "id": 2,
+                    "name": "runner-2",
+                    "status": "offline",
+                    "busy": False,
+                    "labels": ["self-hosted", "linux"],
+                    "version": "v0.2.5",
+                },
+            ],
+        )
+    )
+
+    runners = client.list_runners(owner="owner", repo="repo")
+
+    assert len(runners) == 2
+    assert runners[0].id == 1
+    assert runners[0].name == "runner-1"
+    assert runners[0].status == "online"
+    assert runners[0].labels == ["ubuntu-latest"]
+    assert runners[1].id == 2
+    assert runners[1].status == "offline"
+
+
+@respx.mock
+def test_list_runners_org_scope(client: GiteaClient):
+    """Test listing runners with org scope."""
+    respx.get("https://test.example.com/api/v1/orgs/myorg/actions/runners").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": 10,
+                    "name": "org-runner",
+                    "status": "online",
+                    "busy": True,
+                    "labels": [],
+                    "version": "",
+                },
+            ],
+        )
+    )
+
+    runners = client.list_runners(org="myorg")
+
+    assert len(runners) == 1
+    assert runners[0].id == 10
+    assert runners[0].name == "org-runner"
+    assert runners[0].busy is True
+
+
+@respx.mock
+def test_list_runners_global_scope(client: GiteaClient):
+    """Test listing runners with global scope."""
+    respx.get("https://test.example.com/api/v1/admin/actions/runners").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": 100,
+                    "name": "global-runner",
+                    "status": "idle",
+                    "busy": False,
+                    "labels": ["arm64"],
+                    "version": "v0.2.6",
+                },
+            ],
+        )
+    )
+
+    runners = client.list_runners(global_scope=True)
+
+    assert len(runners) == 1
+    assert runners[0].id == 100
+    assert runners[0].name == "global-runner"
+
+
+@respx.mock
+def test_list_runners_with_dict_labels(client: GiteaClient):
+    """Test listing runners handles labels as list of dicts."""
+    respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/runners"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": 1,
+                    "name": "runner-1",
+                    "status": "online",
+                    "busy": False,
+                    "labels": [
+                        {"id": 1, "name": "ubuntu-latest", "type": "system"},
+                        {"id": 2, "name": "self-hosted", "type": "custom"},
+                    ],
+                    "version": "v0.2.6",
+                },
+            ],
+        )
+    )
+
+    runners = client.list_runners(owner="owner", repo="repo")
+
+    assert len(runners) == 1
+    assert runners[0].labels == ["ubuntu-latest", "self-hosted"]
+
+
+@respx.mock
+def test_list_runners_wrapped_response(client: GiteaClient):
+    """Test listing runners handles wrapped response format."""
+    respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/runners"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "runners": [
+                    {
+                        "id": 1,
+                        "name": "runner-1",
+                        "status": "online",
+                        "busy": False,
+                        "labels": [],
+                        "version": "",
+                    },
+                ]
+            },
+        )
+    )
+
+    runners = client.list_runners(owner="owner", repo="repo")
+
+    assert len(runners) == 1
+    assert runners[0].id == 1
+
+
+@respx.mock
+def test_list_runners_pagination_truncation(client: GiteaClient):
+    """Test truncation warning when runners exceed max_pages."""
+    route = respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/runners"
+    )
+    page_data = [
+        {
+            "id": i,
+            "name": f"runner-{i}",
+            "status": "online",
+            "busy": False,
+            "labels": [],
+            "version": "",
+        }
+        for i in range(50)
+    ]
+    route.side_effect = [
+        httpx.Response(200, json=page_data),
+        httpx.Response(200, json=page_data),
+    ]
+
+    with pytest.warns(UserWarning, match="Runners list truncated at 2 pages"):
+        client.list_runners(owner="owner", repo="repo", max_pages=2)
+
+
+@respx.mock
+def test_get_runner(client: GiteaClient):
+    """Test getting a runner by ID."""
+    respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/runners/42"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 42,
+                "name": "my-runner",
+                "status": "online",
+                "busy": True,
+                "labels": ["ubuntu-latest", "docker"],
+                "version": "v0.2.6",
+            },
+        )
+    )
+
+    runner = client.get_runner(42, owner="owner", repo="repo")
+
+    assert runner.id == 42
+    assert runner.name == "my-runner"
+    assert runner.status == "online"
+    assert runner.busy is True
+    assert runner.labels == ["ubuntu-latest", "docker"]
+
+
+@respx.mock
+def test_get_runner_not_found(client: GiteaClient):
+    """Test 404 error when runner not found."""
+    respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/runners/999"
+    ).mock(return_value=httpx.Response(404, json={"message": "Not found"}))
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        client.get_runner(999, owner="owner", repo="repo")
+
+    assert exc_info.value.response.status_code == 404
+
+
+@respx.mock
+def test_delete_runner(client: GiteaClient):
+    """Test deleting a runner."""
+    route = respx.delete(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/runners/42"
+    )
+    route.mock(return_value=httpx.Response(204))
+
+    client.delete_runner(42, owner="owner", repo="repo")
+
+    assert route.called
+
+
+@respx.mock
+def test_delete_runner_org_scope(client: GiteaClient):
+    """Test deleting a runner with org scope."""
+    route = respx.delete(
+        "https://test.example.com/api/v1/orgs/myorg/actions/runners/42"
+    )
+    route.mock(return_value=httpx.Response(204))
+
+    client.delete_runner(42, org="myorg")
+
+    assert route.called
+
+
+@respx.mock
+def test_get_runner_registration_token(client: GiteaClient):
+    """Test getting a registration token."""
+    respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/runners/registration-token"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={"token": "AAABBBCCCDDD123456"},
+        )
+    )
+
+    token = client.get_runner_registration_token(owner="owner", repo="repo")
+
+    assert token.token == "AAABBBCCCDDD123456"
+
+
+@respx.mock
+def test_get_runner_registration_token_org_scope(client: GiteaClient):
+    """Test getting a registration token with org scope."""
+    respx.get(
+        "https://test.example.com/api/v1/orgs/myorg/actions/runners/registration-token"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={"token": "ORG_TOKEN_123"},
+        )
+    )
+
+    token = client.get_runner_registration_token(org="myorg")
+
+    assert token.token == "ORG_TOKEN_123"
+
+
+@respx.mock
+def test_get_runner_registration_token_global_scope(client: GiteaClient):
+    """Test getting a registration token with global scope."""
+    respx.get(
+        "https://test.example.com/api/v1/admin/actions/runners/registration-token"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={"token": "GLOBAL_TOKEN_456"},
+        )
+    )
+
+    token = client.get_runner_registration_token(global_scope=True)
+
+    assert token.token == "GLOBAL_TOKEN_456"
