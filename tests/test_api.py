@@ -1597,3 +1597,323 @@ def test_get_runner_registration_token_global_scope(client: GiteaClient):
     token = client.get_runner_registration_token(global_scope=True)
 
     assert token.token == "GLOBAL_TOKEN_456"
+
+
+# --- Package Operations Tests ---
+
+
+def test_packages_base_url(client: GiteaClient):
+    """Test _packages_base_url builds correct URL."""
+    url = client._packages_base_url("homelab-teams")
+    assert url == "https://test.example.com/api/packages/homelab-teams"
+
+
+def test_packages_base_url_encodes_special_chars(client: GiteaClient):
+    """Test _packages_base_url encodes special characters."""
+    url = client._packages_base_url("my/owner")
+    assert url == "https://test.example.com/api/packages/my%2Fowner"
+
+
+def test_packages_base_url_with_api_v1_suffix():
+    """Test _packages_base_url correctly strips /api/v1 from login URL."""
+    from teax.models import TeaLogin
+
+    # Login URL already includes /api/v1 (common tea config format)
+    login = TeaLogin(
+        name="test.example.com",
+        url="https://test.example.com/api/v1",
+        token="test-token-123",
+        default=True,
+    )
+    client = GiteaClient(login=login)
+    url = client._packages_base_url("homelab-teams")
+    # Should NOT result in /api/v1/api/packages/ (double API path)
+    assert url == "https://test.example.com/api/packages/homelab-teams"
+    assert "/api/v1/api/" not in url
+
+
+def test_packages_base_url_with_subpath():
+    """Test _packages_base_url handles base URL with subpath correctly."""
+    from teax.models import TeaLogin
+
+    # Login URL has subpath (e.g., reverse proxy at /gitea)
+    login = TeaLogin(
+        name="example.com",
+        url="https://example.com/gitea/api/v1",
+        token="test-token-123",
+        default=True,
+    )
+    client = GiteaClient(login=login)
+    url = client._packages_base_url("myorg")
+    assert url == "https://example.com/gitea/api/packages/myorg"
+
+
+@respx.mock
+def test_list_packages(client: GiteaClient):
+    """Test listing packages for an owner."""
+    respx.get("https://test.example.com/api/packages/homelab-teams").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": 1,
+                    "owner": {"id": 10, "login": "homelab-teams", "full_name": ""},
+                    "name": "teax",
+                    "type": "pypi",
+                    "version": "0.1.0",
+                    "created_at": "2024-01-15T10:00:00Z",
+                    "html_url": "https://test.example.com/packages/pypi/teax",
+                },
+                {
+                    "id": 2,
+                    "owner": {"id": 10, "login": "homelab-teams", "full_name": ""},
+                    "name": "myimage",
+                    "type": "container",
+                    "version": "latest",
+                    "created_at": "2024-01-16T10:00:00Z",
+                    "html_url": "https://test.example.com/packages/container/myimage",
+                },
+            ],
+        )
+    )
+
+    packages = client.list_packages("homelab-teams")
+
+    assert len(packages) == 2
+    assert packages[0].name == "teax"
+    assert packages[0].type == "pypi"
+    assert packages[0].version == "0.1.0"
+    assert packages[1].name == "myimage"
+    assert packages[1].type == "container"
+
+
+@respx.mock
+def test_list_packages_with_type_filter(client: GiteaClient):
+    """Test listing packages with type filter."""
+    route = respx.get("https://test.example.com/api/packages/homelab-teams")
+    route.mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": 1,
+                    "owner": {"id": 10, "login": "homelab-teams", "full_name": ""},
+                    "name": "teax",
+                    "type": "pypi",
+                    "version": "0.1.0",
+                    "created_at": "2024-01-15T10:00:00Z",
+                    "html_url": "",
+                },
+            ],
+        )
+    )
+
+    packages = client.list_packages("homelab-teams", pkg_type="pypi")
+
+    assert len(packages) == 1
+    # Verify type filter was passed as query parameter
+    assert route.calls.last.request.url.params["type"] == "pypi"
+
+
+@respx.mock
+def test_list_packages_empty(client: GiteaClient):
+    """Test listing packages when none exist."""
+    respx.get("https://test.example.com/api/packages/homelab-teams").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+
+    packages = client.list_packages("homelab-teams")
+
+    assert packages == []
+
+
+@respx.mock
+def test_list_packages_truncation_warning(client: GiteaClient):
+    """Test truncation warning when packages exceed max_pages."""
+    route = respx.get("https://test.example.com/api/packages/homelab-teams")
+    page_data = [
+        {
+            "id": i,
+            "owner": {"id": 10, "login": "homelab-teams", "full_name": ""},
+            "name": f"pkg-{i}",
+            "type": "pypi",
+            "version": "1.0.0",
+            "created_at": "2024-01-15T10:00:00Z",
+            "html_url": "",
+        }
+        for i in range(50)
+    ]
+    route.side_effect = [
+        httpx.Response(200, json=page_data),
+        httpx.Response(200, json=page_data),
+    ]
+
+    with pytest.warns(UserWarning, match="Packages list truncated at 2 pages"):
+        client.list_packages("homelab-teams", max_pages=2)
+
+
+@respx.mock
+def test_list_package_versions(client: GiteaClient):
+    """Test listing package versions."""
+    respx.get(
+        "https://test.example.com/api/packages/homelab-teams/pypi/teax"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": 3,
+                    "version": "0.3.0",
+                    "created_at": "2024-01-17T10:00:00Z",
+                    "html_url": "https://test.example.com/packages/pypi/teax/0.3.0",
+                },
+                {
+                    "id": 2,
+                    "version": "0.2.0",
+                    "created_at": "2024-01-16T10:00:00Z",
+                    "html_url": "https://test.example.com/packages/pypi/teax/0.2.0",
+                },
+                {
+                    "id": 1,
+                    "version": "0.1.0",
+                    "created_at": "2024-01-15T10:00:00Z",
+                    "html_url": "https://test.example.com/packages/pypi/teax/0.1.0",
+                },
+            ],
+        )
+    )
+
+    versions = client.list_package_versions("homelab-teams", "pypi", "teax")
+
+    assert len(versions) == 3
+    assert versions[0].version == "0.3.0"
+    assert versions[1].version == "0.2.0"
+    assert versions[2].version == "0.1.0"
+
+
+@respx.mock
+def test_list_package_versions_empty(client: GiteaClient):
+    """Test listing package versions when none exist."""
+    respx.get(
+        "https://test.example.com/api/packages/homelab-teams/pypi/teax"
+    ).mock(return_value=httpx.Response(200, json=[]))
+
+    versions = client.list_package_versions("homelab-teams", "pypi", "teax")
+
+    assert versions == []
+
+
+@respx.mock
+def test_list_package_versions_sorts_by_created_at(client: GiteaClient):
+    """Test list_package_versions sorts versions by created_at descending."""
+    # Return versions in unsorted order (API doesn't guarantee order)
+    respx.get(
+        "https://test.example.com/api/packages/homelab-teams/pypi/teax"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": 1,
+                    "version": "0.1.0",
+                    "created_at": "2024-01-15T10:00:00Z",  # Oldest
+                    "html_url": "",
+                },
+                {
+                    "id": 3,
+                    "version": "0.3.0",
+                    "created_at": "2024-01-17T10:00:00Z",  # Newest
+                    "html_url": "",
+                },
+                {
+                    "id": 2,
+                    "version": "0.2.0",
+                    "created_at": "2024-01-16T10:00:00Z",  # Middle
+                    "html_url": "",
+                },
+            ],
+        )
+    )
+
+    versions = client.list_package_versions("homelab-teams", "pypi", "teax")
+
+    # Should be sorted by created_at descending (newest first)
+    assert len(versions) == 3
+    assert versions[0].version == "0.3.0"  # Newest
+    assert versions[1].version == "0.2.0"  # Middle
+    assert versions[2].version == "0.1.0"  # Oldest
+
+
+@respx.mock
+def test_get_package(client: GiteaClient):
+    """Test getting package details."""
+    respx.get(
+        "https://test.example.com/api/packages/homelab-teams/pypi/teax"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": 1,
+                    "version": "0.1.0",
+                    "created_at": "2024-01-15T10:00:00Z",
+                    "html_url": "https://test.example.com/packages/pypi/teax/0.1.0",
+                },
+            ],
+        )
+    )
+
+    package = client.get_package("homelab-teams", "pypi", "teax")
+
+    assert package.name == "teax"
+    assert package.type == "pypi"
+    assert package.version == "0.1.0"
+
+
+@respx.mock
+def test_get_package_not_found(client: GiteaClient):
+    """Test error when package not found."""
+    respx.get(
+        "https://test.example.com/api/packages/homelab-teams/pypi/nonexistent"
+    ).mock(return_value=httpx.Response(200, json=[]))
+
+    with pytest.raises(ValueError, match="Package 'nonexistent' not found"):
+        client.get_package("homelab-teams", "pypi", "nonexistent")
+
+
+@respx.mock
+def test_delete_package_version(client: GiteaClient):
+    """Test deleting a package version."""
+    route = respx.delete(
+        "https://test.example.com/api/packages/homelab-teams/container/myimage/latest"
+    )
+    route.mock(return_value=httpx.Response(204))
+
+    client.delete_package_version("homelab-teams", "container", "myimage", "latest")
+
+    assert route.called
+
+
+def test_delete_package_version_pypi_blocked(client: GiteaClient):
+    """Test that PyPI package deletion is blocked with helpful message."""
+    with pytest.raises(ValueError, match="PyPI packages cannot be deleted via API"):
+        client.delete_package_version("homelab-teams", "pypi", "teax", "0.1.0")
+
+
+def test_delete_package_version_pypi_blocked_case_insensitive(client: GiteaClient):
+    """Test that PyPI detection is case-insensitive."""
+    with pytest.raises(ValueError, match="PyPI packages cannot be deleted via API"):
+        client.delete_package_version("homelab-teams", "PyPI", "teax", "0.1.0")
+
+
+@respx.mock
+def test_delete_package_version_encodes_path(client: GiteaClient):
+    """Test that delete_package_version encodes path segments."""
+    route = respx.delete(
+        "https://test.example.com/api/packages/home%2Flab/container/my%2Fimage/1.0%2F0"
+    )
+    route.mock(return_value=httpx.Response(204))
+
+    client.delete_package_version("home/lab", "container", "my/image", "1.0/0")
+
+    assert route.called

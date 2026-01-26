@@ -14,9 +14,12 @@ from teax.models import (
     Issue,
     Label,
     Milestone,
+    Package,
+    PackageVersion,
     RegistrationToken,
     Runner,
     TeaLogin,
+    User,
 )
 
 
@@ -843,7 +846,12 @@ class GiteaClient:
             data = response.json()
 
             # Handle Gitea's response format (may be {"runners": [...]} or [...])
-            items = data.get("runners", data) if isinstance(data, dict) else data
+            if isinstance(data, dict):
+                items = data.get("runners", [])
+            elif isinstance(data, list):
+                items = data
+            else:
+                raise TypeError(f"Unexpected runners response type: {type(data)!r}")
             if not items:
                 break
 
@@ -945,3 +953,193 @@ class GiteaClient:
         response = self._client.get(f"{base}/runners/registration-token")
         response.raise_for_status()
         return RegistrationToken.model_validate(response.json())
+
+    # --- Package Operations ---
+
+    def _packages_base_url(self, owner: str) -> str:
+        """Build base URL for package API.
+
+        Package API uses /api/packages/{owner}/, not /api/v1/packages/{owner}/.
+        We need to use the server base URL directly (stripping /api/v1 if present).
+
+        Args:
+            owner: Package owner (user or organisation)
+
+        Returns:
+            Base URL like 'https://gitea.example.com/api/packages/{owner}'
+        """
+        # Use _normalize_base_url to handle various URL formats, then strip /api/v1/
+        api_base = _normalize_base_url(self._login.url)  # ends with /api/v1/
+        server_url = api_base.removesuffix("/api/v1/").rstrip("/")
+        return f"{server_url}/api/packages/{_seg(owner)}"
+
+    def list_packages(
+        self,
+        owner: str,
+        pkg_type: str | None = None,
+        *,
+        max_pages: int = 100,
+    ) -> list[Package]:
+        """List packages for an owner.
+
+        Args:
+            owner: Package owner (user or organisation)
+            pkg_type: Filter by package type (pypi, container, generic, etc.)
+            max_pages: Maximum pages to fetch (default 100, prevents DoS)
+
+        Returns:
+            List of packages
+        """
+        base_url = self._packages_base_url(owner)
+        packages: list[Package] = []
+        page = 1
+        limit = 50
+        truncated = False
+
+        while page <= max_pages:
+            params: dict[str, Any] = {"page": page, "limit": limit}
+            if pkg_type:
+                params["type"] = pkg_type
+
+            response = self._client.get(base_url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            if not data:
+                break
+
+            packages.extend(Package.model_validate(pkg) for pkg in data)
+
+            if len(data) < limit:
+                break
+            page += 1
+        else:
+            truncated = True
+
+        if truncated:
+            warnings.warn(
+                f"Packages list truncated at {max_pages} pages "
+                f"({len(packages)} items). Results may be incomplete.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        return packages
+
+    def get_package(
+        self,
+        owner: str,
+        pkg_type: str,
+        name: str,
+    ) -> Package:
+        """Get a package by type and name.
+
+        Args:
+            owner: Package owner (user or organisation)
+            pkg_type: Package type (pypi, container, generic, etc.)
+            name: Package name
+
+        Returns:
+            Package details (returns first version found)
+        """
+        versions = self.list_package_versions(owner, pkg_type, name)
+        if not versions:
+            raise ValueError(f"Package '{name}' not found")
+
+        # Build a Package from the version info - we need to fetch owner details
+        # The package list endpoint returns full Package objects, but get by name
+        # returns versions. We'll construct a minimal Package.
+        first_version = versions[0]
+        return Package(
+            id=first_version.id,
+            owner=User(id=0, login=owner, full_name=""),
+            name=name,
+            type=pkg_type,
+            version=first_version.version,
+            created_at=first_version.created_at,
+            html_url=first_version.html_url,
+        )
+
+    def list_package_versions(
+        self,
+        owner: str,
+        pkg_type: str,
+        name: str,
+        *,
+        max_pages: int = 100,
+    ) -> list[PackageVersion]:
+        """List versions of a package.
+
+        Args:
+            owner: Package owner (user or organisation)
+            pkg_type: Package type (pypi, container, generic, etc.)
+            name: Package name
+            max_pages: Maximum pages to fetch (default 100, prevents DoS)
+
+        Returns:
+            List of package versions, sorted by created_at descending
+        """
+        base_url = self._packages_base_url(owner)
+        url = f"{base_url}/{_seg(pkg_type)}/{_seg(name)}"
+        versions: list[PackageVersion] = []
+        page = 1
+        limit = 50
+        truncated = False
+
+        while page <= max_pages:
+            response = self._client.get(url, params={"page": page, "limit": limit})
+            response.raise_for_status()
+            data = response.json()
+
+            if not data:
+                break
+
+            versions.extend(PackageVersion.model_validate(v) for v in data)
+
+            if len(data) < limit:
+                break
+            page += 1
+        else:
+            truncated = True
+
+        if truncated:
+            warnings.warn(
+                f"Package versions list truncated at {max_pages} pages "
+                f"({len(versions)} items). Results may be incomplete.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        # Sort by created_at descending (ISO-8601 strings sort lexicographically)
+        versions.sort(key=lambda v: v.created_at or "", reverse=True)
+        return versions
+
+    def delete_package_version(
+        self,
+        owner: str,
+        pkg_type: str,
+        name: str,
+        version: str,
+    ) -> None:
+        """Delete a specific package version.
+
+        Args:
+            owner: Package owner (user or organisation)
+            pkg_type: Package type (pypi, container, generic, etc.)
+            name: Package name
+            version: Version to delete
+
+        Raises:
+            ValueError: If pkg_type is 'pypi' (PyPI deletion not supported via API)
+        """
+        if pkg_type.lower() == "pypi":
+            raise ValueError(
+                "PyPI packages cannot be deleted via API (Gitea limitation). "
+                "Use the Gitea web UI: Settings → Packages → Delete. "
+                "See: https://github.com/go-gitea/gitea/issues/22303"
+            )
+
+        base_url = self._packages_base_url(owner)
+        url = f"{base_url}/{_seg(pkg_type)}/{_seg(name)}/{_seg(version)}"
+        response = self._client.delete(url)
+        response.raise_for_status()

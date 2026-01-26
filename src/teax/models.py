@@ -112,3 +112,36 @@ class RegistrationToken(BaseModel):
     """Runner registration token."""
 
     token: str
+
+
+class PackageFile(BaseModel):
+    """Gitea package file metadata."""
+
+    id: int
+    size: int
+    name: str
+    md5: str = ""
+    sha1: str = ""
+    sha256: str = ""
+    sha512: str = ""
+
+
+class Package(BaseModel):
+    """Gitea package representation."""
+
+    id: int
+    owner: User
+    name: str
+    type: str  # pypi, container, generic, npm, etc.
+    version: str
+    created_at: str
+    html_url: str = ""
+
+
+class PackageVersion(BaseModel):
+    """Gitea package version details."""
+
+    id: int
+    version: str
+    created_at: str
+    html_url: str = ""

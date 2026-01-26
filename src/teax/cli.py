@@ -74,6 +74,7 @@ CLI_ERRORS = (
     ValueError,
     FileNotFoundError,
     ValidationError,
+    TypeError,  # e.g., malformed API responses
     KeyError,  # Unexpected API response format
 )
 
@@ -437,6 +438,172 @@ class OutputFormat:
                     safe_rich(r.version),
                 )
             console.print(table)
+
+    def print_packages(self, packages: list[Any]) -> None:
+        """Print package list."""
+        if self.format_type == "json":
+            output_data = [
+                {
+                    "id": p.id,
+                    "name": terminal_safe(p.name),
+                    "type": terminal_safe(p.type),
+                    "version": terminal_safe(p.version),
+                    "owner": terminal_safe(p.owner.login),
+                    "created_at": terminal_safe(p.created_at),
+                }
+                for p in packages
+            ]
+            click.echo(json.dumps(output_data, indent=2))
+
+        elif self.format_type == "simple":
+            for p in packages:
+                click.echo(
+                    f"{terminal_safe(p.type)}/{terminal_safe(p.name)}:"
+                    f"{terminal_safe(p.version)}"
+                )
+
+        elif self.format_type == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["name", "type", "version", "owner", "created_at"])
+            for p in packages:
+                writer.writerow([
+                    csv_safe(p.name),
+                    csv_safe(p.type),
+                    csv_safe(p.version),
+                    csv_safe(p.owner.login),
+                    csv_safe(p.created_at),
+                ])
+            click.echo(output.getvalue().rstrip())
+
+        else:  # table (default)
+            if not packages:
+                console.print("[dim]No packages found[/dim]")
+                return
+
+            table = Table(title="Packages")
+            table.add_column("Name", style="cyan")
+            table.add_column("Type")
+            table.add_column("Version")
+            table.add_column("Owner", style="dim")
+            table.add_column("Created", style="dim")
+
+            for p in packages:
+                table.add_row(
+                    safe_rich(p.name),
+                    safe_rich(p.type),
+                    safe_rich(p.version),
+                    safe_rich(p.owner.login),
+                    safe_rich(p.created_at[:10] if p.created_at else ""),
+                )
+            console.print(table)
+
+    def print_package_versions(
+        self, name: str, pkg_type: str, versions: list[Any]
+    ) -> None:
+        """Print package version list."""
+        if self.format_type == "json":
+            output_data = {
+                "name": terminal_safe(name),
+                "type": terminal_safe(pkg_type),
+                "versions": [
+                    {
+                        "id": v.id,
+                        "version": terminal_safe(v.version),
+                        "created_at": terminal_safe(v.created_at),
+                        "html_url": terminal_safe(v.html_url),
+                    }
+                    for v in versions
+                ],
+            }
+            click.echo(json.dumps(output_data, indent=2))
+
+        elif self.format_type == "simple":
+            for v in versions:
+                click.echo(terminal_safe(v.version))
+
+        elif self.format_type == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["version", "created_at", "html_url"])
+            for v in versions:
+                writer.writerow([
+                    csv_safe(v.version),
+                    csv_safe(v.created_at),
+                    csv_safe(v.html_url),
+                ])
+            click.echo(output.getvalue().rstrip())
+
+        else:  # table (default)
+            if not versions:
+                console.print("[dim]No versions found[/dim]")
+                return
+
+            esc_name = safe_rich(name)
+            esc_type = safe_rich(pkg_type)
+            table = Table(title=f"Package: {esc_name} ({esc_type})")
+            table.add_column("Version", style="cyan")
+            table.add_column("Created", style="dim")
+            table.add_column("URL", style="dim")
+
+            for v in versions:
+                table.add_row(
+                    safe_rich(v.version),
+                    safe_rich(v.created_at[:10] if v.created_at else ""),
+                    safe_rich(v.html_url),
+                )
+            console.print(table)
+
+    def print_prune_preview(
+        self,
+        name: str,
+        pkg_type: str,
+        to_delete: list[Any],
+        to_keep: list[Any],
+        execute: bool,
+    ) -> None:
+        """Print package prune preview."""
+        if self.format_type == "json":
+            output_data = {
+                "name": terminal_safe(name),
+                "type": terminal_safe(pkg_type),
+                "dry_run": not execute,
+                "to_delete": [terminal_safe(v.version) for v in to_delete],
+                "to_keep": [terminal_safe(v.version) for v in to_keep],
+            }
+            click.echo(json.dumps(output_data, indent=2))
+
+        elif self.format_type == "simple":
+            action = "Deleting" if execute else "Would delete"
+            for v in to_delete:
+                click.echo(f"{action}: {terminal_safe(v.version)}")
+
+        elif self.format_type == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["version", "action"])
+            for v in to_delete:
+                action = "delete" if execute else "would_delete"
+                writer.writerow([csv_safe(v.version), action])
+            for v in to_keep:
+                writer.writerow([csv_safe(v.version), "keep"])
+            click.echo(output.getvalue().rstrip())
+
+        else:  # table (default)
+            mode = "[green]Executing[/green]" if execute else "[yellow]Dry run[/yellow]"
+            esc_name = safe_rich(name)
+            esc_type = safe_rich(pkg_type)
+            console.print(f"\n[bold]Prune {esc_name} ({esc_type})[/bold] - {mode}")
+
+            if to_delete:
+                console.print(f"\n[red]To delete ({len(to_delete)}):[/red]")
+                for v in to_delete:
+                    console.print(f"  - {safe_rich(v.version)}")
+
+            if to_keep:
+                console.print(f"\n[green]To keep ({len(to_keep)}):[/green]")
+                for v in to_keep:
+                    console.print(f"  - {safe_rich(v.version)}")
 
 
 # --- Main CLI Group ---
@@ -1609,6 +1776,236 @@ def runners_token(
                 console.print()
                 token_display = safe_rich(token.token)
                 console.print(f"[bold]Registration Token:[/bold] {token_display}")
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+# --- Package Group ---
+
+
+@main.group()
+def pkg() -> None:
+    """Manage Gitea packages (PyPI, Container, Generic, etc.)."""
+    pass
+
+
+@pkg.command("list")
+@click.option("--owner", "-o", required=True, help="Package owner (user or org)")
+@click.option("--type", "pkg_type", help="Filter by type (pypi, container, etc.)")
+@click.pass_context
+def pkg_list(ctx: click.Context, owner: str, pkg_type: str | None) -> None:
+    """List packages for an owner.
+
+    Examples:
+        teax pkg list --owner homelab-teams
+        teax pkg list --owner homelab-teams --type pypi
+        teax pkg list --owner myuser --type container -o json
+    """
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            packages = client.list_packages(owner, pkg_type)
+            output.print_packages(packages)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@pkg.command("info")
+@click.argument("name")
+@click.option("--owner", "-o", required=True, help="Package owner (user or org)")
+@click.option("--type", "pkg_type", required=True, help="Package type")
+@click.pass_context
+def pkg_info(ctx: click.Context, name: str, owner: str, pkg_type: str) -> None:
+    """Show package info with all versions.
+
+    NAME is the package name.
+
+    Examples:
+        teax pkg info teax --owner homelab-teams --type pypi
+        teax pkg info myimage --owner homelab-teams --type container
+    """
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            versions = client.list_package_versions(owner, pkg_type, name)
+            output.print_package_versions(name, pkg_type, versions)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@pkg.command("delete")
+@click.argument("name")
+@click.option("--owner", "-o", required=True, help="Package owner (user or org)")
+@click.option("--type", "pkg_type", required=True, help="Package type")
+@click.option("--version", "-v", "version", required=True, help="Version to delete")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+@click.pass_context
+def pkg_delete(
+    ctx: click.Context,
+    name: str,
+    owner: str,
+    pkg_type: str,
+    version: str,
+    yes: bool,
+) -> None:
+    """Delete a specific package version.
+
+    NAME is the package name.
+
+    NOTE: PyPI packages cannot be deleted via API (Gitea limitation).
+    Use the Gitea web UI for PyPI package deletion.
+
+    Examples:
+        teax pkg delete mypkg -o homelab-teams --type generic -v 1.0.0
+        teax pkg delete myimage -o homelab-teams --type container -v latest -y
+    """
+    # Check for PyPI upfront with helpful message
+    if pkg_type.lower() == "pypi":
+        err_console.print(
+            "[red]Error:[/red] PyPI packages cannot be deleted via API "
+            "(Gitea limitation).\n"
+            "Use the Gitea web UI: Settings → Packages → Delete.\n"
+            "See: https://github.com/go-gitea/gitea/issues/22303"
+        )
+        sys.exit(1)
+
+    # Build safe strings for display
+    # Use terminal_safe for plain text output (click.confirm)
+    safe_name_plain = terminal_safe(name)
+    safe_type_plain = terminal_safe(pkg_type)
+    safe_version_plain = terminal_safe(version)
+    safe_owner_plain = terminal_safe(owner)
+    # Use safe_rich for Rich markup output (console.print)
+    safe_name_rich = safe_rich(name)
+    safe_type_rich = safe_rich(pkg_type)
+    safe_version_rich = safe_rich(version)
+
+    if not yes:
+        if not click.confirm(
+            f"Delete {safe_type_plain}/{safe_name_plain}:{safe_version_plain} "
+            f"from {safe_owner_plain}?"
+        ):
+            console.print("[yellow]Aborted[/yellow]")
+            return
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            client.delete_package_version(owner, pkg_type, name, version)
+            console.print(
+                f"[green]Deleted:[/green] "
+                f"{safe_type_rich}/{safe_name_rich}:{safe_version_rich}"
+            )
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@pkg.command("prune")
+@click.argument("name")
+@click.option("--owner", "-o", required=True, help="Package owner (user or org)")
+@click.option("--type", "pkg_type", required=True, help="Package type")
+@click.option("--keep", "-k", type=int, default=3, help="Versions to keep (default: 3)")
+@click.option("--execute", is_flag=True, help="Actually delete (default: dry-run)")
+@click.pass_context
+def pkg_prune(
+    ctx: click.Context,
+    name: str,
+    owner: str,
+    pkg_type: str,
+    keep: int,
+    execute: bool,
+) -> None:
+    """Prune old package versions, keeping the N most recent.
+
+    NAME is the package name.
+
+    By default, runs in dry-run mode showing what would be deleted.
+    Use --execute to actually delete the versions.
+
+    NOTE: PyPI packages cannot be pruned via API (Gitea limitation).
+
+    Examples:
+        teax pkg prune myimage --owner homelab-teams --type container --keep 3
+        teax pkg prune myimage --owner homelab-teams --type container --keep 3 --execute
+    """
+    # Check for PyPI upfront with helpful message
+    if pkg_type.lower() == "pypi":
+        err_console.print(
+            "[red]Error:[/red] PyPI packages cannot be deleted via API "
+            "(Gitea limitation).\n"
+            "Use the Gitea web UI: Settings → Packages → Delete.\n"
+            "See: https://github.com/go-gitea/gitea/issues/22303"
+        )
+        sys.exit(1)
+
+    if keep < 0:
+        raise click.BadParameter("--keep must be >= 0")
+
+    output: OutputFormat = ctx.obj["output"]
+    # Use stderr for status messages in machine-readable formats
+    log = (
+        err_console
+        if output.format_type in ("json", "csv", "simple")
+        else console
+    )
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            # Get all versions (sorted by created_at descending by default)
+            versions = client.list_package_versions(owner, pkg_type, name)
+
+            if not versions:
+                log.print("[dim]No versions found[/dim]")
+                return
+
+            # Split into keep and delete lists
+            to_keep = versions[:keep]
+            to_delete = versions[keep:]
+
+            if not to_delete:
+                msg = f"Nothing to prune - only {len(versions)} version(s) exist"
+                log.print(f"[dim]{msg}[/dim]")
+                return
+
+            # Show preview
+            output.print_prune_preview(name, pkg_type, to_delete, to_keep, execute)
+
+            if execute:
+                # Actually delete
+                success_count = 0
+                error_count = 0
+
+                for v in to_delete:
+                    try:
+                        client.delete_package_version(
+                            owner, pkg_type, name, v.version
+                        )
+                        ver = safe_rich(v.version)
+                        log.print(f"  [green]✓[/green] Deleted {ver}")
+                        success_count += 1
+                    except CLI_ERRORS as e:
+                        ver = safe_rich(v.version)
+                        err = safe_rich(str(e))
+                        log.print(f"  [red]✗[/red] {ver}: {err}")
+                        error_count += 1
+
+                log.print()
+                msg = f"{success_count} deleted, {error_count} failed"
+                log.print(f"[bold]Summary:[/bold] {msg}")
+
+                if error_count > 0:
+                    sys.exit(1)
+            else:
+                log.print()
+                log.print(
+                    "[dim]Use --execute to actually delete these versions[/dim]"
+                )
 
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")

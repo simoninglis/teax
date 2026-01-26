@@ -504,9 +504,116 @@ All runner commands require exactly one scope:
 | `--org orgname` | Organisation-level runners |
 | `--global` | Instance-level runners (admin only) |
 
+## Package Management
+
+Manage Gitea package registry packages (PyPI, Container, Generic, etc.).
+
+**Note**: Packages are owner-scoped (user or organisation), not repository-scoped.
+
+### List Packages
+
+```bash
+# List all packages for an owner
+teax pkg list --owner homelab-teams
+
+# Filter by type
+teax pkg list --owner homelab-teams --type pypi
+teax pkg list --owner homelab-teams --type container
+```
+
+**Output (table format)**:
+```
+                    Packages
+┏━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┓
+┃ Name     ┃ Type      ┃ Version ┃ Owner         ┃ Created            ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━┩
+│ teax     │ pypi      │ 0.3.0   │ homelab-teams │ 2026-01-25T10:00Z  │
+│ myapp    │ container │ latest  │ homelab-teams │ 2026-01-24T15:30Z  │
+└──────────┴───────────┴─────────┴───────────────┴────────────────────┘
+```
+
+### Get Package Info
+
+View all versions of a package:
+
+```bash
+teax pkg info myapp --owner homelab-teams --type container
+```
+
+**Output**:
+```
+              Versions of myapp (container)
+┏━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Version ┃ Created               ┃
+┡━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━┩
+│ v1.2.0  │ 2026-01-25T10:00:00Z  │
+│ v1.1.0  │ 2026-01-20T14:30:00Z  │
+│ v1.0.0  │ 2026-01-15T09:00:00Z  │
+└─────────┴───────────────────────┘
+```
+
+### Delete Package Version
+
+Delete a specific version (requires confirmation):
+
+```bash
+# Interactive (prompts for confirmation)
+teax pkg delete myapp --owner homelab-teams --type container --version v1.0.0
+
+# Skip confirmation
+teax pkg delete myapp --owner homelab-teams --type container --version v1.0.0 -y
+```
+
+**Important**: PyPI packages cannot be deleted via API (Gitea limitation).
+The command will fail with a helpful error message pointing to the web UI.
+
+### Prune Old Versions
+
+Remove old package versions, keeping the N most recent:
+
+```bash
+# Dry-run (default) - shows what would be deleted
+teax pkg prune myapp --owner homelab-teams --type container --keep 3
+
+# Execute deletion
+teax pkg prune myapp --owner homelab-teams --type container --keep 3 --execute
+```
+
+**Dry-run output**:
+```
+Prune myapp (container) - Dry run
+
+To delete (2):
+  - v1.0.0
+  - v1.1.0
+
+To keep (3):
+  - v1.2.0
+  - v1.3.0
+  - v1.4.0
+```
+
+**Note**: PyPI packages cannot be pruned via API.
+
+### Output Formats
+
+All package commands support standard output formats:
+
+```bash
+# JSON output
+teax --output json pkg list --owner homelab-teams
+
+# Simple output (for scripting)
+teax --output simple pkg list --owner homelab-teams
+
+# CSV output
+teax --output csv pkg list --owner homelab-teams
+```
+
 ## Related Documentation
 
 - [API Reference](api.md) - Using teax as a Python library
 - [ADR-0005: Epic Tracking](~/work/dev-manual/docs/adr/ADR-0005-gitea-epic-tracking.md) - Label taxonomy and workflow
 - [ADR-0006: teax Design](adr/ADR-0006-teax-design.md) - Design decisions
 - [ADR-0007: Gitea Actions Support](adr/ADR-0007-gitea-actions-support.md) - Runner management design
+- [ADR-0008: Package Management](adr/ADR-0008-package-management.md) - Package management design

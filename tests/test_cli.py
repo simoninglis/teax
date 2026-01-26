@@ -3440,3 +3440,584 @@ def test_output_format_print_runners_csv(capsys):
     assert rows[1][0] == "1"
     assert rows[1][1] == "runner-1"
     assert "ubuntu-latest" in rows[1][4]
+
+
+# --- pkg list tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_list(runner: CliRunner):
+    """Test pkg list command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/packages/myorg").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "id": 1,
+                            "owner": {"id": 1, "login": "myorg", "full_name": "My Org"},
+                            "name": "mypackage",
+                            "type": "generic",
+                            "version": "1.0.0",
+                            "created_at": "2024-01-01T00:00:00Z",
+                            "html_url": "https://test.example.com/myorg/-/packages/generic/mypackage/1.0.0",
+                        },
+                    ],
+                ),
+                httpx.Response(200, json=[]),  # Empty page signals end
+            ]
+        )
+
+        result = runner.invoke(main, ["pkg", "list", "--owner", "myorg"])
+
+        assert result.exit_code == 0
+        assert "mypackage" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_list_with_type_filter(runner: CliRunner):
+    """Test pkg list command with --type filter."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.get("https://test.example.com/api/packages/myorg").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "id": 1,
+                            "owner": {"id": 1, "login": "myorg", "full_name": "My Org"},
+                            "name": "myimage",
+                            "type": "container",
+                            "version": "latest",
+                            "created_at": "2024-01-01T00:00:00Z",
+                            "html_url": "",
+                        },
+                    ],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+
+        result = runner.invoke(
+            main, ["pkg", "list", "--owner", "myorg", "--type", "container"]
+        )
+
+        assert result.exit_code == 0
+        assert "myimage" in result.output
+        # Verify type filter was passed as query param
+        assert route.calls[0].request.url.params.get("type") == "container"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_list_empty(runner: CliRunner):
+    """Test pkg list command with no packages."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/packages/myorg").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        result = runner.invoke(main, ["pkg", "list", "--owner", "myorg"])
+
+        assert result.exit_code == 0
+        assert "No packages found" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_list_json_output(runner: CliRunner):
+    """Test pkg list command with JSON output."""
+    import json as json_mod
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/packages/myorg").mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "id": 1,
+                            "owner": {"id": 1, "login": "myorg", "full_name": "My Org"},
+                            "name": "mypackage",
+                            "type": "pypi",
+                            "version": "0.1.0",
+                            "created_at": "2024-01-01T00:00:00Z",
+                            "html_url": "",
+                        },
+                    ],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+
+        # --output is a global option, so it comes before the subcommand
+        result = runner.invoke(
+            main, ["--output", "json", "pkg", "list", "--owner", "myorg"]
+        )
+
+        assert result.exit_code == 0
+        data = json_mod.loads(result.output)
+        assert len(data) == 1
+        assert data[0]["name"] == "mypackage"
+        assert data[0]["type"] == "pypi"
+
+
+# --- pkg info tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_info(runner: CliRunner):
+    """Test pkg info command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/packages/myorg/generic/mypackage"
+        ).mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "id": 1,
+                            "version": "1.0.0",
+                            "created_at": "2024-01-01T00:00:00Z",
+                            "html_url": "",
+                        },
+                        {
+                            "id": 2,
+                            "version": "1.1.0",
+                            "created_at": "2024-01-15T00:00:00Z",
+                            "html_url": "",
+                        },
+                    ],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+
+        result = runner.invoke(
+            main,
+            ["pkg", "info", "mypackage", "--owner", "myorg", "--type", "generic"],
+        )
+
+        assert result.exit_code == 0
+        assert "1.0.0" in result.output
+        assert "1.1.0" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_info_not_found(runner: CliRunner):
+    """Test pkg info command with non-existent package."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/packages/myorg/generic/nonexistent"
+        ).mock(return_value=httpx.Response(404, json={"message": "package not found"}))
+
+        result = runner.invoke(
+            main,
+            ["pkg", "info", "nonexistent", "--owner", "myorg", "--type", "generic"],
+        )
+
+        assert result.exit_code == 1
+        assert "Error" in result.output
+
+
+# --- pkg delete tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_delete(runner: CliRunner):
+    """Test pkg delete command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.delete(
+            "https://test.example.com/api/packages/myorg/generic/mypackage/1.0.0"
+        ).mock(return_value=httpx.Response(204))
+
+        result = runner.invoke(
+            main,
+            [
+                "pkg", "delete", "mypackage",
+                "--owner", "myorg",
+                "--type", "generic",
+                "--version", "1.0.0",
+                "--yes",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Deleted" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_delete_pypi_blocked(runner: CliRunner):
+    """Test pkg delete command blocks PyPI packages."""
+    import respx
+
+    with respx.mock:
+        # No HTTP mock needed - should fail before API call
+        result = runner.invoke(
+            main,
+            [
+                "pkg", "delete", "mypackage",
+                "--owner", "myorg",
+                "--type", "pypi",
+                "--version", "0.1.0",
+                "--yes",
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "PyPI packages cannot be deleted" in result.output
+        assert "web UI" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_delete_requires_confirmation(runner: CliRunner):
+    """Test pkg delete command requires confirmation."""
+    result = runner.invoke(
+        main,
+        [
+            "pkg", "delete", "mypackage",
+            "--owner", "myorg",
+            "--type", "generic",
+            "--version", "1.0.0",
+        ],
+        input="n\n",  # Say no to confirmation
+    )
+
+    # Returns 0 (not error) when user aborts gracefully
+    assert result.exit_code == 0
+    assert "Aborted" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_delete_rich_injection_escaped(runner: CliRunner):
+    """Test pkg delete escapes Rich markup in user input to prevent injection."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.delete(
+            "https://test.example.com/api/packages/myorg/generic/%5Bred%5DX%5B%2Fred%5D/1.0.0"
+        ).mock(return_value=httpx.Response(204))
+
+        result = runner.invoke(
+            main,
+            [
+                "pkg", "delete", "[red]X[/red]",  # Malicious Rich markup
+                "--owner", "myorg",
+                "--type", "generic",
+                "--version", "1.0.0",
+                "-y",  # Skip confirmation
+            ],
+        )
+
+        assert result.exit_code == 0
+        # The literal markup should appear escaped, not rendered as red text
+        # Rich escapes [] as \\[ in output, so check for the escaped form
+        assert "[red]" in result.output or "\\[red\\]" in result.output
+
+
+# --- pkg prune tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_prune_dry_run(runner: CliRunner):
+    """Test pkg prune command in dry-run mode (default)."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/packages/myorg/container/myimage"
+        ).mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "id": 1, "version": "v1.0.0",
+                            "created_at": "2024-01-01T00:00:00Z", "html_url": "",
+                        },
+                        {
+                            "id": 2, "version": "v1.1.0",
+                            "created_at": "2024-01-15T00:00:00Z", "html_url": "",
+                        },
+                        {
+                            "id": 3, "version": "v1.2.0",
+                            "created_at": "2024-02-01T00:00:00Z", "html_url": "",
+                        },
+                        {
+                            "id": 4, "version": "v1.3.0",
+                            "created_at": "2024-02-15T00:00:00Z", "html_url": "",
+                        },
+                    ],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "pkg", "prune", "myimage",
+                "--owner", "myorg",
+                "--type", "container",
+                "--keep", "2",
+            ],
+        )
+
+        assert result.exit_code == 0
+        # Check for dry run indication (case varies by format)
+        assert "dry" in result.output.lower() or "would" in result.output.lower()
+        # Oldest versions should be listed for deletion
+        assert "v1.0.0" in result.output
+        assert "v1.1.0" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_prune_execute(runner: CliRunner):
+    """Test pkg prune command with --execute flag."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Versions returned in descending order (newest first)
+        respx.get(
+            "https://test.example.com/api/packages/myorg/container/myimage"
+        ).mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "id": 3, "version": "v1.2.0",
+                            "created_at": "2024-02-01T00:00:00Z", "html_url": "",
+                        },
+                        {
+                            "id": 2, "version": "v1.1.0",
+                            "created_at": "2024-01-15T00:00:00Z", "html_url": "",
+                        },
+                        {
+                            "id": 1, "version": "v1.0.0",
+                            "created_at": "2024-01-01T00:00:00Z", "html_url": "",
+                        },
+                    ],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+        # Mock deletion of oldest version (v1.0.0, index 2 after keep 2)
+        respx.delete(
+            "https://test.example.com/api/packages/myorg/container/myimage/v1.0.0"
+        ).mock(return_value=httpx.Response(204))
+
+        result = runner.invoke(
+            main,
+            [
+                "pkg", "prune", "myimage",
+                "--owner", "myorg",
+                "--type", "container",
+                "--keep", "2",
+                "--execute",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Deleted" in result.output or "deleted" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_prune_pypi_blocked(runner: CliRunner):
+    """Test pkg prune command blocks PyPI packages."""
+    result = runner.invoke(
+        main,
+        [
+            "pkg", "prune", "mypackage",
+            "--owner", "myorg",
+            "--type", "pypi",
+            "--keep", "3",
+            "--execute",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "PyPI packages cannot be deleted" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_prune_nothing_to_delete(runner: CliRunner):
+    """Test pkg prune command when no versions to delete."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/packages/myorg/container/myimage"
+        ).mock(
+            side_effect=[
+                httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "id": 1, "version": "v1.0.0",
+                            "created_at": "2024-01-01T00:00:00Z", "html_url": "",
+                        },
+                    ],
+                ),
+                httpx.Response(200, json=[]),
+            ]
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "pkg", "prune", "myimage",
+                "--owner", "myorg",
+                "--type", "container",
+                "--keep", "5",  # Keep more than exist
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Nothing to prune" in result.output or "nothing" in result.output.lower()
+
+
+# --- OutputFormat package tests ---
+
+
+def test_output_format_print_packages_table(capsys):
+    """Test OutputFormat.print_packages table format."""
+    pkg = SimpleNamespace(
+        id=1,
+        owner=SimpleNamespace(login="myorg"),
+        name="mypackage",
+        type="generic",
+        version="1.0.0",
+        created_at="2024-01-01T00:00:00Z",
+    )
+    output = OutputFormat("table")
+    output.print_packages([pkg])
+
+    captured = capsys.readouterr()
+    assert "mypackage" in captured.out
+    assert "generic" in captured.out
+    assert "1.0.0" in captured.out
+
+
+def test_output_format_print_packages_simple(capsys):
+    """Test OutputFormat.print_packages simple format."""
+    pkg = SimpleNamespace(
+        id=1,
+        owner=SimpleNamespace(login="myorg"),
+        name="mypackage",
+        type="pypi",
+        version="0.1.0",
+        created_at="2024-01-01T00:00:00Z",
+    )
+    output = OutputFormat("simple")
+    output.print_packages([pkg])
+
+    captured = capsys.readouterr()
+    assert "mypackage" in captured.out
+
+
+def test_output_format_print_packages_empty(capsys):
+    """Test OutputFormat.print_packages with empty list."""
+    output = OutputFormat("table")
+    output.print_packages([])
+
+    captured = capsys.readouterr()
+    assert "No packages found" in captured.out
+
+
+def test_output_format_print_packages_csv(capsys):
+    """Test OutputFormat.print_packages CSV format."""
+    pkg = SimpleNamespace(
+        id=1,
+        owner=SimpleNamespace(login="myorg"),
+        name="mypackage",
+        type="generic",
+        version="1.0.0",
+        created_at="2024-01-01T00:00:00Z",
+    )
+    output = OutputFormat("csv")
+    output.print_packages([pkg])
+
+    captured = capsys.readouterr()
+    reader = csv.reader(io.StringIO(captured.out))
+    rows = list(reader)
+    assert rows[0] == ["name", "type", "version", "owner", "created_at"]
+    assert rows[1][0] == "mypackage"
+    assert rows[1][1] == "generic"
+
+
+def test_output_format_print_package_versions_table(capsys):
+    """Test OutputFormat.print_package_versions table format."""
+    version = SimpleNamespace(
+        id=1,
+        version="1.0.0",
+        created_at="2024-01-01T00:00:00Z",
+        html_url="https://example.com/pkg/1.0.0",
+    )
+    output = OutputFormat("table")
+    output.print_package_versions("mypackage", "generic", [version])
+
+    captured = capsys.readouterr()
+    assert "1.0.0" in captured.out
+    assert "mypackage" in captured.out
+
+
+def test_output_format_print_package_versions_empty(capsys):
+    """Test OutputFormat.print_package_versions with empty list."""
+    output = OutputFormat("table")
+    output.print_package_versions("mypackage", "generic", [])
+
+    captured = capsys.readouterr()
+    assert "No versions found" in captured.out
+
+
+def test_output_format_print_prune_preview(capsys):
+    """Test OutputFormat.print_prune_preview."""
+    to_delete = [
+        SimpleNamespace(
+            id=1, version="v1.0.0", created_at="2024-01-01T00:00:00Z", html_url=""
+        ),
+    ]
+    to_keep = [
+        SimpleNamespace(
+            id=2, version="v1.1.0", created_at="2024-01-15T00:00:00Z", html_url=""
+        ),
+        SimpleNamespace(
+            id=3, version="v1.2.0", created_at="2024-02-01T00:00:00Z", html_url=""
+        ),
+    ]
+    output = OutputFormat("table")
+    output.print_prune_preview(
+        "myimage", "container", to_delete, to_keep, execute=False
+    )
+
+    captured = capsys.readouterr()
+    # Version to delete should be shown
+    assert "v1.0.0" in captured.out
+    # Indicates dry run mode
+    assert "dry" in captured.out.lower() or "Dry" in captured.out
