@@ -1,6 +1,6 @@
 """Pydantic models for Gitea API responses."""
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator
 
 
 class TeaLogin(BaseModel):
@@ -158,7 +158,9 @@ class Variable(BaseModel):
     """Gitea Actions variable."""
 
     name: str
-    data: str  # The variable value
+    data: str = Field(
+        validation_alias=AliasChoices("data", "value")
+    )  # The variable value (Gitea uses "data", but accept "value" for robustness)
     owner_id: int = 0
     repo_id: int = 0
     description: str = ""

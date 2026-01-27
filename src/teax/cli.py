@@ -682,6 +682,33 @@ class OutputFormat:
 
             console.print(table)
 
+    def print_mutation(self, action: str, name: str) -> None:
+        """Print mutation result (create/update/delete).
+
+        Args:
+            action: The action performed (e.g., 'created', 'updated', 'deleted')
+            name: The name of the resource affected
+        """
+        if self.format_type == "json":
+            click.echo(
+                json.dumps(
+                    {"action": terminal_safe(action), "name": terminal_safe(name)},
+                    indent=2,
+                )
+            )
+        elif self.format_type == "simple":
+            click.echo(f"{terminal_safe(action)}: {terminal_safe(name)}")
+        elif self.format_type == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["action", "name"])
+            writer.writerow([csv_safe(action), csv_safe(name)])
+            click.echo(output.getvalue().rstrip())
+        else:  # table (default)
+            # Capitalize first letter for display
+            display_action = action.capitalize()
+            console.print(f"[green]{display_action}:[/green] {safe_rich(name)}")
+
 
 # --- Main CLI Group ---
 
@@ -2092,6 +2119,30 @@ def pkg_prune(
 # --- Secrets Group ---
 
 
+# Pattern for valid secret/variable names: alphanumeric + underscores, no leading digit
+_NAME_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def validate_secret_name(name: str) -> str:
+    """Validate and normalize a secret or variable name.
+
+    Names must be alphanumeric with underscores, and cannot start with a digit.
+    This matches GitHub Actions and Gitea's naming requirements.
+
+    Raises:
+        click.BadParameter: If name is invalid
+    """
+    name = name.strip()
+    if not name:
+        raise click.BadParameter("Name cannot be empty")
+    if not _NAME_PATTERN.match(name):
+        raise click.BadParameter(
+            f"Invalid name '{terminal_safe(name)}': must contain only letters, "
+            "numbers, and underscores, and cannot start with a number"
+        )
+    return name
+
+
 def validate_secrets_scope(
     repo: str | None, org: str | None, user_scope: bool
 ) -> tuple[str | None, str | None, str | None, bool]:
@@ -2117,10 +2168,19 @@ def validate_secrets_scope(
 
     owner = None
     repo_name = None
+    org_name = None
+
     if repo:
         owner, repo_name = parse_repo(repo)
+    elif org:
+        # Validate and sanitize org name
+        org_name = org.strip()
+        if not org_name or "/" in org_name:
+            raise click.BadParameter(
+                f"Invalid organisation name: {terminal_safe(org)}"
+            )
 
-    return owner, repo_name, org, user_scope
+    return owner, repo_name, org_name, user_scope
 
 
 @main.group()
@@ -2195,14 +2255,16 @@ def secrets_set(
         teax secrets set API_KEY --org myorg --from-env MY_API_KEY
         echo "secret-value" | teax secrets set TOKEN --repo owner/repo
     """
+    name = validate_secret_name(name)
     owner, repo_name, org_name, is_user = validate_secrets_scope(repo, org, user_scope)
+    output: OutputFormat = ctx.obj["output"]
 
     # Get the secret value
     if env_var:
         value = os.environ.get(env_var)
         if value is None:
             err_console.print(
-                f"[red]Error:[/red] Environment variable '{env_var}' not set"
+                f"[red]Error:[/red] Environment variable '{safe_rich(env_var)}' not set"
             )
             sys.exit(1)
     elif not sys.stdin.isatty():
@@ -2226,8 +2288,8 @@ def secrets_set(
                 org=org_name,
                 user_scope=is_user,
             )
-            action = "Created" if created else "Updated"
-            console.print(f"[green]{action}:[/green] {safe_rich(name)}")
+            action = "created" if created else "updated"
+            output.print_mutation(action, name)
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)
@@ -2254,10 +2316,13 @@ def secrets_delete(
         teax secrets delete DEPLOY_TOKEN --repo owner/repo
         teax secrets delete API_KEY --org myorg -y
     """
+    name = validate_secret_name(name)
     owner, repo_name, org_name, is_user = validate_secrets_scope(repo, org, user_scope)
+    output: OutputFormat = ctx.obj["output"]
 
     if not yes:
-        if not click.confirm(f"Delete secret '{name}'?"):
+        safe_name = terminal_safe(name)
+        if not click.confirm(f"Delete secret '{safe_name}'?"):
             console.print("[yellow]Aborted[/yellow]")
             return
 
@@ -2270,7 +2335,7 @@ def secrets_delete(
                 org=org_name,
                 user_scope=is_user,
             )
-            console.print(f"[green]Deleted:[/green] {safe_rich(name)}")
+            output.print_mutation("deleted", name)
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)
@@ -2339,6 +2404,7 @@ def vars_get(
         teax vars get ENV_NAME --repo owner/repo
         teax -o simple vars get ENV_NAME --repo owner/repo  # Just the value
     """
+    name = validate_secret_name(name)
     owner, repo_name, org_name, is_user = validate_secrets_scope(repo, org, user_scope)
     output: OutputFormat = ctx.obj["output"]
 
@@ -2355,13 +2421,22 @@ def vars_get(
             if output.format_type == "json":
                 click.echo(
                     json.dumps(
-                        {"name": variable.name, "value": variable.data},
+                        {
+                            "name": terminal_safe(variable.name),
+                            "value": terminal_safe(variable.data),
+                        },
                         indent=2,
                     )
                 )
             elif output.format_type == "simple":
                 click.echo(terminal_safe(variable.data))
-            else:  # table/csv
+            elif output.format_type == "csv":
+                output_buf = io.StringIO()
+                writer = csv.writer(output_buf)
+                writer.writerow(["name", "value"])
+                writer.writerow([csv_safe(variable.name), csv_safe(variable.data)])
+                click.echo(output_buf.getvalue().rstrip())
+            else:  # table
                 console.print(f"[bold]{safe_rich(variable.name)}[/bold]")
                 console.print(safe_rich(variable.data))
 
@@ -2391,7 +2466,9 @@ def vars_set(
         teax vars set ENV_NAME --value production --repo owner/repo
         teax vars set BUILD_FLAGS --value "-O2" --org myorg
     """
+    name = validate_secret_name(name)
     owner, repo_name, org_name, is_user = validate_secrets_scope(repo, org, user_scope)
+    output: OutputFormat = ctx.obj["output"]
 
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
@@ -2403,8 +2480,8 @@ def vars_set(
                 org=org_name,
                 user_scope=is_user,
             )
-            action = "Created" if created else "Updated"
-            console.print(f"[green]{action}:[/green] {safe_rich(name)}")
+            action = "created" if created else "updated"
+            output.print_mutation(action, name)
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)
@@ -2431,10 +2508,13 @@ def vars_delete(
         teax vars delete ENV_NAME --repo owner/repo
         teax vars delete BUILD_FLAGS --org myorg -y
     """
+    name = validate_secret_name(name)
     owner, repo_name, org_name, is_user = validate_secrets_scope(repo, org, user_scope)
+    output: OutputFormat = ctx.obj["output"]
 
     if not yes:
-        if not click.confirm(f"Delete variable '{name}'?"):
+        safe_name = terminal_safe(name)
+        if not click.confirm(f"Delete variable '{safe_name}'?"):
             console.print("[yellow]Aborted[/yellow]")
             return
 
@@ -2447,7 +2527,7 @@ def vars_delete(
                 org=org_name,
                 user_scope=is_user,
             )
-            console.print(f"[green]Deleted:[/green] {safe_rich(name)}")
+            output.print_mutation("deleted", name)
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)
