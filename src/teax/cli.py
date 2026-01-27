@@ -709,6 +709,61 @@ class OutputFormat:
             display_action = action.capitalize()
             console.print(f"[green]{display_action}:[/green] {safe_rich(name)}")
 
+    def print_workflows(self, workflows: list[Any]) -> None:
+        """Print workflow list."""
+        if self.format_type == "json":
+            output_data = [
+                {
+                    "id": terminal_safe(w.id),
+                    "name": terminal_safe(w.name),
+                    "path": terminal_safe(w.path),
+                    "state": terminal_safe(w.state),
+                    # Emit null for missing timestamps (more accurate than "")
+                    "created_at": terminal_safe(w.created_at) if w.created_at else None,
+                    "updated_at": terminal_safe(w.updated_at) if w.updated_at else None,
+                }
+                for w in workflows
+            ]
+            click.echo(json.dumps(output_data, indent=2))
+
+        elif self.format_type == "simple":
+            for w in workflows:
+                click.echo(f"{terminal_safe(w.id)} {terminal_safe(w.name)}")
+
+        elif self.format_type == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["id", "name", "path", "state"])
+            for w in workflows:
+                writer.writerow([
+                    csv_safe(w.id),
+                    csv_safe(w.name),
+                    csv_safe(w.path),
+                    csv_safe(w.state),
+                ])
+            click.echo(output.getvalue().rstrip())
+
+        else:  # table (default)
+            if not workflows:
+                console.print("[dim]No workflows found[/dim]")
+                return
+
+            table = Table(title="Workflows")
+            table.add_column("ID", style="cyan")
+            table.add_column("Name")
+            table.add_column("Path", style="dim")
+            table.add_column("State")
+
+            for w in workflows:
+                state_style = "green" if w.state == "active" else "yellow"
+                table.add_row(
+                    safe_rich(w.id),
+                    safe_rich(w.name),
+                    safe_rich(w.path),
+                    f"[{state_style}]{safe_rich(w.state)}[/{state_style}]",
+                )
+            console.print(table)
+
 
 # --- Main CLI Group ---
 
@@ -2528,6 +2583,242 @@ def vars_delete(
                 user_scope=is_user,
             )
             output.print_mutation("deleted", name)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+# --- Workflow Group ---
+
+
+def parse_workflow_inputs(inputs: tuple[str, ...]) -> dict[str, str]:
+    """Parse workflow input arguments.
+
+    Accepts inputs in the format "key=value". The value can contain '=' signs.
+
+    Args:
+        inputs: Tuple of "key=value" strings from --input options
+
+    Returns:
+        Dict mapping input names to values
+
+    Raises:
+        click.BadParameter: If input format is invalid
+    """
+    result: dict[str, str] = {}
+    for item in inputs:
+        if "=" not in item:
+            safe_item = terminal_safe(item)
+            raise click.BadParameter(
+                f"Invalid input format: '{safe_item}' (expected 'key=value')"
+            )
+        key, _, value = item.partition("=")
+        key = key.strip()
+        if not key:
+            raise click.BadParameter("Input key cannot be empty")
+        result[key] = value
+    return result
+
+
+def validate_workflow_id(workflow_id: str) -> str:
+    """Validate and normalize workflow_id.
+
+    Args:
+        workflow_id: Raw workflow ID from CLI
+
+    Returns:
+        Stripped workflow_id
+
+    Raises:
+        click.BadParameter: If workflow_id is empty or whitespace-only
+    """
+    workflow_id = workflow_id.strip()
+    if not workflow_id:
+        raise click.BadParameter(
+            "Workflow ID cannot be empty or whitespace-only"
+        )
+    return workflow_id
+
+
+@main.group()
+def workflow() -> None:
+    """Manage Gitea Actions workflows."""
+    pass
+
+
+@workflow.command("list")
+@click.option("-r", "--repo", required=True, help="Repository (owner/repo)")
+@click.pass_context
+def workflow_list(ctx: click.Context, repo: str) -> None:
+    """List workflows for a repository.
+
+    Examples:
+        teax workflow list --repo owner/repo
+        teax workflow list -r owner/repo -o json
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            workflows = client.list_workflows(owner, repo_name)
+            output.print_workflows(workflows)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@workflow.command("get")
+@click.argument("workflow_id")
+@click.option("-r", "--repo", required=True, help="Repository (owner/repo)")
+@click.pass_context
+def workflow_get(ctx: click.Context, workflow_id: str, repo: str) -> None:
+    """Get workflow details.
+
+    WORKFLOW_ID can be a numeric ID or filename (e.g., "ci.yml").
+
+    Examples:
+        teax workflow get ci.yml --repo owner/repo
+        teax workflow get 123 -r owner/repo
+    """
+    workflow_id = validate_workflow_id(workflow_id)
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            wf = client.get_workflow(owner, repo_name, workflow_id)
+            # Print as single-item list for consistent formatting
+            output.print_workflows([wf])
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@workflow.command("dispatch")
+@click.argument("workflow_id")
+@click.option("-r", "--repo", required=True, help="Repository (owner/repo)")
+@click.option("--ref", required=True, help="Git reference (branch, tag, or SHA)")
+@click.option(
+    "-i", "--input", "inputs", multiple=True, help="Workflow input (key=value)"
+)
+@click.pass_context
+def workflow_dispatch(
+    ctx: click.Context,
+    workflow_id: str,
+    repo: str,
+    ref: str,
+    inputs: tuple[str, ...],
+) -> None:
+    """Dispatch a workflow run.
+
+    WORKFLOW_ID can be a numeric ID or filename (e.g., "ci.yml").
+
+    Examples:
+        teax workflow dispatch ci.yml --repo owner/repo --ref main
+        teax workflow dispatch deploy.yml -r owner/repo --ref main -i v=1.0
+    """
+    workflow_id = validate_workflow_id(workflow_id)
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    # Validate ref is not whitespace-only
+    ref = ref.strip()
+    if not ref:
+        raise click.BadParameter("Git reference cannot be empty or whitespace-only")
+
+    # Parse workflow inputs
+    input_dict = parse_workflow_inputs(inputs) if inputs else None
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            client.dispatch_workflow(owner, repo_name, workflow_id, ref, input_dict)
+
+            # Build success message
+            safe_id = terminal_safe(workflow_id)
+            safe_ref = terminal_safe(ref)
+
+            if output.format_type == "json":
+                # Sanitize input keys and values to prevent terminal injection
+                safe_inputs = {
+                    terminal_safe(k): terminal_safe(v)
+                    for k, v in (input_dict or {}).items()
+                }
+                output_data = {
+                    "action": "dispatched",
+                    "workflow": safe_id,
+                    "ref": safe_ref,
+                    "inputs": safe_inputs,
+                }
+                click.echo(json.dumps(output_data, indent=2))
+            elif output.format_type == "simple":
+                click.echo(f"dispatched: {safe_id} on {safe_ref}")
+            elif output.format_type == "csv":
+                output_buf = io.StringIO()
+                writer = csv.writer(output_buf)
+                writer.writerow(["action", "workflow", "ref"])
+                writer.writerow(["dispatched", csv_safe(workflow_id), csv_safe(ref)])
+                click.echo(output_buf.getvalue().rstrip())
+            else:  # table
+                console.print(
+                    f"[green]Dispatched:[/green] {safe_rich(workflow_id)} "
+                    f"on ref [cyan]{safe_rich(ref)}[/cyan]"
+                )
+                if input_dict:
+                    console.print("[dim]Inputs:[/dim]")
+                    for k, v in input_dict.items():
+                        console.print(f"  {safe_rich(k)}={safe_rich(v)}")
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@workflow.command("enable")
+@click.argument("workflow_id")
+@click.option("-r", "--repo", required=True, help="Repository (owner/repo)")
+@click.pass_context
+def workflow_enable(ctx: click.Context, workflow_id: str, repo: str) -> None:
+    """Enable a workflow.
+
+    WORKFLOW_ID can be a numeric ID or filename (e.g., "ci.yml").
+
+    Examples:
+        teax workflow enable ci.yml --repo owner/repo
+    """
+    workflow_id = validate_workflow_id(workflow_id)
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            client.enable_workflow(owner, repo_name, workflow_id)
+            output.print_mutation("enabled", workflow_id)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@workflow.command("disable")
+@click.argument("workflow_id")
+@click.option("-r", "--repo", required=True, help="Repository (owner/repo)")
+@click.pass_context
+def workflow_disable(ctx: click.Context, workflow_id: str, repo: str) -> None:
+    """Disable a workflow.
+
+    WORKFLOW_ID can be a numeric ID or filename (e.g., "ci.yml").
+
+    Examples:
+        teax workflow disable ci.yml --repo owner/repo
+    """
+    workflow_id = validate_workflow_id(workflow_id)
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            client.disable_workflow(owner, repo_name, workflow_id)
+            output.print_mutation("disabled", workflow_id)
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)

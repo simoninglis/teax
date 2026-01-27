@@ -164,3 +164,22 @@ class Variable(BaseModel):
     owner_id: int = 0
     repo_id: int = 0
     description: str = ""
+
+
+class Workflow(BaseModel):
+    """Gitea Actions workflow."""
+
+    id: str  # Gitea uses string ID (typically the file path)
+    name: str
+    path: str
+    state: str  # active, disabled_fork, disabled_inactivity, disabled_manually, unknown
+    created_at: str | None = None
+    updated_at: str | None = None
+
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def normalize_empty_timestamp(cls, v: str | None) -> str | None:
+        """Normalize empty string timestamps to None."""
+        if v == "":
+            return None
+        return v

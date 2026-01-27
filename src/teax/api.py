@@ -22,6 +22,7 @@ from teax.models import (
     TeaLogin,
     User,
     Variable,
+    Workflow,
 )
 
 
@@ -1384,4 +1385,160 @@ class GiteaClient:
         """
         base = self._variables_base_path(owner, repo, org, user_scope)
         response = self._client.delete(f"{base}/{_seg(name)}")
+        response.raise_for_status()
+
+    # --- Workflow Operations ---
+
+    def list_workflows(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        max_pages: int = 100,
+    ) -> list[Workflow]:
+        """List workflows for a repository.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            max_pages: Maximum pages to fetch (default 100, prevents DoS)
+
+        Returns:
+            List of workflows
+        """
+        workflows: list[Workflow] = []
+        page = 1
+        limit = 50
+        truncated = False
+
+        while page <= max_pages:
+            response = self._client.get(
+                f"repos/{_seg(owner)}/{_seg(repo)}/actions/workflows",
+                params={"page": page, "limit": limit},
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            # Handle Gitea's response format (may be {"workflows": [...]} or [...])
+            if isinstance(data, dict):
+                if "workflows" not in data:
+                    raise TypeError(
+                        "Unexpected workflows response: dict missing 'workflows' key"
+                    )
+                items = data["workflows"]
+                if not isinstance(items, list):
+                    raise TypeError(
+                        f"Unexpected 'workflows' value type: {type(items)!r}"
+                    )
+            elif isinstance(data, list):
+                items = data
+            else:
+                raise TypeError(f"Unexpected workflows response type: {type(data)!r}")
+            if not items:
+                break
+
+            workflows.extend(Workflow.model_validate(w) for w in items)
+
+            if len(items) < limit:
+                break
+            page += 1
+        else:
+            truncated = True
+
+        if truncated:
+            warnings.warn(
+                f"Workflows list truncated at {max_pages} pages "
+                f"({len(workflows)} items). Results may be incomplete.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        return workflows
+
+    def get_workflow(
+        self,
+        owner: str,
+        repo: str,
+        workflow_id: str,
+    ) -> Workflow:
+        """Get a workflow by ID or filename.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            workflow_id: Workflow ID or filename (e.g., "ci.yml")
+
+        Returns:
+            Workflow details
+        """
+        response = self._client.get(
+            f"repos/{_seg(owner)}/{_seg(repo)}/actions/workflows/{_seg(workflow_id)}"
+        )
+        response.raise_for_status()
+        return Workflow.model_validate(response.json())
+
+    def dispatch_workflow(
+        self,
+        owner: str,
+        repo: str,
+        workflow_id: str,
+        ref: str,
+        inputs: dict[str, str] | None = None,
+    ) -> None:
+        """Dispatch a workflow run.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            workflow_id: Workflow ID or filename (e.g., "ci.yml")
+            ref: Git reference (branch, tag, or commit SHA)
+            inputs: Workflow input parameters (optional)
+        """
+        payload: dict[str, Any] = {"ref": ref}
+        if inputs:
+            payload["inputs"] = inputs
+
+        response = self._client.post(
+            f"repos/{_seg(owner)}/{_seg(repo)}/actions/workflows/"
+            f"{_seg(workflow_id)}/dispatches",
+            json=payload,
+        )
+        response.raise_for_status()
+
+    def enable_workflow(
+        self,
+        owner: str,
+        repo: str,
+        workflow_id: str,
+    ) -> None:
+        """Enable a workflow.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            workflow_id: Workflow ID or filename (e.g., "ci.yml")
+        """
+        response = self._client.put(
+            f"repos/{_seg(owner)}/{_seg(repo)}/actions/workflows/"
+            f"{_seg(workflow_id)}/enable"
+        )
+        response.raise_for_status()
+
+    def disable_workflow(
+        self,
+        owner: str,
+        repo: str,
+        workflow_id: str,
+    ) -> None:
+        """Disable a workflow.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            workflow_id: Workflow ID or filename (e.g., "ci.yml")
+        """
+        response = self._client.put(
+            f"repos/{_seg(owner)}/{_seg(repo)}/actions/workflows/"
+            f"{_seg(workflow_id)}/disable"
+        )
         response.raise_for_status()

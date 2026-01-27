@@ -4021,3 +4021,573 @@ def test_output_format_print_prune_preview(capsys):
     assert "v1.0.0" in captured.out
     # Indicates dry run mode
     assert "dry" in captured.out.lower() or "Dry" in captured.out
+
+
+# --- Workflow Command Tests ---
+
+
+def test_workflow_help(runner: CliRunner):
+    """Test workflow subcommand help."""
+    result = runner.invoke(main, ["workflow", "--help"])
+    assert result.exit_code == 0
+    assert "list" in result.output
+    assert "get" in result.output
+    assert "dispatch" in result.output
+    assert "enable" in result.output
+    assert "disable" in result.output
+
+
+def test_workflow_list_help(runner: CliRunner):
+    """Test workflow list help."""
+    result = runner.invoke(main, ["workflow", "list", "--help"])
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+
+
+def test_workflow_get_help(runner: CliRunner):
+    """Test workflow get help."""
+    result = runner.invoke(main, ["workflow", "get", "--help"])
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+    assert "WORKFLOW_ID" in result.output
+
+
+def test_workflow_dispatch_help(runner: CliRunner):
+    """Test workflow dispatch help."""
+    result = runner.invoke(main, ["workflow", "dispatch", "--help"])
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+    assert "--ref" in result.output
+    assert "--input" in result.output
+    assert "WORKFLOW_ID" in result.output
+
+
+def test_workflow_enable_help(runner: CliRunner):
+    """Test workflow enable help."""
+    result = runner.invoke(main, ["workflow", "enable", "--help"])
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+    assert "WORKFLOW_ID" in result.output
+
+
+def test_workflow_disable_help(runner: CliRunner):
+    """Test workflow disable help."""
+    result = runner.invoke(main, ["workflow", "disable", "--help"])
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+    assert "WORKFLOW_ID" in result.output
+
+
+# --- parse_workflow_inputs Tests ---
+
+
+def test_parse_workflow_inputs_valid():
+    """Test parsing valid workflow inputs."""
+    from teax.cli import parse_workflow_inputs
+
+    result = parse_workflow_inputs(("version=1.0.0", "env=production"))
+    assert result == {"version": "1.0.0", "env": "production"}
+
+
+def test_parse_workflow_inputs_empty():
+    """Test parsing empty workflow inputs."""
+    from teax.cli import parse_workflow_inputs
+
+    result = parse_workflow_inputs(())
+    assert result == {}
+
+
+def test_parse_workflow_inputs_equals_in_value():
+    """Test parsing inputs where value contains equals sign."""
+    from teax.cli import parse_workflow_inputs
+
+    result = parse_workflow_inputs(("config=key=value",))
+    assert result == {"config": "key=value"}
+
+
+def test_parse_workflow_inputs_empty_value():
+    """Test parsing inputs with empty value."""
+    from teax.cli import parse_workflow_inputs
+
+    result = parse_workflow_inputs(("empty=",))
+    assert result == {"empty": ""}
+
+
+def test_parse_workflow_inputs_invalid_format():
+    """Test error on invalid input format (no equals)."""
+    from click import BadParameter
+
+    from teax.cli import parse_workflow_inputs
+
+    with pytest.raises(BadParameter, match="Invalid input format"):
+        parse_workflow_inputs(("invalid",))
+
+
+def test_parse_workflow_inputs_empty_key():
+    """Test error on empty key."""
+    from click import BadParameter
+
+    from teax.cli import parse_workflow_inputs
+
+    with pytest.raises(BadParameter, match="Input key cannot be empty"):
+        parse_workflow_inputs(("=value",))
+
+
+def test_parse_workflow_inputs_key_whitespace_stripped():
+    """Test that key whitespace is stripped."""
+    from teax.cli import parse_workflow_inputs
+
+    result = parse_workflow_inputs(("  key  =value",))
+    assert result == {"key": "value"}
+
+
+# --- validate_workflow_id Tests ---
+
+
+def test_validate_workflow_id_valid():
+    """Test validation of valid workflow IDs."""
+    from teax.cli import validate_workflow_id
+
+    assert validate_workflow_id("ci.yml") == "ci.yml"
+    assert validate_workflow_id("  ci.yml  ") == "ci.yml"  # Strips whitespace
+    assert validate_workflow_id("123") == "123"
+
+
+def test_validate_workflow_id_empty():
+    """Test error on empty workflow_id."""
+    from click import BadParameter
+
+    from teax.cli import validate_workflow_id
+
+    with pytest.raises(BadParameter, match="Workflow ID cannot be empty"):
+        validate_workflow_id("")
+
+
+def test_validate_workflow_id_whitespace_only():
+    """Test error on whitespace-only workflow_id."""
+    from click import BadParameter
+
+    from teax.cli import validate_workflow_id
+
+    with pytest.raises(BadParameter, match="Workflow ID cannot be empty"):
+        validate_workflow_id("   ")
+
+
+# --- Workflow OutputFormat Tests ---
+
+
+def test_output_format_workflows_simple(capsys):
+    """Test simple output format for workflows."""
+    formatter = OutputFormat("simple")
+    mock_workflow = SimpleNamespace(
+        id="ci.yml",
+        name="CI Pipeline",
+        path=".gitea/workflows/ci.yml",
+        state="active",
+        created_at="2024-01-15T10:00:00Z",
+        updated_at="2024-01-16T10:00:00Z",
+    )
+    formatter.print_workflows([mock_workflow])
+    captured = capsys.readouterr()
+    assert "ci.yml" in captured.out
+    assert "CI Pipeline" in captured.out
+
+
+def test_output_format_workflows_json(capsys):
+    """Test JSON output format for workflows."""
+    import json
+
+    formatter = OutputFormat("json")
+    mock_workflow = SimpleNamespace(
+        id="ci.yml",
+        name="CI Pipeline",
+        path=".gitea/workflows/ci.yml",
+        state="active",
+        created_at="2024-01-15T10:00:00Z",
+        updated_at="2024-01-16T10:00:00Z",
+    )
+    formatter.print_workflows([mock_workflow])
+    captured = capsys.readouterr()
+    parsed = json.loads(captured.out)
+    assert len(parsed) == 1
+    assert parsed[0]["id"] == "ci.yml"
+    assert parsed[0]["name"] == "CI Pipeline"
+    assert parsed[0]["state"] == "active"
+
+
+def test_output_format_workflows_json_null_timestamps(capsys):
+    """Test JSON output format emits null for missing timestamps."""
+    import json
+
+    formatter = OutputFormat("json")
+    mock_workflow = SimpleNamespace(
+        id="ci.yml",
+        name="CI Pipeline",
+        path=".gitea/workflows/ci.yml",
+        state="active",
+        created_at=None,  # Missing timestamp
+        updated_at=None,  # Missing timestamp
+    )
+    formatter.print_workflows([mock_workflow])
+    captured = capsys.readouterr()
+    parsed = json.loads(captured.out)
+    assert len(parsed) == 1
+    assert parsed[0]["created_at"] is None
+    assert parsed[0]["updated_at"] is None
+
+
+def test_output_format_workflows_csv(capsys):
+    """Test CSV output format for workflows."""
+    formatter = OutputFormat("csv")
+    mock_workflow = SimpleNamespace(
+        id="ci.yml",
+        name="CI Pipeline",
+        path=".gitea/workflows/ci.yml",
+        state="active",
+        created_at="2024-01-15T10:00:00Z",
+        updated_at="2024-01-16T10:00:00Z",
+    )
+    formatter.print_workflows([mock_workflow])
+    captured = capsys.readouterr()
+    reader = csv.reader(io.StringIO(captured.out))
+    rows = list(reader)
+    assert rows[0] == ["id", "name", "path", "state"]
+    assert rows[1] == ["ci.yml", "CI Pipeline", ".gitea/workflows/ci.yml", "active"]
+
+
+def test_output_format_workflows_table_empty(capsys, monkeypatch):
+    """Test table output format for empty workflows."""
+    from io import StringIO
+
+    from rich.console import Console
+
+    from teax import cli
+
+    buffer = StringIO()
+    monkeypatch.setattr(cli, "console", Console(file=buffer, force_terminal=False))
+
+    formatter = OutputFormat("table")
+    formatter.print_workflows([])
+    output = buffer.getvalue()
+    assert "no workflows found" in output.lower()
+
+
+def test_output_format_workflows_table_with_data(capsys, monkeypatch):
+    """Test table output format for workflows with data."""
+    from io import StringIO
+
+    from rich.console import Console
+
+    from teax import cli
+
+    buffer = StringIO()
+    monkeypatch.setattr(cli, "console", Console(file=buffer, force_terminal=False))
+
+    formatter = OutputFormat("table")
+    mock_workflow = SimpleNamespace(
+        id="ci.yml",
+        name="CI Pipeline",
+        path=".gitea/workflows/ci.yml",
+        state="active",
+        created_at="2024-01-15T10:00:00Z",
+        updated_at="2024-01-16T10:00:00Z",
+    )
+    formatter.print_workflows([mock_workflow])
+    output = buffer.getvalue()
+    assert "ci.yml" in output
+    assert "CI Pipeline" in output
+    assert "active" in output
+
+
+# --- Workflow CLI Integration Tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_workflow_list_command(runner: CliRunner):
+    """Test workflow list command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/workflows"
+        )
+        route.mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflows": [
+                        {
+                            "id": "ci.yml",
+                            "name": "CI Pipeline",
+                            "path": ".gitea/workflows/ci.yml",
+                            "state": "active",
+                            "created_at": "2024-01-15T10:00:00Z",
+                            "updated_at": "2024-01-16T10:00:00Z",
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(main, ["workflow", "list", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        assert "ci.yml" in result.output
+        assert "CI Pipeline" in result.output
+        assert route.called
+        # Verify pagination params were sent
+        assert route.calls.last.request.url.params["page"] == "1"
+        assert route.calls.last.request.url.params["limit"] == "50"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_workflow_get_command(runner: CliRunner):
+    """Test workflow get command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/workflows/ci.yml"
+        )
+        route.mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": "ci.yml",
+                    "name": "CI Pipeline",
+                    "path": ".gitea/workflows/ci.yml",
+                    "state": "active",
+                    "created_at": "2024-01-15T10:00:00Z",
+                    "updated_at": "2024-01-16T10:00:00Z",
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["workflow", "get", "ci.yml", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "ci.yml" in result.output
+        assert "CI Pipeline" in result.output
+        assert route.called
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_workflow_dispatch_command(runner: CliRunner):
+    """Test workflow dispatch command."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/workflows/ci.yml/dispatches"
+        )
+        route.mock(return_value=httpx.Response(204))
+
+        result = runner.invoke(
+            main,
+            [
+                "workflow", "dispatch", "ci.yml",
+                "--repo", "owner/repo",
+                "--ref", "main",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Dispatched" in result.output or "dispatched" in result.output
+        assert route.called
+        # Verify request body
+        request_body = json.loads(route.calls.last.request.content)
+        assert request_body["ref"] == "main"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_workflow_dispatch_with_inputs(runner: CliRunner):
+    """Test workflow dispatch command with inputs."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/workflows/deploy.yml/dispatches"
+        )
+        route.mock(return_value=httpx.Response(204))
+
+        result = runner.invoke(
+            main,
+            [
+                "workflow", "dispatch", "deploy.yml",
+                "--repo", "owner/repo",
+                "--ref", "v1.0.0",
+                "-i", "version=1.0.0",
+                "-i", "env=production",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert route.called
+        # Verify request body includes inputs
+        request_body = json.loads(route.calls.last.request.content)
+        assert request_body["ref"] == "v1.0.0"
+        assert request_body["inputs"]["version"] == "1.0.0"
+        assert request_body["inputs"]["env"] == "production"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_workflow_dispatch_empty_ref_rejected(runner: CliRunner):
+    """Test workflow dispatch rejects empty ref."""
+    result = runner.invoke(
+        main,
+        [
+            "workflow", "dispatch", "ci.yml",
+            "--repo", "owner/repo",
+            "--ref", "   ",  # Whitespace-only ref
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "empty" in result.output.lower() or "whitespace" in result.output.lower()
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_workflow_enable_command(runner: CliRunner):
+    """Test workflow enable command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.put(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/workflows/ci.yml/enable"
+        )
+        route.mock(return_value=httpx.Response(204))
+
+        result = runner.invoke(
+            main, ["workflow", "enable", "ci.yml", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "enabled" in result.output.lower()
+        assert route.called
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_workflow_disable_command(runner: CliRunner):
+    """Test workflow disable command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.put(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/workflows/ci.yml/disable"
+        )
+        route.mock(return_value=httpx.Response(204))
+
+        result = runner.invoke(
+            main, ["workflow", "disable", "ci.yml", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "disabled" in result.output.lower()
+        assert route.called
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_workflow_list_error_handling(runner: CliRunner):
+    """Test workflow list error handling."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/workflows"
+        ).mock(return_value=httpx.Response(404, json={"message": "Not found"}))
+
+        result = runner.invoke(main, ["workflow", "list", "--repo", "owner/repo"])
+
+        assert result.exit_code != 0
+        assert "Error" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_workflow_get_empty_workflow_id_rejected(runner: CliRunner):
+    """Test workflow get rejects whitespace-only workflow_id."""
+    result = runner.invoke(
+        main,
+        ["workflow", "get", "   ", "--repo", "owner/repo"],
+    )
+
+    assert result.exit_code != 0
+    assert "empty" in result.output.lower() or "whitespace" in result.output.lower()
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_workflow_dispatch_json_output(runner: CliRunner):
+    """Test workflow dispatch with JSON output format."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/workflows/ci.yml/dispatches"
+        ).mock(return_value=httpx.Response(204))
+
+        result = runner.invoke(
+            main,
+            [
+                "-o", "json",
+                "workflow", "dispatch", "ci.yml",
+                "--repo", "owner/repo",
+                "--ref", "main",
+                "-i", "key=value",
+            ],
+        )
+
+        assert result.exit_code == 0
+        output = json.loads(result.output)
+        assert output["action"] == "dispatched"
+        assert output["workflow"] == "ci.yml"
+        assert output["ref"] == "main"
+        assert output["inputs"]["key"] == "value"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_workflow_dispatch_json_sanitizes_escape_sequences(runner: CliRunner):
+    """Test that workflow dispatch JSON output sanitizes terminal escape sequences."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/workflows/ci.yml/dispatches"
+        ).mock(return_value=httpx.Response(204))
+
+        # Input with escape sequences that could be terminal injection
+        result = runner.invoke(
+            main,
+            [
+                "-o", "json",
+                "workflow", "dispatch", "ci.yml",
+                "--repo", "owner/repo",
+                "--ref", "main",
+                "-i", "evil\x1b[31mkey=malicious\x1b[0mvalue",
+            ],
+        )
+
+        assert result.exit_code == 0
+        output = json.loads(result.output)
+        # Verify escape sequences are stripped from both key and value
+        assert "\x1b" not in result.output
+        for key, value in output["inputs"].items():
+            assert "\x1b" not in key
+            assert "\x1b" not in value

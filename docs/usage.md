@@ -737,6 +737,104 @@ All secrets and variables commands require exactly one scope:
 | `--org orgname` | Organisation-level |
 | `--user` | User-level (your personal secrets/vars) |
 
+## Workflow Management
+
+Manage Gitea Actions workflows for repositories - list, dispatch, enable, and disable workflows.
+
+**Note**: Workflow management requires Gitea 1.24.0+ with Actions enabled.
+
+### List Workflows
+
+```bash
+# List all workflows for a repository
+teax workflow list --repo homelab/myproject
+
+# With JSON output
+teax workflow list --repo homelab/myproject -o json
+```
+
+**Output**:
+```
+                    Workflows
+┏━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┓
+┃ ID          ┃ Name        ┃ Path                        ┃ State   ┃
+┡━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━┩
+│ ci.yml      │ CI Pipeline │ .gitea/workflows/ci.yml     │ active  │
+│ deploy.yml  │ Deploy      │ .gitea/workflows/deploy.yml │ disabled│
+└─────────────┴─────────────┴─────────────────────────────┴─────────┘
+```
+
+### Get Workflow Details
+
+```bash
+# Get by filename
+teax workflow get ci.yml --repo homelab/myproject
+
+# Get by numeric ID
+teax workflow get 42 --repo homelab/myproject
+```
+
+### Dispatch Workflow
+
+Trigger a workflow run manually:
+
+```bash
+# Basic dispatch
+teax workflow dispatch ci.yml --repo homelab/myproject --ref main
+
+# Dispatch with inputs
+teax workflow dispatch deploy.yml --repo homelab/myproject --ref main \
+    -i version=1.2.0 \
+    -i environment=production
+
+# Dispatch from a tag
+teax workflow dispatch release.yml --repo homelab/myproject --ref v1.2.0
+```
+
+**Output**:
+```
+Dispatched: ci.yml on ref main
+Inputs:
+  version=1.2.0
+  environment=production
+```
+
+### Enable/Disable Workflows
+
+Control whether workflows can be triggered:
+
+```bash
+# Disable a workflow
+teax workflow disable ci.yml --repo homelab/myproject
+
+# Re-enable a workflow
+teax workflow enable ci.yml --repo homelab/myproject
+```
+
+### Workflow States
+
+| State | Description |
+|-------|-------------|
+| `active` | Workflow can be triggered |
+| `disabled_manually` | Disabled by user |
+| `disabled_inactivity` | Auto-disabled due to inactivity |
+| `disabled_fork` | Disabled in forked repository |
+
+### Output Formats
+
+All workflow commands support standard output formats:
+
+```bash
+# JSON output
+teax --output json workflow list --repo homelab/myproject
+
+# Simple output (for scripting)
+teax --output simple workflow list --repo homelab/myproject
+
+# CSV output
+teax --output csv workflow list --repo homelab/myproject
+```
+
 ## Related Documentation
 
 - [API Reference](api.md) - Using teax as a Python library

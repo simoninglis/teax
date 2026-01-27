@@ -1917,3 +1917,261 @@ def test_delete_package_version_encodes_path(client: GiteaClient):
     client.delete_package_version("home/lab", "container", "my/image", "1.0/0")
 
     assert route.called
+
+
+# --- Workflow Operations Tests ---
+
+
+@respx.mock
+def test_list_workflows(client: GiteaClient):
+    """Test listing workflows for a repository."""
+    respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/workflows"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "workflows": [
+                    {
+                        "id": "ci.yml",
+                        "name": "CI Pipeline",
+                        "path": ".gitea/workflows/ci.yml",
+                        "state": "active",
+                        "created_at": "2024-01-15T10:00:00Z",
+                        "updated_at": "2024-01-16T10:00:00Z",
+                    },
+                    {
+                        "id": "deploy.yml",
+                        "name": "Deploy",
+                        "path": ".gitea/workflows/deploy.yml",
+                        "state": "disabled_manually",
+                        "created_at": "2024-01-14T10:00:00Z",
+                        "updated_at": "2024-01-15T10:00:00Z",
+                    },
+                ]
+            },
+        )
+    )
+
+    workflows = client.list_workflows("owner", "repo")
+
+    assert len(workflows) == 2
+    assert workflows[0].id == "ci.yml"
+    assert workflows[0].name == "CI Pipeline"
+    assert workflows[0].state == "active"
+    assert workflows[1].id == "deploy.yml"
+    assert workflows[1].state == "disabled_manually"
+
+
+@respx.mock
+def test_list_workflows_array_response(client: GiteaClient):
+    """Test listing workflows when API returns array instead of wrapped object."""
+    respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/workflows"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": "ci.yml",
+                    "name": "CI",
+                    "path": ".gitea/workflows/ci.yml",
+                    "state": "active",
+                    "created_at": "",
+                    "updated_at": "",
+                },
+            ],
+        )
+    )
+
+    workflows = client.list_workflows("owner", "repo")
+
+    assert len(workflows) == 1
+    assert workflows[0].id == "ci.yml"
+
+
+@respx.mock
+def test_list_workflows_empty(client: GiteaClient):
+    """Test listing workflows when none exist."""
+    respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/workflows"
+    ).mock(return_value=httpx.Response(200, json={"workflows": []}))
+
+    workflows = client.list_workflows("owner", "repo")
+
+    assert workflows == []
+
+
+@respx.mock
+def test_list_workflows_pagination_truncation(client: GiteaClient):
+    """Test truncation warning when workflows exceed max_pages."""
+    route = respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/workflows"
+    )
+    page_data = {
+        "workflows": [
+            {
+                "id": f"workflow-{i}.yml",
+                "name": f"Workflow {i}",
+                "path": f".gitea/workflows/workflow-{i}.yml",
+                "state": "active",
+                "created_at": "",
+                "updated_at": "",
+            }
+            for i in range(50)
+        ]
+    }
+    route.side_effect = [
+        httpx.Response(200, json=page_data),
+        httpx.Response(200, json=page_data),  # Full page triggers next iteration
+    ]
+
+    with pytest.warns(UserWarning, match="Workflows list truncated at 2 pages"):
+        client.list_workflows("owner", "repo", max_pages=2)
+
+
+@respx.mock
+def test_list_workflows_missing_key_raises(client: GiteaClient):
+    """Test that missing 'workflows' key in dict response raises TypeError."""
+    respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/workflows"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={"other_key": []},  # Missing "workflows" key
+        )
+    )
+
+    with pytest.raises(TypeError, match="dict missing 'workflows' key"):
+        client.list_workflows("owner", "repo")
+
+
+@respx.mock
+def test_list_workflows_invalid_workflows_type_raises(client: GiteaClient):
+    """Test that non-list 'workflows' value raises TypeError."""
+    respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/workflows"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={"workflows": "not-a-list"},  # Invalid type
+        )
+    )
+
+    with pytest.raises(TypeError, match="Unexpected 'workflows' value type"):
+        client.list_workflows("owner", "repo")
+
+
+@respx.mock
+def test_get_workflow(client: GiteaClient):
+    """Test getting a workflow by ID."""
+    respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/workflows/ci.yml"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "ci.yml",
+                "name": "CI Pipeline",
+                "path": ".gitea/workflows/ci.yml",
+                "state": "active",
+                "created_at": "2024-01-15T10:00:00Z",
+                "updated_at": "2024-01-16T10:00:00Z",
+            },
+        )
+    )
+
+    workflow = client.get_workflow("owner", "repo", "ci.yml")
+
+    assert workflow.id == "ci.yml"
+    assert workflow.name == "CI Pipeline"
+    assert workflow.state == "active"
+
+
+@respx.mock
+def test_get_workflow_not_found(client: GiteaClient):
+    """Test 404 error when workflow not found."""
+    respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/workflows/nonexistent.yml"
+    ).mock(return_value=httpx.Response(404, json={"message": "Not found"}))
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        client.get_workflow("owner", "repo", "nonexistent.yml")
+
+    assert exc_info.value.response.status_code == 404
+
+
+@respx.mock
+def test_dispatch_workflow(client: GiteaClient):
+    """Test dispatching a workflow run."""
+    route = respx.post(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/workflows/ci.yml/dispatches"
+    )
+    route.mock(return_value=httpx.Response(204))
+
+    client.dispatch_workflow("owner", "repo", "ci.yml", "main")
+
+    assert route.called
+    import json
+
+    request_body = json.loads(route.calls.last.request.content)
+    assert request_body == {"ref": "main"}
+
+
+@respx.mock
+def test_dispatch_workflow_with_inputs(client: GiteaClient):
+    """Test dispatching a workflow with inputs."""
+    route = respx.post(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/workflows/deploy.yml/dispatches"
+    )
+    route.mock(return_value=httpx.Response(204))
+
+    inputs = {"version": "1.0.0", "environment": "production"}
+    client.dispatch_workflow("owner", "repo", "deploy.yml", "v1.0.0", inputs)
+
+    assert route.called
+    import json
+
+    request_body = json.loads(route.calls.last.request.content)
+    assert request_body == {"ref": "v1.0.0", "inputs": inputs}
+
+
+@respx.mock
+def test_enable_workflow(client: GiteaClient):
+    """Test enabling a workflow."""
+    route = respx.put(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/workflows/ci.yml/enable"
+    )
+    route.mock(return_value=httpx.Response(204))
+
+    client.enable_workflow("owner", "repo", "ci.yml")
+
+    assert route.called
+
+
+@respx.mock
+def test_disable_workflow(client: GiteaClient):
+    """Test disabling a workflow."""
+    route = respx.put(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/workflows/ci.yml/disable"
+    )
+    route.mock(return_value=httpx.Response(204))
+
+    client.disable_workflow("owner", "repo", "ci.yml")
+
+    assert route.called
+
+
+@respx.mock
+def test_workflow_id_path_encoding(client: GiteaClient):
+    """Test that workflow_id with special characters is properly encoded."""
+    # Use url__regex to match the encoded URL since respx URL comparison can be tricky
+    route = respx.get(
+        url__regex=r".*/actions/workflows/\.\.%2Fetc%2Fpasswd$"
+    )
+    route.mock(return_value=httpx.Response(404, json={"message": "Not found"}))
+
+    with pytest.raises(httpx.HTTPStatusError):
+        client.get_workflow("owner", "repo", "../etc/passwd")
+
+    assert route.called
