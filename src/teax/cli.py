@@ -3,6 +3,7 @@
 import csv
 import io
 import json
+import os
 import re
 import sys
 from typing import Any
@@ -604,6 +605,82 @@ class OutputFormat:
                 console.print(f"\n[green]To keep ({len(to_keep)}):[/green]")
                 for v in to_keep:
                     console.print(f"  - {safe_rich(v.version)}")
+
+    def print_secrets(self, secrets: list[Any]) -> None:
+        """Print secrets list (names only - values are never returned)."""
+        if self.format_type == "json":
+            output_data = [
+                {
+                    "name": terminal_safe(s.name),
+                    "created_at": terminal_safe(s.created_at),
+                }
+                for s in secrets
+            ]
+            click.echo(json.dumps(output_data, indent=2))
+
+        elif self.format_type == "simple":
+            for s in secrets:
+                click.echo(terminal_safe(s.name))
+
+        elif self.format_type == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["name", "created_at"])
+            for s in secrets:
+                writer.writerow([csv_safe(s.name), csv_safe(s.created_at)])
+            click.echo(output.getvalue().rstrip())
+
+        else:  # table (default)
+            if not secrets:
+                console.print("[dim]No secrets found[/dim]")
+                return
+
+            table = Table(title="Secrets")
+            table.add_column("Name", style="cyan")
+            table.add_column("Created", style="dim")
+
+            for s in secrets:
+                table.add_row(safe_rich(s.name), safe_rich(s.created_at))
+
+            console.print(table)
+
+    def print_variables(self, variables: list[Any]) -> None:
+        """Print variables list."""
+        if self.format_type == "json":
+            output_data = [
+                {
+                    "name": terminal_safe(v.name),
+                    "value": terminal_safe(v.data),
+                }
+                for v in variables
+            ]
+            click.echo(json.dumps(output_data, indent=2))
+
+        elif self.format_type == "simple":
+            for v in variables:
+                click.echo(f"{terminal_safe(v.name)}={terminal_safe(v.data)}")
+
+        elif self.format_type == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["name", "value"])
+            for v in variables:
+                writer.writerow([csv_safe(v.name), csv_safe(v.data)])
+            click.echo(output.getvalue().rstrip())
+
+        else:  # table (default)
+            if not variables:
+                console.print("[dim]No variables found[/dim]")
+                return
+
+            table = Table(title="Variables")
+            table.add_column("Name", style="cyan")
+            table.add_column("Value")
+
+            for v in variables:
+                table.add_row(safe_rich(v.name), safe_rich(v.data))
+
+            console.print(table)
 
 
 # --- Main CLI Group ---
@@ -2007,6 +2084,370 @@ def pkg_prune(
                     "[dim]Use --execute to actually delete these versions[/dim]"
                 )
 
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+# --- Secrets Group ---
+
+
+def validate_secrets_scope(
+    repo: str | None, org: str | None, user_scope: bool
+) -> tuple[str | None, str | None, str | None, bool]:
+    """Validate and parse scope options for secrets/variables.
+
+    Args:
+        repo: Repository in owner/repo format
+        org: Organisation name
+        user_scope: If True, use user-level scope
+
+    Returns:
+        Tuple of (owner, repo_name, org, user_scope)
+
+    Raises:
+        click.UsageError: If scope is invalid
+    """
+    scope_count = sum([bool(repo), bool(org), user_scope])
+
+    if scope_count == 0:
+        raise click.UsageError("Must specify --repo, --org, or --user")
+    if scope_count > 1:
+        raise click.UsageError("Specify only one of --repo, --org, or --user")
+
+    owner = None
+    repo_name = None
+    if repo:
+        owner, repo_name = parse_repo(repo)
+
+    return owner, repo_name, org, user_scope
+
+
+@main.group()
+def secrets() -> None:
+    """Manage Gitea Actions secrets."""
+    pass
+
+
+@secrets.command("list")
+@click.option("-r", "--repo", help="Repository (owner/repo)")
+@click.option("--org", help="Organisation name")
+@click.option("--user", "user_scope", is_flag=True, help="User-level scope")
+@click.pass_context
+def secrets_list(
+    ctx: click.Context,
+    repo: str | None,
+    org: str | None,
+    user_scope: bool,
+) -> None:
+    """List secrets (names only - values are never returned).
+
+    Examples:
+        teax secrets list --repo owner/repo
+        teax secrets list --org myorg
+        teax secrets list --user
+    """
+    owner, repo_name, org_name, is_user = validate_secrets_scope(repo, org, user_scope)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            secrets_list = client.list_secrets(
+                owner=owner,
+                repo=repo_name,
+                org=org_name,
+                user_scope=is_user,
+            )
+            output.print_secrets(secrets_list)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@secrets.command("set")
+@click.argument("name")
+@click.option("-r", "--repo", help="Repository (owner/repo)")
+@click.option("--org", help="Organisation name")
+@click.option("--user", "user_scope", is_flag=True, help="User-level scope")
+@click.option(
+    "--from-env",
+    "env_var",
+    help="Read value from environment variable",
+)
+@click.pass_context
+def secrets_set(
+    ctx: click.Context,
+    name: str,
+    repo: str | None,
+    org: str | None,
+    user_scope: bool,
+    env_var: str | None,
+) -> None:
+    """Create or update a secret.
+
+    The value can be provided via:
+    - Interactive prompt (default, hidden input)
+    - Stdin pipe: echo "value" | teax secrets set NAME -r owner/repo
+    - Environment variable: teax secrets set NAME -r owner/repo --from-env MY_VAR
+
+    Examples:
+        teax secrets set DEPLOY_TOKEN --repo owner/repo
+        teax secrets set API_KEY --org myorg --from-env MY_API_KEY
+        echo "secret-value" | teax secrets set TOKEN --repo owner/repo
+    """
+    owner, repo_name, org_name, is_user = validate_secrets_scope(repo, org, user_scope)
+
+    # Get the secret value
+    if env_var:
+        value = os.environ.get(env_var)
+        if value is None:
+            err_console.print(
+                f"[red]Error:[/red] Environment variable '{env_var}' not set"
+            )
+            sys.exit(1)
+    elif not sys.stdin.isatty():
+        # Read from stdin (piped input)
+        value = sys.stdin.read().rstrip("\n")
+    else:
+        # Interactive prompt with hidden input
+        value = click.prompt("Secret value", hide_input=True, confirmation_prompt=True)
+
+    if not value:
+        err_console.print("[red]Error:[/red] Secret value cannot be empty")
+        sys.exit(1)
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            created = client.set_secret(
+                name=name,
+                value=value,
+                owner=owner,
+                repo=repo_name,
+                org=org_name,
+                user_scope=is_user,
+            )
+            action = "Created" if created else "Updated"
+            console.print(f"[green]{action}:[/green] {safe_rich(name)}")
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@secrets.command("delete")
+@click.argument("name")
+@click.option("-r", "--repo", help="Repository (owner/repo)")
+@click.option("--org", help="Organisation name")
+@click.option("--user", "user_scope", is_flag=True, help="User-level scope")
+@click.option("-y", "--yes", is_flag=True, help="Skip confirmation")
+@click.pass_context
+def secrets_delete(
+    ctx: click.Context,
+    name: str,
+    repo: str | None,
+    org: str | None,
+    user_scope: bool,
+    yes: bool,
+) -> None:
+    """Delete a secret.
+
+    Examples:
+        teax secrets delete DEPLOY_TOKEN --repo owner/repo
+        teax secrets delete API_KEY --org myorg -y
+    """
+    owner, repo_name, org_name, is_user = validate_secrets_scope(repo, org, user_scope)
+
+    if not yes:
+        if not click.confirm(f"Delete secret '{name}'?"):
+            console.print("[yellow]Aborted[/yellow]")
+            return
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            client.delete_secret(
+                name=name,
+                owner=owner,
+                repo=repo_name,
+                org=org_name,
+                user_scope=is_user,
+            )
+            console.print(f"[green]Deleted:[/green] {safe_rich(name)}")
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+# --- Variables Group ---
+
+
+@main.group()
+def vars() -> None:
+    """Manage Gitea Actions variables."""
+    pass
+
+
+@vars.command("list")
+@click.option("-r", "--repo", help="Repository (owner/repo)")
+@click.option("--org", help="Organisation name")
+@click.option("--user", "user_scope", is_flag=True, help="User-level scope")
+@click.pass_context
+def vars_list(
+    ctx: click.Context,
+    repo: str | None,
+    org: str | None,
+    user_scope: bool,
+) -> None:
+    """List variables.
+
+    Examples:
+        teax vars list --repo owner/repo
+        teax vars list --org myorg
+        teax vars list --user
+    """
+    owner, repo_name, org_name, is_user = validate_secrets_scope(repo, org, user_scope)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            variables = client.list_variables(
+                owner=owner,
+                repo=repo_name,
+                org=org_name,
+                user_scope=is_user,
+            )
+            output.print_variables(variables)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@vars.command("get")
+@click.argument("name")
+@click.option("-r", "--repo", help="Repository (owner/repo)")
+@click.option("--org", help="Organisation name")
+@click.option("--user", "user_scope", is_flag=True, help="User-level scope")
+@click.pass_context
+def vars_get(
+    ctx: click.Context,
+    name: str,
+    repo: str | None,
+    org: str | None,
+    user_scope: bool,
+) -> None:
+    """Get a variable's value.
+
+    Examples:
+        teax vars get ENV_NAME --repo owner/repo
+        teax -o simple vars get ENV_NAME --repo owner/repo  # Just the value
+    """
+    owner, repo_name, org_name, is_user = validate_secrets_scope(repo, org, user_scope)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            variable = client.get_variable(
+                name=name,
+                owner=owner,
+                repo=repo_name,
+                org=org_name,
+                user_scope=is_user,
+            )
+
+            if output.format_type == "json":
+                click.echo(
+                    json.dumps(
+                        {"name": variable.name, "value": variable.data},
+                        indent=2,
+                    )
+                )
+            elif output.format_type == "simple":
+                click.echo(terminal_safe(variable.data))
+            else:  # table/csv
+                console.print(f"[bold]{safe_rich(variable.name)}[/bold]")
+                console.print(safe_rich(variable.data))
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@vars.command("set")
+@click.argument("name")
+@click.option("-v", "--value", required=True, help="Variable value")
+@click.option("-r", "--repo", help="Repository (owner/repo)")
+@click.option("--org", help="Organisation name")
+@click.option("--user", "user_scope", is_flag=True, help="User-level scope")
+@click.pass_context
+def vars_set(
+    ctx: click.Context,
+    name: str,
+    value: str,
+    repo: str | None,
+    org: str | None,
+    user_scope: bool,
+) -> None:
+    """Create or update a variable.
+
+    Examples:
+        teax vars set ENV_NAME --value production --repo owner/repo
+        teax vars set BUILD_FLAGS --value "-O2" --org myorg
+    """
+    owner, repo_name, org_name, is_user = validate_secrets_scope(repo, org, user_scope)
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            created = client.set_variable(
+                name=name,
+                value=value,
+                owner=owner,
+                repo=repo_name,
+                org=org_name,
+                user_scope=is_user,
+            )
+            action = "Created" if created else "Updated"
+            console.print(f"[green]{action}:[/green] {safe_rich(name)}")
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@vars.command("delete")
+@click.argument("name")
+@click.option("-r", "--repo", help="Repository (owner/repo)")
+@click.option("--org", help="Organisation name")
+@click.option("--user", "user_scope", is_flag=True, help="User-level scope")
+@click.option("-y", "--yes", is_flag=True, help="Skip confirmation")
+@click.pass_context
+def vars_delete(
+    ctx: click.Context,
+    name: str,
+    repo: str | None,
+    org: str | None,
+    user_scope: bool,
+    yes: bool,
+) -> None:
+    """Delete a variable.
+
+    Examples:
+        teax vars delete ENV_NAME --repo owner/repo
+        teax vars delete BUILD_FLAGS --org myorg -y
+    """
+    owner, repo_name, org_name, is_user = validate_secrets_scope(repo, org, user_scope)
+
+    if not yes:
+        if not click.confirm(f"Delete variable '{name}'?"):
+            console.print("[yellow]Aborted[/yellow]")
+            return
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            client.delete_variable(
+                name=name,
+                owner=owner,
+                repo=repo_name,
+                org=org_name,
+                user_scope=is_user,
+            )
+            console.print(f"[green]Deleted:[/green] {safe_rich(name)}")
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)

@@ -18,8 +18,10 @@ from teax.models import (
     PackageVersion,
     RegistrationToken,
     Runner,
+    Secret,
     TeaLogin,
     User,
+    Variable,
 )
 
 
@@ -1142,4 +1144,244 @@ class GiteaClient:
         base_url = self._packages_base_url(owner)
         url = f"{base_url}/{_seg(pkg_type)}/{_seg(name)}/{_seg(version)}"
         response = self._client.delete(url)
+        response.raise_for_status()
+
+    # --- Secrets Operations ---
+
+    def _secrets_base_path(
+        self,
+        owner: str | None = None,
+        repo: str | None = None,
+        org: str | None = None,
+        user_scope: bool = False,
+    ) -> str:
+        """Build base path for secrets API.
+
+        Args:
+            owner: Repository owner (required with repo)
+            repo: Repository name
+            org: Organisation name
+            user_scope: If True, use user-level scope
+
+        Returns:
+            Base path for secrets endpoints
+        """
+        if user_scope:
+            return "user/actions/secrets"
+        elif org:
+            return f"orgs/{_seg(org)}/actions/secrets"
+        elif owner and repo:
+            return f"repos/{_seg(owner)}/{_seg(repo)}/actions/secrets"
+        else:
+            raise ValueError("Must specify repo (owner+repo), org, or user_scope")
+
+    def list_secrets(
+        self,
+        owner: str | None = None,
+        repo: str | None = None,
+        org: str | None = None,
+        user_scope: bool = False,
+    ) -> list[Secret]:
+        """List secrets (names only - values are never returned).
+
+        Args:
+            owner: Repository owner (required with repo)
+            repo: Repository name
+            org: Organisation name
+            user_scope: If True, list user-level secrets
+
+        Returns:
+            List of secrets (metadata only, no values)
+        """
+        base = self._secrets_base_path(owner, repo, org, user_scope)
+        response = self._client.get(base)
+        response.raise_for_status()
+        data = response.json()
+        return [Secret.model_validate(s) for s in data]
+
+    def set_secret(
+        self,
+        name: str,
+        value: str,
+        owner: str | None = None,
+        repo: str | None = None,
+        org: str | None = None,
+        user_scope: bool = False,
+    ) -> bool:
+        """Create or update a secret.
+
+        Args:
+            name: Secret name (uppercase alphanumeric and underscores only)
+            value: Secret value (will be encrypted at rest)
+            owner: Repository owner (required with repo)
+            repo: Repository name
+            org: Organisation name
+            user_scope: If True, set user-level secret
+
+        Returns:
+            True if created, False if updated
+        """
+        base = self._secrets_base_path(owner, repo, org, user_scope)
+        response = self._client.put(
+            f"{base}/{_seg(name)}",
+            json={"data": value},
+        )
+        response.raise_for_status()
+        return response.status_code == 201
+
+    def delete_secret(
+        self,
+        name: str,
+        owner: str | None = None,
+        repo: str | None = None,
+        org: str | None = None,
+        user_scope: bool = False,
+    ) -> None:
+        """Delete a secret.
+
+        Args:
+            name: Secret name
+            owner: Repository owner (required with repo)
+            repo: Repository name
+            org: Organisation name
+            user_scope: If True, delete user-level secret
+        """
+        base = self._secrets_base_path(owner, repo, org, user_scope)
+        response = self._client.delete(f"{base}/{_seg(name)}")
+        response.raise_for_status()
+
+    # --- Variables Operations ---
+
+    def _variables_base_path(
+        self,
+        owner: str | None = None,
+        repo: str | None = None,
+        org: str | None = None,
+        user_scope: bool = False,
+    ) -> str:
+        """Build base path for variables API.
+
+        Args:
+            owner: Repository owner (required with repo)
+            repo: Repository name
+            org: Organisation name
+            user_scope: If True, use user-level scope
+
+        Returns:
+            Base path for variables endpoints
+        """
+        if user_scope:
+            return "user/actions/variables"
+        elif org:
+            return f"orgs/{_seg(org)}/actions/variables"
+        elif owner and repo:
+            return f"repos/{_seg(owner)}/{_seg(repo)}/actions/variables"
+        else:
+            raise ValueError("Must specify repo (owner+repo), org, or user_scope")
+
+    def list_variables(
+        self,
+        owner: str | None = None,
+        repo: str | None = None,
+        org: str | None = None,
+        user_scope: bool = False,
+    ) -> list[Variable]:
+        """List variables.
+
+        Args:
+            owner: Repository owner (required with repo)
+            repo: Repository name
+            org: Organisation name
+            user_scope: If True, list user-level variables
+
+        Returns:
+            List of variables with values
+        """
+        base = self._variables_base_path(owner, repo, org, user_scope)
+        response = self._client.get(base)
+        response.raise_for_status()
+        data = response.json()
+        return [Variable.model_validate(v) for v in data]
+
+    def get_variable(
+        self,
+        name: str,
+        owner: str | None = None,
+        repo: str | None = None,
+        org: str | None = None,
+        user_scope: bool = False,
+    ) -> Variable:
+        """Get a single variable.
+
+        Args:
+            name: Variable name
+            owner: Repository owner (required with repo)
+            repo: Repository name
+            org: Organisation name
+            user_scope: If True, get user-level variable
+
+        Returns:
+            Variable with value
+        """
+        base = self._variables_base_path(owner, repo, org, user_scope)
+        response = self._client.get(f"{base}/{_seg(name)}")
+        response.raise_for_status()
+        return Variable.model_validate(response.json())
+
+    def set_variable(
+        self,
+        name: str,
+        value: str,
+        owner: str | None = None,
+        repo: str | None = None,
+        org: str | None = None,
+        user_scope: bool = False,
+    ) -> bool:
+        """Create or update a variable.
+
+        Args:
+            name: Variable name
+            value: Variable value
+            owner: Repository owner (required with repo)
+            repo: Repository name
+            org: Organisation name
+            user_scope: If True, set user-level variable
+
+        Returns:
+            True if created, False if updated
+        """
+        base = self._variables_base_path(owner, repo, org, user_scope)
+        url = f"{base}/{_seg(name)}"
+
+        # Try to create first (POST), fall back to update (PUT)
+        response = self._client.post(url, json={"value": value})
+        if response.status_code == 201:
+            return True
+        elif response.status_code == 409:  # Already exists
+            response = self._client.put(url, json={"value": value})
+            response.raise_for_status()
+            return False
+        else:
+            response.raise_for_status()
+            return True  # Shouldn't reach here
+
+    def delete_variable(
+        self,
+        name: str,
+        owner: str | None = None,
+        repo: str | None = None,
+        org: str | None = None,
+        user_scope: bool = False,
+    ) -> None:
+        """Delete a variable.
+
+        Args:
+            name: Variable name
+            owner: Repository owner (required with repo)
+            repo: Repository name
+            org: Organisation name
+            user_scope: If True, delete user-level variable
+        """
+        base = self._variables_base_path(owner, repo, org, user_scope)
+        response = self._client.delete(f"{base}/{_seg(name)}")
         response.raise_for_status()

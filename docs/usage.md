@@ -610,6 +610,133 @@ teax --output simple pkg list --owner homelab-teams
 teax --output csv pkg list --owner homelab-teams
 ```
 
+## Secrets Management
+
+Manage Gitea Actions secrets for repositories, organisations, or users.
+
+**Note**: Secret values are write-only - they cannot be retrieved via API for security reasons.
+
+### List Secrets
+
+```bash
+# List secrets for a repository (names only)
+teax secrets list --repo homelab/myproject
+
+# List secrets for an organisation
+teax secrets list --org myorg
+
+# List user-level secrets
+teax secrets list --user
+```
+
+**Output**:
+```
+              Secrets
+┏━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Name         ┃ Created                   ┃
+┡━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ DEPLOY_TOKEN │ 2026-01-27T10:00:00+10:00 │
+│ API_KEY      │ 2026-01-26T15:30:00+10:00 │
+└──────────────┴───────────────────────────┘
+```
+
+### Set Secrets
+
+```bash
+# Interactive prompt (hidden input with confirmation)
+teax secrets set DEPLOY_TOKEN --repo homelab/myproject
+
+# From stdin (for piping)
+echo "my-secret-value" | teax secrets set API_KEY --repo homelab/myproject
+
+# From environment variable
+teax secrets set API_KEY --repo homelab/myproject --from-env MY_ENV_VAR
+
+# Organisation-level secret
+teax secrets set SHARED_TOKEN --org myorg
+```
+
+### Delete Secrets
+
+```bash
+# Delete with confirmation prompt
+teax secrets delete DEPLOY_TOKEN --repo homelab/myproject
+
+# Skip confirmation (for scripting)
+teax secrets delete API_KEY --repo homelab/myproject -y
+```
+
+## Variables Management
+
+Manage Gitea Actions variables for repositories, organisations, or users.
+
+Unlike secrets, variable values are readable and visible in API responses.
+
+### List Variables
+
+```bash
+# List variables for a repository
+teax vars list --repo homelab/myproject
+
+# List variables for an organisation
+teax vars list --org myorg
+
+# List user-level variables
+teax vars list --user
+```
+
+**Output**:
+```
+         Variables
+┏━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ Name     ┃ Value        ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ ENV_NAME │ production   │
+│ REGION   │ ap-southeast │
+└──────────┴──────────────┘
+```
+
+### Get Variable Value
+
+```bash
+# Get variable details
+teax vars get ENV_NAME --repo homelab/myproject
+
+# Get just the value (for scripting)
+teax -o simple vars get ENV_NAME --repo homelab/myproject
+# Output: production
+```
+
+### Set Variables
+
+```bash
+# Create or update a variable
+teax vars set ENV_NAME --value production --repo homelab/myproject
+
+# Organisation-level variable
+teax vars set SHARED_CONFIG --value "some-value" --org myorg
+```
+
+### Delete Variables
+
+```bash
+# Delete with confirmation
+teax vars delete ENV_NAME --repo homelab/myproject
+
+# Skip confirmation
+teax vars delete REGION --repo homelab/myproject -y
+```
+
+### Scope Options
+
+All secrets and variables commands require exactly one scope:
+
+| Option | Description |
+|--------|-------------|
+| `--repo owner/repo` | Repository-level |
+| `--org orgname` | Organisation-level |
+| `--user` | User-level (your personal secrets/vars) |
+
 ## Related Documentation
 
 - [API Reference](api.md) - Using teax as a Python library
@@ -617,3 +744,4 @@ teax --output csv pkg list --owner homelab-teams
 - [ADR-0006: teax Design](adr/ADR-0006-teax-design.md) - Design decisions
 - [ADR-0007: Gitea Actions Support](adr/ADR-0007-gitea-actions-support.md) - Runner management design
 - [ADR-0008: Package Management](adr/ADR-0008-package-management.md) - Package management design
+- [ADR-0009: Secrets/Variables](adr/ADR-0009-secrets-variables-management.md) - Secrets and variables management

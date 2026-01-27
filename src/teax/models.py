@@ -145,3 +145,20 @@ class PackageVersion(BaseModel):
     version: str
     created_at: str
     html_url: str = ""
+
+
+class Secret(BaseModel):
+    """Gitea Actions secret (metadata only - values are never returned)."""
+
+    name: str
+    created_at: str = ""
+
+
+class Variable(BaseModel):
+    """Gitea Actions variable."""
+
+    name: str
+    data: str  # The variable value
+    owner_id: int = 0
+    repo_id: int = 0
+    description: str = ""
