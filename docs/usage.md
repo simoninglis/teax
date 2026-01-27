@@ -835,6 +835,129 @@ teax --output simple workflow list --repo homelab/myproject
 teax --output csv workflow list --repo homelab/myproject
 ```
 
+## Workflow Runs
+
+Inspect and debug CI/CD workflow runs. Designed for LLM agent workflows with token-efficient output options.
+
+**Note**: Requires Gitea 1.25.0+ with Actions enabled.
+
+### Quick Status Check
+
+```bash
+# Show health status of all workflows
+teax runs status -r owner/repo
+
+# Output: ci.yml: ✓ success (#42) | deploy.yml: ✗ failure (#38)
+```
+
+### List Workflow Runs
+
+```bash
+# List recent runs
+teax runs list -r owner/repo
+
+# Filter by workflow, branch, or status
+teax runs list -r owner/repo --workflow ci.yml
+teax runs list -r owner/repo --branch main --status failure
+teax runs list -r owner/repo --limit 5
+
+# JSON output for automation
+teax runs list -r owner/repo -o json
+```
+
+### Get Run Details
+
+```bash
+# Show jobs and steps for a run
+teax runs get 42 -r owner/repo
+
+# Show only failed jobs/steps (useful for debugging)
+teax runs get 42 -r owner/repo --errors-only
+
+# JSON output
+teax runs get 42 -r owner/repo -o json
+```
+
+### Get Job Logs
+
+```bash
+# Get full logs for a job (sanitized by default)
+teax runs logs 123 -r owner/repo
+
+# Get last 100 lines
+teax runs logs 123 -r owner/repo --tail 100
+
+# Filter logs by pattern with context
+teax runs logs 123 -r owner/repo --grep "Error|FAILED" --context 5
+
+# Strip all ANSI escape sequences
+teax runs logs 123 -r owner/repo --strip-ansi
+
+# Raw output (exact server bytes, no sanitization - use with caution)
+teax runs logs 123 -r owner/repo --raw
+```
+
+**Log filtering options (useful for LLM agents)**:
+- `--tail N`: Show last N lines
+- `--head N`: Show first N lines
+- `--grep PATTERN`: Filter lines matching regex pattern
+- `--context N`: Show N lines around grep matches
+- `--strip-ansi`: Remove all escape sequences (OSC, CSI, control chars)
+- `--raw`: Output exact server bytes (mutually exclusive with other options)
+
+### Rerun Workflow
+
+```bash
+# Rerun a workflow via dispatch (workaround)
+teax runs rerun 42 -r owner/repo
+```
+
+**Note**: Uses workflow dispatch since Gitea's native rerun API is pending (PR #35382).
+Limitations:
+- Only works for workflows with `workflow_dispatch` trigger
+- Original inputs not preserved
+- Original event context (PR number, etc.) lost
+
+### Delete Workflow Run
+
+```bash
+# Delete a run
+teax runs delete 42 -r owner/repo
+
+# Skip confirmation
+teax runs delete 42 -r owner/repo -y
+```
+
+## Package Linking
+
+Link packages to repositories for discoverability.
+
+**Note**: Package labeling is NOT available via Gitea's API - only repository linking.
+
+### Link Package to Repository
+
+```bash
+# Link a container image to a repository
+teax pkg link myimage --owner homelab-teams --type container --repo myproject
+```
+
+### Unlink Package
+
+```bash
+# Unlink a package from its repository
+teax pkg unlink myimage --owner homelab-teams --type container
+```
+
+### Get Latest Package Version
+
+```bash
+# Get the latest version of a package
+teax pkg latest teax --owner homelab-teams --type pypi
+
+# JSON output
+teax pkg latest myimage --owner homelab-teams --type container -o json
+```
+
 ## Related Documentation
 
 - [API Reference](api.md) - Using teax as a Python library
@@ -843,3 +966,4 @@ teax --output csv workflow list --repo homelab/myproject
 - [ADR-0007: Gitea Actions Support](adr/ADR-0007-gitea-actions-support.md) - Runner management design
 - [ADR-0008: Package Management](adr/ADR-0008-package-management.md) - Package management design
 - [ADR-0009: Secrets/Variables](adr/ADR-0009-secrets-variables-management.md) - Secrets and variables management
+- [ADR-0010: Workflow Runs](adr/ADR-0010-workflow-runs-agent-support.md) - Workflow runs and LLM agent support

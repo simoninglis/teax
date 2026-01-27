@@ -764,6 +764,262 @@ class OutputFormat:
                 )
             console.print(table)
 
+    def print_runs(self, runs: list[Any]) -> None:
+        """Print workflow runs list."""
+        if self.format_type == "json":
+            output_data = [
+                {
+                    "id": r.id,
+                    "run_number": r.run_number,
+                    "status": terminal_safe(r.status),
+                    "conclusion": terminal_safe(r.conclusion) if r.conclusion else None,
+                    "head_sha": terminal_safe(r.head_sha[:8]),
+                    "head_branch": terminal_safe(r.head_branch),
+                    "event": terminal_safe(r.event),
+                    "display_title": terminal_safe(r.display_title),
+                    "path": terminal_safe(r.path),
+                    "started_at": terminal_safe(r.started_at) if r.started_at else None,
+                    "html_url": terminal_safe(r.html_url),
+                }
+                for r in runs
+            ]
+            click.echo(json.dumps(output_data, indent=2))
+
+        elif self.format_type == "simple":
+            for r in runs:
+                conclusion = r.conclusion or r.status
+                sha = r.head_sha[:8] if r.head_sha else ""
+                click.echo(
+                    f"#{r.run_number} {terminal_safe(conclusion)} "
+                    f"{terminal_safe(sha)} {terminal_safe(r.head_branch)}"
+                )
+
+        elif self.format_type == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow([
+                "id", "run_number", "status", "conclusion",
+                "head_sha", "head_branch", "event", "path"
+            ])
+            for r in runs:
+                writer.writerow([
+                    r.id,
+                    r.run_number,
+                    csv_safe(r.status),
+                    csv_safe(r.conclusion or ""),
+                    csv_safe(r.head_sha[:8] if r.head_sha else ""),
+                    csv_safe(r.head_branch),
+                    csv_safe(r.event),
+                    csv_safe(r.path),
+                ])
+            click.echo(output.getvalue().rstrip())
+
+        else:  # table (default)
+            if not runs:
+                console.print("[dim]No workflow runs found[/dim]")
+                return
+
+            table = Table(title="Workflow Runs")
+            table.add_column("#", style="cyan")
+            table.add_column("Status")
+            table.add_column("SHA", style="dim")
+            table.add_column("Branch")
+            table.add_column("Workflow")
+            table.add_column("Event", style="dim")
+
+            for r in runs:
+                conclusion = r.conclusion or r.status
+                if conclusion == "success":
+                    status_str = "[green]✓ success[/green]"
+                elif conclusion == "failure":
+                    status_str = "[red]✗ failure[/red]"
+                elif conclusion in ("cancelled", "skipped"):
+                    status_str = f"[yellow]○ {safe_rich(conclusion)}[/yellow]"
+                else:
+                    status_str = f"[blue]● {safe_rich(r.status)}[/blue]"
+
+                # Extract workflow name from path
+                workflow_name = r.path.split("/")[-1] if r.path else ""
+
+                table.add_row(
+                    str(r.run_number),
+                    status_str,
+                    safe_rich(r.head_sha[:8] if r.head_sha else ""),
+                    safe_rich(r.head_branch),
+                    safe_rich(workflow_name),
+                    safe_rich(r.event),
+                )
+            console.print(table)
+
+    def print_run_status(self, runs: list[Any]) -> None:
+        """Print workflow health status (latest run per workflow)."""
+        # Group runs by workflow
+        workflow_runs: dict[str, Any] = {}
+        for r in runs:
+            workflow_name = r.path.split("/")[-1] if r.path else "unknown"
+            if workflow_name not in workflow_runs:
+                workflow_runs[workflow_name] = r
+
+        if self.format_type == "json":
+            output_data = {
+                wf: {
+                    "run_id": r.id,
+                    "run_number": r.run_number,
+                    "status": terminal_safe(r.status),
+                    "conclusion": terminal_safe(r.conclusion) if r.conclusion else None,
+                    "head_sha": terminal_safe(r.head_sha[:8]),
+                    "head_branch": terminal_safe(r.head_branch),
+                    "started_at": terminal_safe(r.started_at) if r.started_at else None,
+                }
+                for wf, r in workflow_runs.items()
+            }
+            click.echo(json.dumps(output_data, indent=2))
+
+        elif self.format_type == "simple":
+            for wf, r in workflow_runs.items():
+                conclusion = r.conclusion or r.status
+                symbol = "✓" if conclusion == "success" else "✗"
+                click.echo(
+                    f"{terminal_safe(wf)}: {symbol} {terminal_safe(conclusion)} "
+                    f"(#{r.run_number})"
+                )
+
+        elif self.format_type == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow([
+                "workflow", "status", "conclusion", "run_number", "head_sha"
+            ])
+            for wf, r in workflow_runs.items():
+                writer.writerow([
+                    csv_safe(wf),
+                    csv_safe(r.status),
+                    csv_safe(r.conclusion or ""),
+                    r.run_number,
+                    csv_safe(r.head_sha[:8] if r.head_sha else ""),
+                ])
+            click.echo(output.getvalue().rstrip())
+
+        else:  # table (default)
+            if not workflow_runs:
+                console.print("[dim]No workflow runs found[/dim]")
+                return
+
+            for wf, r in workflow_runs.items():
+                conclusion = r.conclusion or r.status
+                if conclusion == "success":
+                    status_str = "[green]✓ success[/green]"
+                elif conclusion == "failure":
+                    status_str = "[red]✗ failure[/red]"
+                elif conclusion in ("cancelled", "skipped"):
+                    status_str = f"[yellow]○ {safe_rich(conclusion)}[/yellow]"
+                else:
+                    status_str = f"[blue]● {safe_rich(r.status)}[/blue]"
+
+                sha = r.head_sha[:8] if r.head_sha else ""
+                console.print(
+                    f"[bold]{safe_rich(wf)}[/bold]: {status_str} "
+                    f"(#{r.run_number}, {safe_rich(sha)})"
+                )
+
+    def print_jobs(self, jobs: list[Any], errors_only: bool = False) -> None:
+        """Print jobs list with steps."""
+        if errors_only:
+            jobs = [j for j in jobs if j.conclusion == "failure"]
+
+        if self.format_type == "json":
+            output_data = [
+                {
+                    "id": j.id,
+                    "name": terminal_safe(j.name),
+                    "status": terminal_safe(j.status),
+                    "conclusion": terminal_safe(j.conclusion) if j.conclusion else None,
+                    "runner_name": (
+                        terminal_safe(j.runner_name) if j.runner_name else None
+                    ),
+                    "started_at": (
+                        terminal_safe(j.started_at) if j.started_at else None
+                    ),
+                    "completed_at": (
+                        terminal_safe(j.completed_at) if j.completed_at else None
+                    ),
+                    "steps": [
+                        {
+                            "number": s.number,
+                            "name": terminal_safe(s.name),
+                            "status": terminal_safe(s.status),
+                            "conclusion": (
+                                terminal_safe(s.conclusion) if s.conclusion else None
+                            ),
+                        }
+                        for s in j.steps
+                    ],
+                }
+                for j in jobs
+            ]
+            click.echo(json.dumps(output_data, indent=2))
+
+        elif self.format_type == "simple":
+            for j in jobs:
+                conclusion = j.conclusion or j.status
+                symbol = "✓" if conclusion == "success" else "✗"
+                name = terminal_safe(j.name)
+                click.echo(f"{symbol} {name} ({terminal_safe(conclusion)})")
+                for s in j.steps:
+                    step_conclusion = s.conclusion or s.status
+                    step_symbol = "✓" if step_conclusion == "success" else "✗"
+                    click.echo(f"  {step_symbol} {terminal_safe(s.name)}")
+
+        elif self.format_type == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow([
+                "job_id", "job_name", "job_conclusion",
+                "step_number", "step_name", "step_conclusion"
+            ])
+            for j in jobs:
+                for s in j.steps:
+                    writer.writerow([
+                        j.id,
+                        csv_safe(j.name),
+                        csv_safe(j.conclusion or ""),
+                        s.number,
+                        csv_safe(s.name),
+                        csv_safe(s.conclusion or ""),
+                    ])
+            click.echo(output.getvalue().rstrip())
+
+        else:  # table (default)
+            if not jobs:
+                console.print("[dim]No jobs found[/dim]")
+                return
+
+            for j in jobs:
+                conclusion = j.conclusion or j.status
+                if conclusion == "success":
+                    job_status = "[green]✓ success[/green]"
+                elif conclusion == "failure":
+                    job_status = "[red]✗ failure[/red]"
+                else:
+                    job_status = f"[blue]● {safe_rich(j.status)}[/blue]"
+
+                runner = f" on {safe_rich(j.runner_name)}" if j.runner_name else ""
+                job_name = safe_rich(j.name)
+                console.print(f"\n[bold]{job_name}[/bold] {job_status}{runner}")
+
+                if j.steps:
+                    for s in j.steps:
+                        step_conclusion = s.conclusion or s.status
+                        if step_conclusion == "success":
+                            step_status = "[green]✓[/green]"
+                        elif step_conclusion == "failure":
+                            step_status = "[red]✗[/red]"
+                        elif step_conclusion == "skipped":
+                            step_status = "[dim]○[/dim]"
+                        else:
+                            step_status = "[blue]●[/blue]"
+                        console.print(f"  {step_status} {safe_rich(s.name)}")
+
 
 # --- Main CLI Group ---
 
@@ -2819,6 +3075,434 @@ def workflow_disable(ctx: click.Context, workflow_id: str, repo: str) -> None:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
             client.disable_workflow(owner, repo_name, workflow_id)
             output.print_mutation("disabled", workflow_id)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+# --- Runs Group ---
+
+
+@main.group()
+def runs() -> None:
+    """Manage workflow runs - list, inspect, and debug CI/CD."""
+    pass
+
+
+@runs.command("status")
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.pass_context
+def runs_status(ctx: click.Context, repo: str) -> None:
+    """Show workflow health status (latest run per workflow).
+
+    Quick overview of CI/CD health for all workflows.
+
+    Examples:
+        teax runs status -r owner/repo
+        teax runs status -r owner/repo -o json
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            runs_list = client.list_runs(owner, repo_name, limit=50, max_pages=2)
+            output.print_run_status(runs_list)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@runs.command("list")
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--workflow", "-w", help="Filter by workflow filename (e.g., ci.yml)")
+@click.option("--branch", "-b", help="Filter by branch name")
+@click.option("--status", "-s", help="Filter by status (queued, in_progress, etc.)")
+@click.option("--limit", "-n", default=20, help="Number of results (default: 20)")
+@click.pass_context
+def runs_list(
+    ctx: click.Context,
+    repo: str,
+    workflow: str | None,
+    branch: str | None,
+    status: str | None,
+    limit: int,
+) -> None:
+    """List workflow runs for a repository.
+
+    Examples:
+        teax runs list -r owner/repo
+        teax runs list -r owner/repo --workflow ci.yml
+        teax runs list -r owner/repo --status failure --limit 5
+        teax runs list -r owner/repo --branch main -o json
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            runs_list = client.list_runs(
+                owner, repo_name,
+                workflow=workflow,
+                branch=branch,
+                status=status,
+                limit=limit,
+            )
+            output.print_runs(runs_list)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@runs.command("get")
+@click.argument("run_id", type=int)
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--errors-only", "-e", is_flag=True, help="Show only failed jobs/steps")
+@click.pass_context
+def runs_get(
+    ctx: click.Context,
+    run_id: int,
+    repo: str,
+    errors_only: bool,
+) -> None:
+    """Get workflow run details with jobs and steps.
+
+    Examples:
+        teax runs get 42 -r owner/repo
+        teax runs get 42 -r owner/repo --errors-only
+        teax runs get 42 -r owner/repo -o json
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            jobs = client.list_run_jobs(owner, repo_name, run_id)
+            output.print_jobs(jobs, errors_only=errors_only)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@runs.command("jobs")
+@click.argument("run_id", type=int)
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--errors-only", "-e", is_flag=True, help="Show only failed jobs")
+@click.pass_context
+def runs_jobs(
+    ctx: click.Context,
+    run_id: int,
+    repo: str,
+    errors_only: bool,
+) -> None:
+    """List jobs for a workflow run.
+
+    Examples:
+        teax runs jobs 42 -r owner/repo
+        teax runs jobs 42 -r owner/repo --errors-only
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            jobs = client.list_run_jobs(owner, repo_name, run_id)
+            output.print_jobs(jobs, errors_only=errors_only)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+def filter_logs(
+    logs: str,
+    tail: int | None = None,
+    head: int | None = None,
+    grep: str | None = None,
+    context: int = 0,
+    strip_ansi: bool = False,
+) -> str:
+    """Filter log output with various options.
+
+    Args:
+        logs: Raw log content
+        tail: Show last N lines (must be positive if set)
+        head: Show first N lines (must be positive if set)
+        grep: Regex pattern to filter lines
+        context: Lines of context around grep matches (must be non-negative)
+        strip_ansi: Remove all terminal escape sequences (uses terminal_safe)
+
+    Returns:
+        Filtered log content
+
+    Raises:
+        click.BadParameter: If grep pattern is invalid regex
+    """
+    if strip_ansi:
+        # Use terminal_safe for comprehensive escape removal (OSC, CSI, DCS, etc.)
+        logs = terminal_safe(logs)
+
+    lines = logs.splitlines()
+
+    # Validate context is non-negative
+    context = max(0, context)
+
+    if grep:
+        # Find matching lines with context
+        try:
+            pattern = re.compile(grep, re.IGNORECASE)
+        except re.error as e:
+            raise click.BadParameter(
+                f"Invalid regex pattern: {terminal_safe(str(e))}"
+            ) from None
+        matched_indices: set[int] = set()
+        for i, line in enumerate(lines):
+            if pattern.search(line):
+                for j in range(max(0, i - context), min(len(lines), i + context + 1)):
+                    matched_indices.add(j)
+        lines = [lines[i] for i in sorted(matched_indices)]
+
+    # Handle head/tail - only apply if positive
+    if head is not None and head > 0:
+        lines = lines[:head]
+    elif tail is not None and tail > 0:
+        lines = lines[-tail:]
+
+    return '\n'.join(lines)
+
+
+@runs.command("logs")
+@click.argument("job_id", type=int)
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--tail", "-t", type=int, help="Show last N lines")
+@click.option("--head", "-H", type=int, help="Show first N lines")
+@click.option("--grep", "-g", help="Filter lines matching pattern (regex)")
+@click.option("--context", "-C", type=int, default=0, help="Context lines around grep")
+@click.option("--strip-ansi", is_flag=True, help="Strip all escape sequences")
+@click.option(
+    "--raw", is_flag=True,
+    help="Output exact server bytes (no filtering/sanitization)"
+)
+@click.pass_context
+def runs_logs(
+    ctx: click.Context,
+    job_id: int,
+    repo: str,
+    tail: int | None,
+    head: int | None,
+    grep: str | None,
+    context: int,
+    strip_ansi: bool,
+    raw: bool,
+) -> None:
+    """Get logs for a job.
+
+    By default, escape sequences are sanitized for terminal safety.
+    Use --raw for exact server output (no filtering - use with caution).
+    Note: --raw is mutually exclusive with filtering options.
+
+    Examples:
+        teax runs logs 123 -r owner/repo
+        teax runs logs 123 -r owner/repo --tail 100
+        teax runs logs 123 -r owner/repo --grep "Error|FAILED" --context 5
+        teax runs logs 123 -r owner/repo --raw
+    """
+    # Validate mutually exclusive options
+    if raw and (
+        strip_ansi
+        or tail is not None
+        or head is not None
+        or grep
+        or context
+    ):
+        err_console.print(
+            "[red]Error:[/red] --raw cannot be used with filtering options"
+        )
+        sys.exit(1)
+
+    owner, repo_name = parse_repo(repo)
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            logs = client.get_job_logs(owner, repo_name, job_id)
+
+            # If --raw, output exactly as received (no filtering/normalization)
+            if raw:
+                click.echo(logs, nl=False)
+                return
+
+            filtered = filter_logs(
+                logs,
+                tail=tail,
+                head=head,
+                grep=grep,
+                context=context,
+                strip_ansi=strip_ansi,
+            )
+            # Sanitize output unless strip_ansi already did it
+            if not strip_ansi:
+                filtered = terminal_safe(filtered)
+            click.echo(filtered)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+    except click.BadParameter as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@runs.command("rerun")
+@click.argument("run_id", type=int)
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.pass_context
+def runs_rerun(ctx: click.Context, run_id: int, repo: str) -> None:
+    """Rerun a workflow (via dispatch).
+
+    Note: Uses workflow dispatch as a workaround since Gitea's native
+    rerun API is not yet available. Limitations:
+    - Only works for workflows with workflow_dispatch trigger
+    - Original inputs not preserved
+    - Original event context (PR number, etc.) lost
+
+    Examples:
+        teax runs rerun 42 -r owner/repo
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            # Get run info first to show what we're rerunning
+            run = client.get_run(owner, repo_name, run_id)
+            workflow_name = run.path.split("/")[-1] if run.path else "unknown"
+
+            client.rerun_workflow(owner, repo_name, run_id)
+
+            console.print(
+                "[yellow]Note:[/yellow] Using workflow dispatch "
+                "(native rerun API not available)"
+            )
+            output.print_mutation(
+                "dispatched",
+                f"{terminal_safe(workflow_name)} on {terminal_safe(run.head_branch)}"
+            )
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@runs.command("delete")
+@click.argument("run_id", type=int)
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+@click.pass_context
+def runs_delete(ctx: click.Context, run_id: int, repo: str, yes: bool) -> None:
+    """Delete a workflow run.
+
+    Examples:
+        teax runs delete 42 -r owner/repo
+        teax runs delete 42 -r owner/repo -y
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    if not yes:
+        if not click.confirm(f"Delete run #{run_id}?"):
+            console.print("[yellow]Cancelled[/yellow]")
+            return
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            client.delete_run(owner, repo_name, run_id)
+            output.print_mutation("deleted", f"run #{run_id}")
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+# --- Package Linking Commands ---
+
+
+@pkg.command("link")
+@click.argument("name")
+@click.option("--owner", "-o", required=True, help="Package owner (user or org)")
+@click.option("--type", "pkg_type", required=True, help="Package type")
+@click.option("--repo", "-r", required=True, help="Repository name to link to")
+@click.pass_context
+def pkg_link(
+    ctx: click.Context,
+    name: str,
+    owner: str,
+    pkg_type: str,
+    repo: str,
+) -> None:
+    """Link a package to a repository.
+
+    Examples:
+        teax pkg link myimage --owner homelab-teams --type container --repo myproject
+    """
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            client.link_package(owner, pkg_type, name, repo)
+            msg = f"{terminal_safe(name)} to {terminal_safe(repo)}"
+            output.print_mutation("linked", msg)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@pkg.command("unlink")
+@click.argument("name")
+@click.option("--owner", "-o", required=True, help="Package owner (user or org)")
+@click.option("--type", "pkg_type", required=True, help="Package type")
+@click.pass_context
+def pkg_unlink(
+    ctx: click.Context,
+    name: str,
+    owner: str,
+    pkg_type: str,
+) -> None:
+    """Unlink a package from its repository.
+
+    Examples:
+        teax pkg unlink myimage --owner homelab-teams --type container
+    """
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            client.unlink_package(owner, pkg_type, name)
+            output.print_mutation("unlinked", terminal_safe(name))
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@pkg.command("latest")
+@click.argument("name")
+@click.option("--owner", "-o", required=True, help="Package owner (user or org)")
+@click.option("--type", "pkg_type", required=True, help="Package type")
+@click.pass_context
+def pkg_latest(
+    ctx: click.Context,
+    name: str,
+    owner: str,
+    pkg_type: str,
+) -> None:
+    """Get the latest version of a package.
+
+    Examples:
+        teax pkg latest teax --owner homelab-teams --type pypi
+        teax pkg latest myimage --owner homelab-teams --type container -o json
+    """
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            pkg = client.get_latest_package_version(owner, pkg_type, name)
+            # Use print_packages with a single-item list
+            output.print_packages([pkg])
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)

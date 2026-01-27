@@ -23,6 +23,8 @@ from teax.models import (
     User,
     Variable,
     Workflow,
+    WorkflowJob,
+    WorkflowRun,
 )
 
 
@@ -1542,3 +1544,326 @@ class GiteaClient:
             f"{_seg(workflow_id)}/disable"
         )
         response.raise_for_status()
+
+    # --- Workflow Run Operations ---
+
+    def list_runs(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        workflow: str | None = None,
+        branch: str | None = None,
+        status: str | None = None,
+        limit: int = 20,
+        max_pages: int = 10,
+    ) -> list[WorkflowRun]:
+        """List workflow runs for a repository.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            workflow: Filter by workflow filename (e.g., "ci.yml")
+            branch: Filter by branch name
+            status: Filter by status (queued, in_progress, completed, waiting)
+            limit: Results per page (default 20)
+            max_pages: Maximum pages to fetch (default 10, prevents DoS)
+
+        Returns:
+            List of workflow runs
+        """
+        runs: list[WorkflowRun] = []
+        page = 1
+        truncated = False
+
+        while page <= max_pages:
+            params: dict[str, Any] = {"page": page, "limit": limit}
+            if branch:
+                params["branch"] = branch
+            if status:
+                params["status"] = status
+
+            # Gitea uses /actions/runs for all runs, filter by workflow client-side
+            response = self._client.get(
+                f"repos/{_seg(owner)}/{_seg(repo)}/actions/runs",
+                params=params,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            # Handle Gitea's response format (may be {"workflow_runs": [...]} or [...])
+            if isinstance(data, dict):
+                items = data.get("workflow_runs", [])
+                if not isinstance(items, list):
+                    raise TypeError(
+                        f"Unexpected 'workflow_runs' value type: {type(items)!r}"
+                    )
+            elif isinstance(data, list):
+                items = data
+            else:
+                raise TypeError(f"Unexpected runs response type: {type(data)!r}")
+
+            if not items:
+                break
+
+            for item in items:
+                run = WorkflowRun.model_validate(item)
+                # Client-side workflow filter (Gitea API doesn't support it)
+                if workflow and not run.path.endswith(workflow):
+                    continue
+                runs.append(run)
+
+            if len(items) < limit:
+                break
+            page += 1
+        else:
+            truncated = True
+
+        if truncated:
+            warnings.warn(
+                f"Runs list truncated at {max_pages} pages "
+                f"({len(runs)} items). Results may be incomplete.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        return runs
+
+    def get_run(
+        self,
+        owner: str,
+        repo: str,
+        run_id: int,
+    ) -> WorkflowRun:
+        """Get a workflow run by ID.
+
+        Note: Gitea may not have a direct endpoint for single run.
+        This fetches from the runs list and filters.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            run_id: Workflow run ID
+
+        Returns:
+            Workflow run details
+
+        Raises:
+            httpx.HTTPStatusError: If run not found
+        """
+        # Try to get run from jobs endpoint which includes run info
+        response = self._client.get(
+            f"repos/{_seg(owner)}/{_seg(repo)}/actions/runs/{run_id}/jobs",
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Get jobs to find the run info
+        jobs = data.get("jobs", data) if isinstance(data, dict) else data
+        if jobs and isinstance(jobs, list) and len(jobs) > 0:
+            # Jobs exist, so run exists - fetch from runs list
+            runs = self.list_runs(owner, repo, limit=100, max_pages=5)
+            for run in runs:
+                if run.id == run_id:
+                    return run
+
+        # Fallback: search in recent runs
+        runs = self.list_runs(owner, repo, limit=100, max_pages=10)
+        for run in runs:
+            if run.id == run_id:
+                return run
+
+        # Not found - raise 404-like error
+        raise httpx.HTTPStatusError(
+            f"Run {run_id} not found",
+            request=httpx.Request("GET", f"runs/{run_id}"),
+            response=httpx.Response(404),
+        )
+
+    def delete_run(
+        self,
+        owner: str,
+        repo: str,
+        run_id: int,
+    ) -> None:
+        """Delete a workflow run.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            run_id: Workflow run ID
+        """
+        response = self._client.delete(
+            f"repos/{_seg(owner)}/{_seg(repo)}/actions/runs/{run_id}"
+        )
+        response.raise_for_status()
+
+    def list_run_jobs(
+        self,
+        owner: str,
+        repo: str,
+        run_id: int,
+    ) -> list[WorkflowJob]:
+        """List jobs for a workflow run.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            run_id: Workflow run ID
+
+        Returns:
+            List of jobs with their steps
+        """
+        response = self._client.get(
+            f"repos/{_seg(owner)}/{_seg(repo)}/actions/runs/{run_id}/jobs"
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Handle Gitea's response format
+        if isinstance(data, dict):
+            items = data.get("jobs", [])
+        elif isinstance(data, list):
+            items = data
+        else:
+            raise TypeError(f"Unexpected jobs response type: {type(data)!r}")
+
+        return [WorkflowJob.model_validate(j) for j in items]
+
+    def get_job(
+        self,
+        owner: str,
+        repo: str,
+        job_id: int,
+    ) -> WorkflowJob:
+        """Get a job by ID.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            job_id: Job ID
+
+        Returns:
+            Job details with steps
+        """
+        response = self._client.get(
+            f"repos/{_seg(owner)}/{_seg(repo)}/actions/jobs/{job_id}"
+        )
+        response.raise_for_status()
+        return WorkflowJob.model_validate(response.json())
+
+    def get_job_logs(
+        self,
+        owner: str,
+        repo: str,
+        job_id: int,
+    ) -> str:
+        """Get logs for a job.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            job_id: Job ID
+
+        Returns:
+            Job logs as plain text
+        """
+        response = self._client.get(
+            f"repos/{_seg(owner)}/{_seg(repo)}/actions/jobs/{job_id}/logs"
+        )
+        response.raise_for_status()
+        return response.text
+
+    def rerun_workflow(
+        self,
+        owner: str,
+        repo: str,
+        run_id: int,
+    ) -> None:
+        """Rerun a workflow via dispatch.
+
+        Since Gitea doesn't have a native rerun API yet (PR #35382 pending),
+        this uses workflow dispatch as a workaround.
+
+        Limitations:
+        - Only works for workflows with workflow_dispatch trigger
+        - Original inputs not preserved
+        - Original event context (PR number, etc.) lost
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            run_id: Workflow run ID to rerun
+        """
+        # Get the run to extract workflow and ref
+        run = self.get_run(owner, repo, run_id)
+
+        # Extract workflow filename from path
+        # e.g., ".github/workflows/ci.yml" -> "ci.yml"
+        workflow_id = run.path.split("/")[-1]
+
+        # Dispatch on the same branch
+        self.dispatch_workflow(owner, repo, workflow_id, run.head_branch)
+
+    # --- Package Linking Operations ---
+
+    def link_package(
+        self,
+        owner: str,
+        pkg_type: str,
+        name: str,
+        repo_name: str,
+    ) -> None:
+        """Link a package to a repository.
+
+        Args:
+            owner: Package owner
+            pkg_type: Package type (container, pypi, etc.)
+            name: Package name
+            repo_name: Repository name to link to
+        """
+        response = self._client.post(
+            f"{self._packages_base_url(owner)}/{_seg(pkg_type)}/"
+            f"{_seg(name)}/-/link/{_seg(repo_name)}"
+        )
+        response.raise_for_status()
+
+    def unlink_package(
+        self,
+        owner: str,
+        pkg_type: str,
+        name: str,
+    ) -> None:
+        """Unlink a package from its repository.
+
+        Args:
+            owner: Package owner
+            pkg_type: Package type (container, pypi, etc.)
+            name: Package name
+        """
+        response = self._client.post(
+            f"{self._packages_base_url(owner)}/{_seg(pkg_type)}/{_seg(name)}/-/unlink"
+        )
+        response.raise_for_status()
+
+    def get_latest_package_version(
+        self,
+        owner: str,
+        pkg_type: str,
+        name: str,
+    ) -> Package:
+        """Get the latest version of a package.
+
+        Args:
+            owner: Package owner
+            pkg_type: Package type (container, pypi, etc.)
+            name: Package name
+
+        Returns:
+            Latest package version
+        """
+        response = self._client.get(
+            f"{self._packages_base_url(owner)}/{_seg(pkg_type)}/{_seg(name)}/-/latest"
+        )
+        response.raise_for_status()
+        return Package.model_validate(response.json())

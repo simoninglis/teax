@@ -2175,3 +2175,207 @@ def test_workflow_id_path_encoding(client: GiteaClient):
         client.get_workflow("owner", "repo", "../etc/passwd")
 
     assert route.called
+
+
+# --- Workflow Run Operations Tests ---
+
+
+@respx.mock
+def test_list_runs(client: GiteaClient):
+    """Test listing workflow runs."""
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs")
+    route.mock(return_value=httpx.Response(200, json={
+        "workflow_runs": [
+            {
+                "id": 1,
+                "run_number": 42,
+                "run_attempt": 1,
+                "status": "completed",
+                "conclusion": "success",
+                "head_sha": "abc123",
+                "head_branch": "main",
+                "event": "push",
+                "display_title": "Test commit",
+                "path": ".github/workflows/ci.yml",
+                "started_at": "2024-01-01T00:00:00Z",
+                "completed_at": "2024-01-01T00:05:00Z",
+                "html_url": "https://example.com/runs/1",
+            }
+        ]
+    }))
+
+    runs = client.list_runs("owner", "repo")
+
+    assert len(runs) == 1
+    assert runs[0].id == 1
+    assert runs[0].run_number == 42
+    assert runs[0].conclusion == "success"
+    assert runs[0].head_branch == "main"
+
+
+@respx.mock
+def test_list_runs_with_workflow_filter(client: GiteaClient):
+    """Test listing runs with workflow filter."""
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs")
+    route.mock(return_value=httpx.Response(200, json={
+        "workflow_runs": [
+            {"id": 1, "run_number": 1, "status": "completed", "conclusion": "success",
+             "head_sha": "abc", "head_branch": "main", "event": "push",
+             "path": ".github/workflows/ci.yml"},
+            {"id": 2, "run_number": 2, "status": "completed", "conclusion": "success",
+             "head_sha": "def", "head_branch": "main", "event": "push",
+             "path": ".github/workflows/deploy.yml"},
+        ]
+    }))
+
+    runs = client.list_runs("owner", "repo", workflow="ci.yml")
+
+    # Only ci.yml should be returned
+    assert len(runs) == 1
+    assert runs[0].path.endswith("ci.yml")
+
+
+@respx.mock
+def test_list_runs_empty(client: GiteaClient):
+    """Test listing runs when none exist."""
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs")
+    route.mock(return_value=httpx.Response(200, json={"workflow_runs": []}))
+
+    runs = client.list_runs("owner", "repo")
+
+    assert runs == []
+
+
+@respx.mock
+def test_list_run_jobs(client: GiteaClient):
+    """Test listing jobs for a run."""
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs")
+    route.mock(return_value=httpx.Response(200, json={
+        "jobs": [
+            {
+                "id": 100,
+                "run_id": 42,
+                "name": "build",
+                "status": "completed",
+                "conclusion": "success",
+                "started_at": "2024-01-01T00:00:00Z",
+                "completed_at": "2024-01-01T00:02:00Z",
+                "steps": [
+                    {
+                        "number": 1, "name": "Checkout",
+                        "status": "completed", "conclusion": "success"
+                    },
+                    {
+                        "number": 2, "name": "Build",
+                        "status": "completed", "conclusion": "success"
+                    },
+                ],
+            }
+        ]
+    }))
+
+    jobs = client.list_run_jobs("owner", "repo", 42)
+
+    assert len(jobs) == 1
+    assert jobs[0].id == 100
+    assert jobs[0].name == "build"
+    assert len(jobs[0].steps) == 2
+
+
+@respx.mock
+def test_get_job(client: GiteaClient):
+    """Test getting a single job."""
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/jobs/100")
+    route.mock(return_value=httpx.Response(200, json={
+        "id": 100,
+        "run_id": 42,
+        "name": "test",
+        "status": "completed",
+        "conclusion": "failure",
+        "steps": [
+            {
+                "number": 1, "name": "Run tests",
+                "status": "completed", "conclusion": "failure"
+            },
+        ],
+    }))
+
+    job = client.get_job("owner", "repo", 100)
+
+    assert job.id == 100
+    assert job.conclusion == "failure"
+
+
+@respx.mock
+def test_get_job_logs(client: GiteaClient):
+    """Test getting job logs."""
+    url = "https://test.example.com/api/v1/repos/owner/repo/actions/jobs/100/logs"
+    route = respx.get(url)
+    log_text = "Step 1: Checkout\nStep 2: Build\nError: Test failed"
+    route.mock(return_value=httpx.Response(200, text=log_text))
+
+    logs = client.get_job_logs("owner", "repo", 100)
+
+    assert "Step 1: Checkout" in logs
+    assert "Error: Test failed" in logs
+
+
+@respx.mock
+def test_delete_run(client: GiteaClient):
+    """Test deleting a run."""
+    route = respx.delete("https://test.example.com/api/v1/repos/owner/repo/actions/runs/42")
+    route.mock(return_value=httpx.Response(204))
+
+    client.delete_run("owner", "repo", 42)
+
+    assert route.called
+
+
+# --- Package Linking Tests ---
+
+
+@respx.mock
+def test_link_package(client: GiteaClient):
+    """Test linking a package to a repository."""
+    route = respx.post(
+        url__regex=r".*/api/packages/homelab/container/myimage/-/link/myrepo$"
+    )
+    route.mock(return_value=httpx.Response(200))
+
+    client.link_package("homelab", "container", "myimage", "myrepo")
+
+    assert route.called
+
+
+@respx.mock
+def test_unlink_package(client: GiteaClient):
+    """Test unlinking a package from a repository."""
+    route = respx.post(
+        url__regex=r".*/api/packages/homelab/container/myimage/-/unlink$"
+    )
+    route.mock(return_value=httpx.Response(200))
+
+    client.unlink_package("homelab", "container", "myimage")
+
+    assert route.called
+
+
+@respx.mock
+def test_get_latest_package_version(client: GiteaClient):
+    """Test getting the latest package version."""
+    route = respx.get(
+        url__regex=r".*/api/packages/homelab/pypi/teax/-/latest$"
+    )
+    route.mock(return_value=httpx.Response(200, json={
+        "id": 1,
+        "owner": {"id": 1, "login": "homelab"},
+        "name": "teax",
+        "type": "pypi",
+        "version": "1.0.0",
+        "created_at": "2024-01-01T00:00:00Z",
+    }))
+
+    pkg = client.get_latest_package_version("homelab", "pypi", "teax")
+
+    assert pkg.name == "teax"
+    assert pkg.version == "1.0.0"

@@ -183,3 +183,81 @@ class Workflow(BaseModel):
         if v == "":
             return None
         return v
+
+
+class WorkflowStep(BaseModel):
+    """Gitea Actions workflow step."""
+
+    number: int
+    name: str
+    status: str  # queued, in_progress, completed
+    conclusion: str | None = None  # success, failure, cancelled, skipped
+    started_at: str | None = None
+    completed_at: str | None = None
+
+    @field_validator("started_at", "completed_at", mode="before")
+    @classmethod
+    def normalize_empty_timestamp(cls, v: str | None) -> str | None:
+        """Normalize empty string timestamps to None."""
+        if v == "":
+            return None
+        return v
+
+
+class WorkflowJob(BaseModel):
+    """Gitea Actions workflow job."""
+
+    id: int
+    run_id: int
+    name: str
+    status: str  # queued, in_progress, completed, waiting
+    conclusion: str | None = None  # success, failure, cancelled, skipped
+    started_at: str | None = None
+    completed_at: str | None = None
+    created_at: str | None = None
+    head_sha: str = ""
+    head_branch: str = ""
+    runner_id: int | None = None
+    runner_name: str | None = None
+    labels: list[str] = Field(default_factory=list)
+    steps: list[WorkflowStep] = Field(default_factory=list)
+    html_url: str = ""
+    run_url: str = ""
+
+    @field_validator("started_at", "completed_at", "created_at", mode="before")
+    @classmethod
+    def normalize_empty_timestamp(cls, v: str | None) -> str | None:
+        """Normalize empty string timestamps to None."""
+        if v == "":
+            return None
+        return v
+
+
+class WorkflowRun(BaseModel):
+    """Gitea Actions workflow run."""
+
+    id: int
+    run_number: int
+    run_attempt: int = 1
+    status: str  # queued, in_progress, completed, waiting
+    conclusion: str | None = None  # success, failure, cancelled, skipped
+    head_sha: str
+    head_branch: str
+    event: str  # push, pull_request, workflow_dispatch, schedule
+    display_title: str = ""
+    path: str  # workflow file path
+    started_at: str | None = None
+    completed_at: str | None = None
+    html_url: str = ""
+    url: str = ""
+    repository_id: int = 0
+    actor: User | None = None
+    trigger_actor: User | None = None
+
+    @field_validator("started_at", "completed_at", mode="before")
+    @classmethod
+    def normalize_empty_timestamp(cls, v: str | None) -> str | None:
+        """Normalize empty string timestamps to None."""
+        if v == "":
+            return None
+        return v

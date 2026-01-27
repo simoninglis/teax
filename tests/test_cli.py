@@ -4591,3 +4591,1144 @@ def test_workflow_dispatch_json_sanitizes_escape_sequences(runner: CliRunner):
         for key, value in output["inputs"].items():
             assert "\x1b" not in key
             assert "\x1b" not in value
+
+
+# --- Runs Command Help Tests ---
+
+
+def test_runs_help(runner: CliRunner):
+    """Test runs subcommand help."""
+    result = runner.invoke(main, ["runs", "--help"])
+    assert result.exit_code == 0
+    assert "status" in result.output
+    assert "list" in result.output
+    assert "get" in result.output
+    assert "jobs" in result.output
+    assert "logs" in result.output
+    assert "rerun" in result.output
+    assert "delete" in result.output
+
+
+def test_runs_status_help(runner: CliRunner):
+    """Test runs status help."""
+    result = runner.invoke(main, ["runs", "status", "--help"])
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+
+
+def test_runs_list_help(runner: CliRunner):
+    """Test runs list help."""
+    result = runner.invoke(main, ["runs", "list", "--help"])
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+    assert "--workflow" in result.output
+    assert "--branch" in result.output
+    assert "--status" in result.output
+    assert "--limit" in result.output
+
+
+def test_runs_get_help(runner: CliRunner):
+    """Test runs get help."""
+    result = runner.invoke(main, ["runs", "get", "--help"])
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+    assert "--errors-only" in result.output
+    assert "RUN_ID" in result.output
+
+
+def test_runs_jobs_help(runner: CliRunner):
+    """Test runs jobs help."""
+    result = runner.invoke(main, ["runs", "jobs", "--help"])
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+    assert "--errors-only" in result.output
+    assert "RUN_ID" in result.output
+
+
+def test_runs_logs_help(runner: CliRunner):
+    """Test runs logs help."""
+    result = runner.invoke(main, ["runs", "logs", "--help"])
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+    assert "--tail" in result.output
+    assert "--head" in result.output
+    assert "--grep" in result.output
+    assert "--context" in result.output
+    assert "--strip-ansi" in result.output
+    assert "--raw" in result.output
+    assert "JOB_ID" in result.output
+
+
+def test_runs_rerun_help(runner: CliRunner):
+    """Test runs rerun help."""
+    result = runner.invoke(main, ["runs", "rerun", "--help"])
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+    assert "RUN_ID" in result.output
+
+
+def test_runs_delete_help(runner: CliRunner):
+    """Test runs delete help."""
+    result = runner.invoke(main, ["runs", "delete", "--help"])
+    assert result.exit_code == 0
+    assert "--repo" in result.output
+    assert "--yes" in result.output
+    assert "RUN_ID" in result.output
+
+
+# --- Package Linking Help Tests ---
+
+
+def test_pkg_link_help(runner: CliRunner):
+    """Test pkg link help."""
+    result = runner.invoke(main, ["pkg", "link", "--help"])
+    assert result.exit_code == 0
+    assert "--owner" in result.output
+    assert "--type" in result.output
+    assert "--repo" in result.output
+    assert "NAME" in result.output
+
+
+def test_pkg_unlink_help(runner: CliRunner):
+    """Test pkg unlink help."""
+    result = runner.invoke(main, ["pkg", "unlink", "--help"])
+    assert result.exit_code == 0
+    assert "--owner" in result.output
+    assert "--type" in result.output
+    assert "NAME" in result.output
+
+
+def test_pkg_latest_help(runner: CliRunner):
+    """Test pkg latest help."""
+    result = runner.invoke(main, ["pkg", "latest", "--help"])
+    assert result.exit_code == 0
+    assert "--owner" in result.output
+    assert "--type" in result.output
+    assert "NAME" in result.output
+
+
+# --- filter_logs Tests ---
+
+
+def test_filter_logs_no_filters():
+    """Test filter_logs with no filters returns original content."""
+    from teax.cli import filter_logs
+
+    logs = "Line 1\nLine 2\nLine 3"
+    result = filter_logs(logs)
+    assert result == logs
+
+
+def test_filter_logs_tail():
+    """Test filter_logs tail option."""
+    from teax.cli import filter_logs
+
+    logs = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    result = filter_logs(logs, tail=2)
+    assert result == "Line 4\nLine 5"
+
+
+def test_filter_logs_head():
+    """Test filter_logs head option."""
+    from teax.cli import filter_logs
+
+    logs = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+    result = filter_logs(logs, head=2)
+    assert result == "Line 1\nLine 2"
+
+
+def test_filter_logs_grep():
+    """Test filter_logs grep option."""
+    from teax.cli import filter_logs
+
+    logs = "Info: Starting\nError: Failed\nInfo: Done\nError: Retry"
+    result = filter_logs(logs, grep="Error")
+    assert "Error: Failed" in result
+    assert "Error: Retry" in result
+    assert "Info: Starting" not in result
+
+
+def test_filter_logs_grep_with_context():
+    """Test filter_logs grep with context lines."""
+    from teax.cli import filter_logs
+
+    logs = "Line 1\nLine 2\nError: Failed\nLine 4\nLine 5"
+    result = filter_logs(logs, grep="Error", context=1)
+    assert "Line 2" in result
+    assert "Error: Failed" in result
+    assert "Line 4" in result
+    assert "Line 1" not in result
+    assert "Line 5" not in result
+
+
+def test_filter_logs_strip_ansi():
+    """Test filter_logs strip_ansi option."""
+    from teax.cli import filter_logs
+
+    logs = "\x1b[31mRed Text\x1b[0m\n\x1b[32mGreen Text\x1b[0m"
+    result = filter_logs(logs, strip_ansi=True)
+    assert "\x1b" not in result
+    assert "Red Text" in result
+    assert "Green Text" in result
+
+
+def test_filter_logs_combined():
+    """Test filter_logs with combined options."""
+    from teax.cli import filter_logs
+
+    logs = "\x1b[31mError 1\x1b[0m\nInfo\n\x1b[31mError 2\x1b[0m\nDebug"
+    result = filter_logs(logs, grep="Error", strip_ansi=True)
+    assert result == "Error 1\nError 2"
+
+
+def test_filter_logs_invalid_regex():
+    """Test filter_logs raises BadParameter on invalid regex."""
+    from click import BadParameter
+
+    from teax.cli import filter_logs
+
+    with pytest.raises(BadParameter, match="Invalid regex"):
+        filter_logs("some logs", grep="[invalid(regex")
+
+
+def test_filter_logs_negative_context_normalized():
+    """Test filter_logs treats negative context as 0."""
+    from teax.cli import filter_logs
+
+    logs = "Line 1\nLine 2\nError\nLine 4\nLine 5"
+    # Negative context should be normalized to 0
+    result = filter_logs(logs, grep="Error", context=-5)
+    assert result == "Error"
+
+
+def test_filter_logs_head_zero():
+    """Test filter_logs with head=0 is treated as no limit."""
+    from teax.cli import filter_logs
+
+    logs = "Line 1\nLine 2\nLine 3"
+    result = filter_logs(logs, head=0)
+    # head=0 is treated as "no head limit" (not applied)
+    assert result == logs
+
+
+def test_filter_logs_tail_zero():
+    """Test filter_logs with tail=0 is treated as no limit."""
+    from teax.cli import filter_logs
+
+    logs = "Line 1\nLine 2\nLine 3"
+    result = filter_logs(logs, tail=0)
+    # tail=0 is treated as "no tail limit" (not applied)
+    assert result == logs
+
+
+def test_filter_logs_strip_ansi_removes_osc():
+    """Test strip_ansi removes OSC escape sequences (hyperlinks, etc.)."""
+    from teax.cli import filter_logs
+
+    # OSC-8 hyperlink
+    logs = "\x1b]8;;https://evil.com\x07click here\x1b]8;;\x07"
+    result = filter_logs(logs, strip_ansi=True)
+    assert "\x1b" not in result
+    assert "click here" in result
+
+
+def test_filter_logs_strip_ansi_removes_control_chars():
+    """Test strip_ansi removes dangerous control characters."""
+    from teax.cli import filter_logs
+
+    # Standalone CR (line rewrite attack), null bytes, backspaces
+    logs = "Real output\rFake\x00Null\x08Back"
+    result = filter_logs(logs, strip_ansi=True)
+    assert "\r" not in result or "\r\n" in result  # CRLF allowed
+    assert "\x00" not in result
+    assert "\x08" not in result
+
+
+# --- Runs OutputFormat Tests ---
+
+
+def test_output_format_runs_simple(capsys):
+    """Test simple output format for runs."""
+    formatter = OutputFormat("simple")
+    mock_run = SimpleNamespace(
+        id=42,
+        run_number=15,
+        status="completed",
+        conclusion="success",
+        head_sha="abc12345def67890",
+        head_branch="main",
+        event="push",
+        display_title="CI Run",
+        path=".gitea/workflows/ci.yml",
+        started_at="2024-01-15T10:00:00Z",
+        html_url="https://example.com/runs/42",
+    )
+    formatter.print_runs([mock_run])
+    captured = capsys.readouterr()
+    assert "#15" in captured.out
+    assert "success" in captured.out
+    assert "abc12345" in captured.out
+    assert "main" in captured.out
+
+
+def test_output_format_runs_json(capsys):
+    """Test JSON output format for runs."""
+    import json
+
+    formatter = OutputFormat("json")
+    mock_run = SimpleNamespace(
+        id=42,
+        run_number=15,
+        status="completed",
+        conclusion="success",
+        head_sha="abc12345def67890",
+        head_branch="main",
+        event="push",
+        display_title="CI Run",
+        path=".gitea/workflows/ci.yml",
+        started_at="2024-01-15T10:00:00Z",
+        html_url="https://example.com/runs/42",
+    )
+    formatter.print_runs([mock_run])
+    captured = capsys.readouterr()
+    parsed = json.loads(captured.out)
+    assert len(parsed) == 1
+    assert parsed[0]["id"] == 42
+    assert parsed[0]["run_number"] == 15
+    assert parsed[0]["conclusion"] == "success"
+
+
+def test_output_format_run_status_simple(capsys):
+    """Test simple output format for run status."""
+    formatter = OutputFormat("simple")
+    mock_run = SimpleNamespace(
+        id=42,
+        run_number=15,
+        status="completed",
+        conclusion="success",
+        head_sha="abc12345def67890",
+        head_branch="main",
+        event="push",
+        path=".gitea/workflows/ci.yml",
+        started_at="2024-01-15T10:00:00Z",
+    )
+    formatter.print_run_status([mock_run])
+    captured = capsys.readouterr()
+    assert "ci.yml" in captured.out
+    assert "✓" in captured.out
+    assert "success" in captured.out
+    assert "#15" in captured.out
+
+
+def test_output_format_jobs_simple(capsys):
+    """Test simple output format for jobs."""
+    formatter = OutputFormat("simple")
+    mock_step = SimpleNamespace(
+        number=1,
+        name="Setup",
+        status="completed",
+        conclusion="success",
+        started_at="2024-01-15T10:00:00Z",
+        completed_at="2024-01-15T10:00:30Z",
+    )
+    mock_job = SimpleNamespace(
+        id=123,
+        run_id=42,
+        name="build",
+        status="completed",
+        conclusion="success",
+        started_at="2024-01-15T10:00:00Z",
+        completed_at="2024-01-15T10:01:00Z",
+        runner_name="runner-1",
+        steps=[mock_step],
+    )
+    formatter.print_jobs([mock_job])
+    captured = capsys.readouterr()
+    assert "build" in captured.out
+    assert "✓" in captured.out
+
+
+def test_output_format_jobs_json(capsys):
+    """Test JSON output format for jobs."""
+    import json
+
+    formatter = OutputFormat("json")
+    mock_step = SimpleNamespace(
+        number=1,
+        name="Setup",
+        status="completed",
+        conclusion="success",
+    )
+    mock_job = SimpleNamespace(
+        id=123,
+        run_id=42,
+        name="build",
+        status="completed",
+        conclusion="success",
+        started_at="2024-01-15T10:00:00Z",
+        completed_at="2024-01-15T10:01:00Z",
+        runner_name="runner-1",
+        steps=[mock_step],
+    )
+    formatter.print_jobs([mock_job])
+    captured = capsys.readouterr()
+    parsed = json.loads(captured.out)
+    assert len(parsed) == 1
+    assert parsed[0]["id"] == 123
+    assert parsed[0]["name"] == "build"
+    assert len(parsed[0]["steps"]) == 1
+    assert parsed[0]["steps"][0]["name"] == "Setup"
+
+
+def test_output_format_jobs_errors_only(capsys):
+    """Test jobs output with errors_only filter."""
+    formatter = OutputFormat("simple")
+    mock_step = SimpleNamespace(
+        number=1,
+        name="Setup",
+        status="completed",
+        conclusion="failure",
+    )
+    success_job = SimpleNamespace(
+        id=123,
+        name="build",
+        status="completed",
+        conclusion="success",
+        steps=[],
+    )
+    failed_job = SimpleNamespace(
+        id=124,
+        name="test",
+        status="completed",
+        conclusion="failure",
+        steps=[mock_step],
+    )
+    formatter.print_jobs([success_job, failed_job], errors_only=True)
+    captured = capsys.readouterr()
+    assert "test" in captured.out
+    assert "build" not in captured.out
+
+
+# --- Runs CLI Integration Tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_command(runner: CliRunner):
+    """Test runs status command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        )
+        route.mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345def67890",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI Run",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "2024-01-15T10:00:00Z",
+                            "completed_at": "2024-01-15T10:05:00Z",
+                            "html_url": "https://example.com/runs/42",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(main, ["runs", "status", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        assert "ci.yml" in result.output
+        assert route.called
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_list_command(runner: CliRunner):
+    """Test runs list command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        )
+        route.mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345def67890",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI Run",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "2024-01-15T10:00:00Z",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(main, ["runs", "list", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        assert route.called
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_list_with_filters(runner: CliRunner):
+    """Test runs list command with filters."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        )
+        route.mock(
+            return_value=httpx.Response(
+                200,
+                json={"workflow_runs": []},
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "runs", "list", "--repo", "owner/repo",
+                "--workflow", "ci.yml",
+                "--branch", "main",
+                "--status", "failure",
+                "--limit", "5",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert route.called
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_get_command(runner: CliRunner):
+    """Test runs get command (shows jobs for a run)."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+        )
+        route.mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jobs": [
+                        {
+                            "id": 123,
+                            "run_id": 42,
+                            "name": "build",
+                            "status": "completed",
+                            "conclusion": "success",
+                            "started_at": "2024-01-15T10:00:00Z",
+                            "completed_at": "2024-01-15T10:05:00Z",
+                            "created_at": "",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "runner_id": 1,
+                            "runner_name": "runner-1",
+                            "labels": [],
+                            "steps": [],
+                            "html_url": "",
+                            "run_url": "",
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(main, ["runs", "get", "42", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        assert route.called
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_jobs_command(runner: CliRunner):
+    """Test runs jobs command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+        )
+        route.mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jobs": [
+                        {
+                            "id": 123,
+                            "run_id": 42,
+                            "name": "build",
+                            "status": "completed",
+                            "conclusion": "success",
+                            "started_at": "",
+                            "completed_at": "",
+                            "created_at": "",
+                            "head_sha": "",
+                            "head_branch": "",
+                            "runner_id": None,
+                            "runner_name": None,
+                            "labels": [],
+                            "steps": [],
+                            "html_url": "",
+                            "run_url": "",
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(main, ["runs", "jobs", "42", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        assert route.called
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_logs_command(runner: CliRunner):
+    """Test runs logs command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/jobs/123/logs"
+        )
+        route.mock(
+            return_value=httpx.Response(
+                200,
+                text="Step 1: Starting\nStep 2: Building\nStep 3: Done\n",
+            )
+        )
+
+        result = runner.invoke(main, ["runs", "logs", "123", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        assert "Step 1" in result.output
+        assert route.called
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_logs_with_tail(runner: CliRunner):
+    """Test runs logs command with tail option."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/jobs/123/logs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                text="Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n",
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["runs", "logs", "123", "--repo", "owner/repo", "--tail", "2"],
+        )
+
+        assert result.exit_code == 0
+        assert "Line 4" in result.output
+        assert "Line 5" in result.output
+        assert "Line 1" not in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_logs_with_grep(runner: CliRunner):
+    """Test runs logs command with grep option."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/jobs/123/logs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                text="Info: Starting\nError: Failed\nInfo: Retry\nError: Again\n",
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["runs", "logs", "123", "--repo", "owner/repo", "--grep", "Error"],
+        )
+
+        assert result.exit_code == 0
+        assert "Error: Failed" in result.output
+        assert "Error: Again" in result.output
+        assert "Info: Starting" not in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_logs_with_head(runner: CliRunner):
+    """Test runs logs command with head option."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/jobs/123/logs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                text="Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n",
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["runs", "logs", "123", "--repo", "owner/repo", "--head", "2"],
+        )
+
+        assert result.exit_code == 0
+        assert "Line 1" in result.output
+        assert "Line 2" in result.output
+        assert "Line 3" not in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_logs_sanitizes_escape_sequences(runner: CliRunner):
+    """Test runs logs sanitizes dangerous escape sequences by default."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock response with dangerous escape sequences (OSC hyperlink)
+        evil_logs = "\x1b]8;;https://evil.com\x07click\x1b]8;;\x07 plain text"
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/jobs/123/logs"
+        ).mock(return_value=httpx.Response(200, text=evil_logs))
+
+        result = runner.invoke(
+            main,
+            ["runs", "logs", "123", "--repo", "owner/repo"],
+        )
+
+        assert result.exit_code == 0
+        # Dangerous sequences should be stripped
+        assert "\x1b" not in result.output
+        assert "plain text" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_logs_raw_flag_accepted(runner: CliRunner):
+    """Test runs logs --raw flag outputs exact server content."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Include trailing newline to verify it's preserved
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/jobs/123/logs"
+        ).mock(return_value=httpx.Response(200, text="plain log output\n"))
+
+        result = runner.invoke(
+            main,
+            ["runs", "logs", "123", "--repo", "owner/repo", "--raw"],
+        )
+
+        assert result.exit_code == 0
+        assert "plain log output" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_logs_raw_mutually_exclusive_with_filters(runner: CliRunner):
+    """Test runs logs --raw cannot be used with filtering options."""
+    result = runner.invoke(
+        main,
+        ["runs", "logs", "123", "--repo", "owner/repo", "--raw", "--tail", "10"],
+    )
+
+    assert result.exit_code != 0
+    assert "cannot be used with" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_logs_raw_mutually_exclusive_with_strip_ansi(runner: CliRunner):
+    """Test runs logs --raw cannot be used with --strip-ansi."""
+    result = runner.invoke(
+        main,
+        ["runs", "logs", "123", "--repo", "owner/repo", "--raw", "--strip-ansi"],
+    )
+
+    assert result.exit_code != 0
+    assert "cannot be used with" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_logs_raw_mutually_exclusive_with_context(runner: CliRunner):
+    """Test runs logs --raw cannot be used with --context."""
+    result = runner.invoke(
+        main,
+        ["runs", "logs", "123", "--repo", "owner/repo", "--raw", "--context", "5"],
+    )
+
+    assert result.exit_code != 0
+    assert "cannot be used with" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_logs_raw_mutually_exclusive_with_head_zero(runner: CliRunner):
+    """Test runs logs --raw rejects --head 0 (explicit None check)."""
+    result = runner.invoke(
+        main,
+        ["runs", "logs", "123", "--repo", "owner/repo", "--raw", "--head", "0"],
+    )
+
+    assert result.exit_code != 0
+    assert "cannot be used with" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_logs_raw_mutually_exclusive_with_tail_zero(runner: CliRunner):
+    """Test runs logs --raw rejects --tail 0 (explicit None check)."""
+    result = runner.invoke(
+        main,
+        ["runs", "logs", "123", "--repo", "owner/repo", "--raw", "--tail", "0"],
+    )
+
+    assert result.exit_code != 0
+    assert "cannot be used with" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_logs_raw_preserves_escape_sequences(runner: CliRunner):
+    """Test runs logs --raw preserves ANSI escape sequences."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Logs with escape sequences that would be stripped without --raw
+        logs_with_escapes = "\x1b[31mRed\x1b[0m \x1b]8;;url\x07link\x1b]8;;\x07 done"
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/jobs/123/logs"
+        ).mock(return_value=httpx.Response(200, text=logs_with_escapes))
+
+        # Use color=True to prevent CliRunner from stripping SGR codes
+        result = runner.invoke(
+            main,
+            ["runs", "logs", "123", "--repo", "owner/repo", "--raw"],
+            color=True,
+        )
+
+        assert result.exit_code == 0
+        # --raw should preserve escape sequences (not sanitize them)
+        assert "\x1b[31m" in result.output
+        assert "\x1b]8;;" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_logs_strip_ansi(runner: CliRunner):
+    """Test runs logs --strip-ansi removes all escape sequences."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        colored_logs = "\x1b[31mRed\x1b[0m text\x1b]8;;url\x07link\x1b]8;;\x07"
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/jobs/123/logs"
+        ).mock(return_value=httpx.Response(200, text=colored_logs))
+
+        result = runner.invoke(
+            main,
+            ["runs", "logs", "123", "--repo", "owner/repo", "--strip-ansi"],
+        )
+
+        assert result.exit_code == 0
+        assert "\x1b" not in result.output
+        assert "Red" in result.output
+        assert "text" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_logs_invalid_grep_pattern(runner: CliRunner):
+    """Test runs logs with invalid grep pattern shows error."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/jobs/123/logs"
+        ).mock(return_value=httpx.Response(200, text="some logs"))
+
+        result = runner.invoke(
+            main,
+            ["runs", "logs", "123", "--repo", "owner/repo", "--grep", "[invalid("],
+        )
+
+        assert result.exit_code != 0
+        assert "Invalid regex" in result.output or "Error" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_rerun_command(runner: CliRunner):
+    """Test runs rerun command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock jobs endpoint (get_run uses this first to verify run exists)
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jobs": [
+                        {
+                            "id": 123, "run_id": 42, "name": "build",
+                            "status": "completed", "conclusion": "failure",
+                            "started_at": "", "completed_at": "", "created_at": "",
+                            "head_sha": "", "head_branch": "",
+                            "runner_id": None, "runner_name": None, "labels": [],
+                            "steps": [], "html_url": "", "run_url": "",
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Mock list_runs (get_run fetches from here after jobs endpoint)
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42, "run_number": 15, "run_attempt": 1,
+                            "status": "completed", "conclusion": "failure",
+                            "head_sha": "abc12345", "head_branch": "main",
+                            "event": "push", "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "", "completed_at": "",
+                            "html_url": "", "url": "", "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Mock dispatch
+        dispatch_route = respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/workflows/ci.yml/dispatches"
+        ).mock(return_value=httpx.Response(204))
+
+        result = runner.invoke(main, ["runs", "rerun", "42", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        assert dispatch_route.called
+        assert "dispatched" in result.output.lower()
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_delete_command(runner: CliRunner):
+    """Test runs delete command with -y flag."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.delete(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42"
+        )
+        route.mock(return_value=httpx.Response(204))
+
+        result = runner.invoke(
+            main, ["runs", "delete", "42", "--repo", "owner/repo", "-y"]
+        )
+
+        assert result.exit_code == 0
+        assert route.called
+        assert "deleted" in result.output.lower()
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_delete_cancelled_without_confirm(runner: CliRunner):
+    """Test runs delete command cancelled without confirmation."""
+    result = runner.invoke(
+        main,
+        ["runs", "delete", "42", "--repo", "owner/repo"],
+        input="n\n",
+    )
+
+    assert result.exit_code == 0
+    assert "Cancelled" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_list_error_handling(runner: CliRunner):
+    """Test runs list error handling."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(return_value=httpx.Response(404, json={"message": "Not found"}))
+
+        result = runner.invoke(main, ["runs", "list", "--repo", "owner/repo"])
+
+        assert result.exit_code != 0
+        assert "Error" in result.output
+
+
+# --- Package Linking CLI Integration Tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_link_command(runner: CliRunner):
+    """Test pkg link command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Package API uses /api/packages/ not /api/v1/packages/
+        route = respx.post(
+            "https://test.example.com/api/packages/homelab/container/myimage/-/link/myproject"
+        )
+        route.mock(return_value=httpx.Response(201))
+
+        result = runner.invoke(
+            main,
+            [
+                "pkg", "link", "myimage",
+                "--owner", "homelab",
+                "--type", "container",
+                "--repo", "myproject",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert route.called
+        assert "linked" in result.output.lower()
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_unlink_command(runner: CliRunner):
+    """Test pkg unlink command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Package API uses /api/packages/ not /api/v1/packages/
+        route = respx.post(
+            "https://test.example.com/api/packages/homelab/container/myimage/-/unlink"
+        )
+        route.mock(return_value=httpx.Response(204))
+
+        result = runner.invoke(
+            main,
+            [
+                "pkg", "unlink", "myimage",
+                "--owner", "homelab",
+                "--type", "container",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert route.called
+        assert "unlinked" in result.output.lower()
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_latest_command(runner: CliRunner):
+    """Test pkg latest command."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Package API uses /api/packages/ and /-/latest endpoint
+        route = respx.get(
+            "https://test.example.com/api/packages/homelab/pypi/teax/-/latest"
+        )
+        route.mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 1,
+                    "owner": {"id": 1, "login": "homelab", "full_name": ""},
+                    "name": "teax",
+                    "type": "pypi",
+                    "version": "0.1.8",
+                    "created_at": "2024-01-15T10:00:00Z",
+                    "html_url": "https://example.com/packages/teax",
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "pkg", "latest", "teax",
+                "--owner", "homelab",
+                "--type", "pypi",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert route.called
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_pkg_link_error_handling(runner: CliRunner):
+    """Test pkg link error handling."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Package API uses /api/packages/ not /api/v1/packages/
+        respx.post(
+            "https://test.example.com/api/packages/homelab/container/myimage/-/link/myproject"
+        ).mock(return_value=httpx.Response(404, json={"message": "Package not found"}))
+
+        result = runner.invoke(
+            main,
+            [
+                "pkg", "link", "myimage",
+                "--owner", "homelab",
+                "--type", "container",
+                "--repo", "myproject",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "Error" in result.output
