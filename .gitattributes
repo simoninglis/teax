@@ -1,0 +1,7 @@
+# Exclude internal files from git archive/export
+archive/ export-ignore
+plan.md export-ignore
+.claude/ export-ignore
+.claudeignore export-ignore
+.csc export-ignore
+.tmux-session export-ignore

@@ -93,28 +93,6 @@ if truncated:
     warnings.warn(f"List truncated at {max_pages} pages ({len(results)} items)...")
 ```
 
-### Publishing to Gitea PyPI
-
-Poetry requires explicit configuration for Gitea package registry:
-
-```bash
-# Configure repository URL (use org name, not username)
-poetry config repositories.gitea https://prod-vm-gitea.../api/packages/homelab-teams/pypi
-
-# Configure credentials (__token__ as username, API token as password)
-poetry config http-basic.gitea __token__ <token>
-
-# If SSL cert issues, temporarily disable (not recommended for production)
-poetry config certificates.gitea.cert false
-
-# Build and publish
-poetry build && poetry publish --repository gitea
-```
-
-Common errors:
-- `reqPackageAccess`: Token lacks `write:package` scope
-- `Error connecting to repository`: Usually SSL cert verification issue
-
 ## tea CLI Reference
 
 When creating Gitea issues programmatically:

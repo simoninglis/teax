@@ -261,4 +261,3 @@ Limitations (documented in output):
 - [ADR-0007: Gitea Actions Support](ADR-0007-gitea-actions-support.md)
 - [Gitea PR #35382: Workflow run management API](https://github.com/go-gitea/gitea/pull/35382)
 - [Gitea Issue #35176: Step-level log API](https://github.com/go-gitea/gitea/issues/35176)
-- [Codex recommendations for agent-friendly CLI design](internal discussion)

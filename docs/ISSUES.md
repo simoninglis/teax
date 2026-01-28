@@ -1,63 +1,12 @@
 # teax Issue Tracker
 
-Canonical issue list for teax development. Primary tracking in Gitea.
+Issues are tracked on GitHub: https://github.com/simoninglis/teax/issues
 
-**Gitea:** https://prod-vm-gitea.internal.kellgari.com.au/homelab-teams/teax/issues
+## Reporting Issues
 
----
-
-## Open Issues
-
-No open issues.
-
----
-
-## Recently Closed (2026-01-16)
-
-| Gitea # | Title | Priority | Resolution |
-|---------|-------|----------|------------|
-| 25 | Add batch issue view command | p2 | Implemented |
-| 17 | Add end-to-end tests for epic commands | p3 | Already covered (25 tests) |
-| 15 | Reduce redundant label fetches | p3 | Already optimized (5 cache tests) |
-| 12 | Improve pagination efficiency | p3 | Already optimized (early-exit pattern) |
-| 21 | Fail closed on HTTP URLs (token over plain HTTP) | CRITICAL | Fixed - blocks HTTP by default |
-| 22 | Fix version bump automation for metadata-based versioning | IMPORTANT | Fixed - justfile simplified |
-| 23 | Fix hardcoded version string in CLI test | IMPORTANT | Fixed - uses SemVer regex |
-| 24 | Validate parse_repo rejects empty owner/repo segments | IMPORTANT | Fixed - validates non-empty |
-| 20 | Add --body flag to issue edit command | p2 | Fixed |
-| 19 | Remove unused DependencyRequest model | p3 | N/A - model never existed |
-| 9 | Fix base URL subpath handling for non-root Gitea | p1 | Fixed - _normalize_base_url handles subpaths |
-| 10 | Pre-validate milestone in bulk command | p2 | Fixed - validates before changes |
-| 13 | Deduplicate child issues in epic commands | p3 | Fixed - sorted(set(children)) |
-| 14 | Improve input validation for color and repo | p3 | Fixed - hex validation, extra slash rejection |
-
----
-
-## Closed Issues
-
-### Phase 3 Security Hardening (v0.1.3)
-
-- HTTP URL blocking with explicit opt-in
-- URL scheme validation on TeaLogin
-- Config file error handling (PermissionError, etc.)
-- Path traversal prevention via _seg()
-- trust_env=False to prevent proxy token leakage
-
-### Phase 2 Features (v0.1.0-v0.1.2)
-
-| Gitea # | Title |
-|---------|-------|
-| 18 | Implement milestone lookup by name |
-| 16 | Increase CLI test coverage to 80% (achieved 96%) |
-| 11 | Use SecretStr for token |
-| 1-8 | Bulk operations and epic helpers |
-
----
-
-## Nice-to-Have (Not Yet in Gitea)
-
-These items identified in reviews may be added as issues later:
-
-- **Async/parallel API calls**: Use httpx async client for batch operations
-- **JSON output for existing commands**: Add --output json to issue view, deps list
-- **Issue list command**: List issues (tea has this but output parsing is annoying)
+Please include:
+- teax version (`teax --version`)
+- Gitea version
+- Command that failed
+- Full error output
+- Expected vs actual behaviour

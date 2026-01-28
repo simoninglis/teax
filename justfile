@@ -39,43 +39,11 @@ clean:
     rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage dist/
     find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
-# --- Package Publishing ---
-
-# Gitea PyPI registry configuration
-REGISTRY := "gitea-pypi"
-GITEA_HOST := "prod-vm-gitea.internal.kellgari.com.au"
-GITEA_ORG := "homelab-teams"
-CA_BUNDLE := "/etc/ssl/certs/ca-certificates.crt"
-
-# One-time setup: configure Poetry repository for Gitea PyPI
-setup-publish:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "Configuring Poetry repository..."
-    poetry config repositories.{{REGISTRY}} \
-        https://{{GITEA_HOST}}/api/packages/{{GITEA_ORG}}/pypi
-    echo ""
-    echo "Repository configured: {{REGISTRY}}"
-    echo ""
-    echo "Now configure credentials (choose one):"
-    echo ""
-    echo "Option A - Environment variables (recommended):"
-    echo "  export POETRY_HTTP_BASIC_GITEA_PYPI_USERNAME=<your-gitea-username>"
-    echo "  export POETRY_HTTP_BASIC_GITEA_PYPI_PASSWORD=<your-gitea-token>"
-    echo ""
-    echo "Option B - Global config (stored in ~/.config/pypoetry/auth.toml):"
-    echo "  poetry config http-basic.{{REGISTRY}} <username> <token>"
-    echo ""
-    echo "Get token from: https://{{GITEA_HOST}}/user/settings/applications"
-    echo "Select scope: 'package' (write:package)"
+# --- Package Building ---
 
 # Build wheel and sdist
 build:
     poetry build
-
-# Publish to Gitea PyPI registry (run 'just build' first)
-publish: build
-    REQUESTS_CA_BUNDLE={{CA_BUNDLE}} poetry publish -r {{REGISTRY}}
 
 # Show current version
 version:

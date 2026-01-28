@@ -1,5 +1,9 @@
 # teax
 
+[![CI](https://github.com/simoninglis/teax/actions/workflows/ci.yml/badge.svg)](https://github.com/simoninglis/teax/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Gitea CLI companion for tea feature gaps.
 
 ## Overview
@@ -11,45 +15,30 @@ Gitea CLI companion for tea feature gaps.
 - **Bulk operations**: Apply changes to multiple issues at once
 - **Epic management**: Create and track parent issues with child issue checklists
 - **Runner management**: List, inspect, and manage Gitea Actions runners
+- **Workflow runs**: View workflow run status, jobs, logs, and trigger reruns
+- **Secrets & Variables**: Manage repository/org/user secrets and variables
+- **Package management**: Link/unlink packages to repositories
 
 Uses tea's configuration for authentication - no additional setup required.
 
 ## Installation
 
-### From Gitea PyPI Registry
-
 ```bash
-# Using uv (recommended)
-UV_INDEX_URL=https://prod-vm-gitea.internal.kellgari.com.au/api/packages/homelab-teams/pypi/simple \
-  uv pip install teax
-
 # Using pip
-pip install teax \
-  --index-url https://prod-vm-gitea.internal.kellgari.com.au/api/packages/homelab-teams/pypi/simple
+pip install git+https://github.com/simoninglis/teax.git
+
+# Using uv
+uv pip install git+https://github.com/simoninglis/teax.git
 
 # Using pipx (isolated environment)
-pipx install teax \
-  --pip-args="--index-url https://prod-vm-gitea.internal.kellgari.com.au/api/packages/homelab-teams/pypi/simple"
-```
-
-For self-hosted Gitea with custom CA certificates:
-
-```bash
-# uv with custom CA
-UV_INDEX_URL=https://prod-vm-gitea.internal.kellgari.com.au/api/packages/homelab-teams/pypi/simple \
-  SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt \
-  uv pip install teax
-
-# pip/pipx with custom CA
-PIP_CERT=/etc/ssl/certs/ca-certificates.crt pipx install teax \
-  --pip-args="--index-url https://prod-vm-gitea.internal.kellgari.com.au/api/packages/homelab-teams/pypi/simple"
+pipx install git+https://github.com/simoninglis/teax.git
 ```
 
 ### Development Installation
 
 ```bash
 # Clone the repository
-git clone https://prod-vm-gitea.internal.kellgari.com.au/homelab-teams/teax.git
+git clone https://github.com/simoninglis/teax.git
 cd teax
 
 # Install with Poetry
@@ -70,82 +59,81 @@ poetry run teax --version
 
 ```bash
 # List dependencies for an issue
-teax deps list 25 --repo homelab/myproject
+teax deps list 25 --repo owner/repo
 
 # Add dependency: issue 25 depends on issue 17
-teax deps add 25 --repo homelab/myproject --on 17
+teax deps add 25 --repo owner/repo --on 17
 
 # Add blocker: issue 17 blocks issue 25
-teax deps add 17 --repo homelab/myproject --blocks 25
+teax deps add 17 --repo owner/repo --blocks 25
 
 # Remove dependency
-teax deps rm 25 --repo homelab/myproject --on 17
+teax deps rm 25 --repo owner/repo --on 17
 ```
 
 ### Issue Viewing
 
 ```bash
 # View issue details (body, labels, assignees, milestone)
-teax issue view 25 --repo homelab/myproject
+teax issue view 25 --repo owner/repo
 
 # View issue with comments
-teax issue view 25 --repo homelab/myproject --comments
+teax issue view 25 --repo owner/repo --comments
 ```
 
 ### Issue Editing
 
 ```bash
 # Add labels
-teax issue edit 25 --repo homelab/myproject --add-labels "epic/diagnostics,prio/p1"
+teax issue edit 25 --repo owner/repo --add-labels "epic/diagnostics,prio/p1"
 
 # Remove labels
-teax issue edit 25 --repo homelab/myproject --rm-labels "needs-triage"
+teax issue edit 25 --repo owner/repo --rm-labels "needs-triage"
 
 # Replace all labels
-teax issue edit 25 --repo homelab/myproject --set-labels "type/feature,prio/p2"
+teax issue edit 25 --repo owner/repo --set-labels "type/feature,prio/p2"
 
 # Set assignees
-teax issue edit 25 --repo homelab/myproject --assignees "user1,user2"
+teax issue edit 25 --repo owner/repo --assignees "user1,user2"
 
 # Set milestone (by ID or name)
-teax issue edit 25 --repo homelab/myproject --milestone 5
-teax issue edit 25 --repo homelab/myproject --milestone "Sprint 1"
+teax issue edit 25 --repo owner/repo --milestone 5
+teax issue edit 25 --repo owner/repo --milestone "Sprint 1"
 
 # Clear milestone
-teax issue edit 25 --repo homelab/myproject --milestone ""
+teax issue edit 25 --repo owner/repo --milestone ""
 
 # List labels on an issue
-teax issue labels 25 --repo homelab/myproject
+teax issue labels 25 --repo owner/repo
 ```
 
 ### Bulk Operations
 
 ```bash
 # Add labels to multiple issues
-teax issue bulk 17-23 --repo homelab/myproject --add-labels "sprint/week1"
+teax issue bulk 17-23 --repo owner/repo --add-labels "sprint/week1"
 
 # Set assignees on a range of issues
-teax issue bulk "17,18,25-30" --repo homelab/myproject --assignees "user1"
+teax issue bulk "17,18,25-30" --repo owner/repo --assignees "user1"
 
 # Set milestone on multiple issues (by ID or name)
-teax issue bulk 17-20 --repo homelab/myproject --milestone 5
-teax issue bulk 17-20 --repo homelab/myproject --milestone "Sprint 1"
+teax issue bulk 17-20 --repo owner/repo --milestone 5
 
 # Skip confirmation prompt
-teax issue bulk 17-23 --repo homelab/myproject --add-labels "done" --yes
+teax issue bulk 17-23 --repo owner/repo --add-labels "done" --yes
 ```
 
 ### Epic Management
 
 ```bash
 # Create a new epic with child issues
-teax epic create auth --repo homelab/myproject --title "Auth System" -c 17 -c 18
+teax epic create auth --repo owner/repo --title "Auth System" -c 17 -c 18
 
 # Add issues to an existing epic
-teax epic add 25 17 18 19 --repo homelab/myproject
+teax epic add 25 17 18 19 --repo owner/repo
 
 # Show epic progress
-teax epic status 25 --repo homelab/myproject
+teax epic status 25 --repo owner/repo
 ```
 
 ### Runner Management
@@ -171,7 +159,73 @@ teax runners delete 42 --repo owner/repo -y  # Skip confirmation
 
 # Get registration token for adding new runners
 teax runners token --repo owner/repo
-teax -o simple runners token --repo owner/repo  # For scripting with act_runner
+teax -o simple runners token --repo owner/repo  # For scripting
+```
+
+### Workflow Runs
+
+View and manage Gitea Actions workflow runs.
+
+```bash
+# Quick status of recent runs
+teax runs status --repo owner/repo
+
+# List all runs with filtering
+teax runs list --repo owner/repo --status failure --limit 10
+
+# Get run details
+teax runs get 42 --repo owner/repo
+
+# List jobs for a run
+teax runs jobs 42 --repo owner/repo
+teax runs jobs 42 --repo owner/repo --errors-only
+
+# View job logs with filtering
+teax runs logs 123 --repo owner/repo --tail 100
+teax runs logs 123 --repo owner/repo --grep "Error" --context 5
+
+# Rerun a failed workflow
+teax runs rerun 42 --repo owner/repo
+
+# Delete old runs
+teax runs delete 42 --repo owner/repo -y
+```
+
+### Secrets & Variables
+
+Manage secrets and variables at repository, organisation, or user level.
+
+```bash
+# List secrets
+teax secrets list --repo owner/repo
+teax secrets list --org myorg
+teax secrets list --user
+
+# Set a secret
+teax secrets set MY_SECRET "secret-value" --repo owner/repo
+
+# Delete a secret
+teax secrets delete MY_SECRET --repo owner/repo
+
+# Variables work the same way
+teax vars list --repo owner/repo
+teax vars set MY_VAR "value" --repo owner/repo
+teax vars delete MY_VAR --repo owner/repo
+```
+
+### Package Management
+
+Link packages to repositories for better organisation.
+
+```bash
+# Link a package to a repository
+teax pkg link mypackage --owner myorg --type pypi --repo myproject
+
+# Unlink a package
+teax pkg unlink mypackage --owner myorg --type container
+
+# Get latest version
+teax pkg latest mypackage --owner myorg --type pypi
 ```
 
 ### Global Options
@@ -225,7 +279,7 @@ TEAX_INSECURE=1 teax deps list 25 --repo owner/repo
 
 ```bash
 # Install dev dependencies
-just install
+poetry install
 
 # Run all quality checks (lint, typecheck, test)
 just check
@@ -243,32 +297,6 @@ just run --help
 just run deps list 25 --repo owner/repo
 ```
 
-## Publishing (Maintainers)
-
-```bash
-# One-time setup: configure Poetry repository for Gitea PyPI
-just setup-publish
-# Then configure credentials (see output for options)
-
-# Show current version
-just version
-
-# Bump version (updates pyproject.toml; __version__ is dynamic)
-just bump patch     # 0.1.0 → 0.1.1
-just bump minor     # 0.1.0 → 0.2.0
-just bump major     # 0.1.0 → 1.0.0
-
-# Build package
-just build
-
-# Publish to Gitea PyPI
-just publish
-
-# Full release workflow (check → bump → commit → tag → publish)
-just release patch
-# Then: git push origin main --tags
-```
-
 ## Feature Gap Analysis (tea v0.9.2)
 
 | Feature | tea Support | teax Scope |
@@ -281,6 +309,9 @@ just release patch
 | Issue bulk ops | Missing | **Implemented** |
 | Epic management | Missing | **Implemented** |
 | Runner management | Missing | **Implemented** |
+| Workflow runs | Missing | **Implemented** |
+| Secrets/Variables | Missing | **Implemented** |
+| Package linking | Missing | **Implemented** |
 | Label CRUD | Full | Out of scope |
 | Label assign | Missing | Via issue edit |
 | Milestone CRUD | Full | Out of scope |
@@ -289,12 +320,6 @@ just release patch
 
 ¹ tea's issue view breaks with `--fields` or `--comments` flags, returning a list instead of issue details.
 
-## Related Documentation
-
-- [ADR-0006: teax Design Decision](https://prod-vm-gitea.internal.kellgari.com.au/homelab-teams/dev-manual/src/branch/main/docs/adr/ADR-0006-teax-gitea-cli-companion.md)
-- [ADR-0005: Epic-Style Tracking](https://prod-vm-gitea.internal.kellgari.com.au/homelab-teams/dev-manual/src/branch/main/docs/adr/ADR-0005-gitea-epic-tracking.md)
-- [Gitea API Documentation](https://docs.gitea.com/api/)
-
 ## License
 
-MIT
+MIT - see [LICENSE](LICENSE) for details.
