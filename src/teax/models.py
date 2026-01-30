@@ -242,7 +242,7 @@ class WorkflowRun(BaseModel):
     status: str  # queued, in_progress, completed, waiting
     conclusion: str | None = None  # success, failure, cancelled, skipped
     head_sha: str
-    head_branch: str
+    head_branch: str = ""  # May be empty for workflow_dispatch events
     event: str  # push, pull_request, workflow_dispatch, schedule
     display_title: str = ""
     path: str  # workflow file path
