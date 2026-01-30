@@ -42,13 +42,6 @@ def _get_ssl_verify() -> bool | str:
     if ca_bundle:
         return ca_bundle
     if os.environ.get("TEAX_INSECURE", "").lower() in ("1", "true", "yes"):
-        warnings.warn(
-            "TEAX_INSECURE is set: SSL certificate verification is disabled. "
-            "This makes connections vulnerable to man-in-the-middle attacks. "
-            "Consider using TEAX_CA_BUNDLE with a custom CA certificate instead.",
-            UserWarning,
-            stacklevel=3,
-        )
         return False
     return True
 
