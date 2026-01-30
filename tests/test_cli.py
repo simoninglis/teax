@@ -5127,6 +5127,419 @@ def test_runs_status_command(runner: CliRunner):
 
 
 @pytest.mark.usefixtures("mock_client")
+def test_runs_status_with_sha_filter(runner: CliRunner):
+    """Test runs status command with --sha filter."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        )
+        route.mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345def67890",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI Run",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "2024-01-15T10:00:00Z",
+                            "completed_at": "2024-01-15T10:05:00Z",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                        {
+                            "id": 41,
+                            "run_number": 14,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "head_sha": "different123sha",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "Deploy Run",
+                            "path": ".gitea/workflows/deploy.yml",
+                            "started_at": "2024-01-14T10:00:00Z",
+                            "completed_at": "2024-01-14T10:05:00Z",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Filter by SHA should only return matching runs
+        result = runner.invoke(
+            main, ["runs", "status", "--repo", "owner/repo", "--sha", "abc123"]
+        )
+
+        # Should succeed (only matching SHA has success status)
+        assert result.exit_code == 0
+        # Should show matching SHA
+        assert "abc12345" in result.output
+        # Should NOT show the non-matching run's SHA
+        assert "different123" not in result.output
+        assert route.called
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_tmux_format(runner: CliRunner):
+    """Test runs status command with tmux output format."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                        {
+                            "id": 43,
+                            "run_number": 16,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "Build",
+                            "path": ".gitea/workflows/build.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "tmux", "runs", "status", "--repo", "owner/repo"]
+        )
+
+        # Exit code 1 because one workflow failed
+        assert result.exit_code == 1
+        # tmux format uses abbreviations like C:✓ B:✗
+        assert "✓" in result.output or "✗" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_exit_code_failure(runner: CliRunner):
+    """Test runs status returns exit code 1 on failure."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(main, ["runs", "status", "--repo", "owner/repo"])
+
+        assert result.exit_code == 1
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_exit_code_running(runner: CliRunner):
+    """Test runs status returns exit code 2 when running."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "in_progress",
+                            "conclusion": None,
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(main, ["runs", "status", "--repo", "owner/repo"])
+
+        assert result.exit_code == 2
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_exit_code_no_runs(runner: CliRunner):
+    """Test runs status returns exit code 3 when no runs found."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={"workflow_runs": []},
+            )
+        )
+
+        result = runner.invoke(main, ["runs", "status", "--repo", "owner/repo"])
+
+        assert result.exit_code == 3
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_json_includes_overall(runner: CliRunner):
+    """Test runs status JSON output includes overall_status."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "json", "runs", "status", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        import json
+
+        data = json.loads(result.output)
+        assert "overall_status" in data
+        assert data["overall_status"] == "success"
+        assert "workflows" in data
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_tmux_sanitization(runner: CliRunner):
+    """Test runs status tmux format sanitizes workflow names with control chars."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            # Workflow name with ANSI escape sequence (malicious)
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "Evil",
+                            "path": ".gitea/workflows/\x1b[31mevil.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                        {
+                            "id": 43,
+                            "run_number": 16,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            # Workflow name starting with non-alphanumeric char
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "Test",
+                            "path": ".gitea/workflows/_private-test.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "tmux", "runs", "status", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        # Should NOT contain escape sequences
+        assert "\x1b" not in result.output
+        # First workflow: ANSI stripped, 'E' from 'evil' used
+        assert "E:✓" in result.output
+        # Second workflow: starts with '_' (non-alphanumeric), so use '?'
+        assert "?:✓" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_sha_head_resolution(runner: CliRunner, monkeypatch):
+    """Test runs status with --sha HEAD resolves git HEAD."""
+    import subprocess
+
+    import httpx
+    import respx
+
+    # Mock subprocess.run to return a fake SHA
+    original_run = subprocess.run
+
+    def mock_subprocess_run(args, **kwargs):
+        if args == ["git", "rev-parse", "HEAD"]:
+            # Return a mock CompletedProcess
+            result = subprocess.CompletedProcess(
+                args=args, returncode=0, stdout="abc12345def67890abcd\n", stderr=""
+            )
+            return result
+        return original_run(args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", mock_subprocess_run)
+
+    with respx.mock:
+        route = respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        )
+        route.mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345def6",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["runs", "status", "--repo", "owner/repo", "--sha", "HEAD"]
+        )
+
+        assert result.exit_code == 0
+        # Should show the SHA (truncated to 8 chars in display)
+        assert "abc12345" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
 def test_runs_list_command(runner: CliRunner):
     """Test runs list command."""
     import httpx

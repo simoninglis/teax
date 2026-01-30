@@ -2261,6 +2261,62 @@ def test_list_runs_empty(client: GiteaClient):
 
 
 @respx.mock
+def test_list_runs_with_head_sha_filter(client: GiteaClient):
+    """Test listing runs filtered by commit SHA."""
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs")
+    route.mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "workflow_runs": [
+                    {
+                        "id": 42,
+                        "run_number": 15,
+                        "run_attempt": 1,
+                        "status": "completed",
+                        "conclusion": "success",
+                        "head_sha": "abc12345def67890",
+                        "head_branch": "main",
+                        "event": "push",
+                        "display_title": "CI Run",
+                        "path": ".gitea/workflows/ci.yml",
+                        "started_at": "",
+                        "completed_at": "",
+                        "html_url": "",
+                        "url": "",
+                        "repository_id": 1,
+                    },
+                    {
+                        "id": 41,
+                        "run_number": 14,
+                        "run_attempt": 1,
+                        "status": "completed",
+                        "conclusion": "success",
+                        "head_sha": "xyz99999abc11111",
+                        "head_branch": "main",
+                        "event": "push",
+                        "display_title": "CI Run",
+                        "path": ".gitea/workflows/ci.yml",
+                        "started_at": "",
+                        "completed_at": "",
+                        "html_url": "",
+                        "url": "",
+                        "repository_id": 1,
+                    },
+                ]
+            },
+        )
+    )
+
+    # Filter by SHA prefix should only return matching run
+    runs = client.list_runs("owner", "repo", head_sha="abc123")
+
+    assert len(runs) == 1
+    assert runs[0].id == 42
+    assert runs[0].head_sha.startswith("abc123")
+
+
+@respx.mock
 def test_list_run_jobs(client: GiteaClient):
     """Test listing jobs for a run."""
     route = respx.get(

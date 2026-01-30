@@ -1555,6 +1555,7 @@ class GiteaClient:
         workflow: str | None = None,
         branch: str | None = None,
         status: str | None = None,
+        head_sha: str | None = None,
         limit: int = 20,
         max_pages: int = 10,
     ) -> list[WorkflowRun]:
@@ -1566,6 +1567,7 @@ class GiteaClient:
             workflow: Filter by workflow filename (e.g., "ci.yml")
             branch: Filter by branch name
             status: Filter by status (queued, in_progress, completed, waiting)
+            head_sha: Filter by commit SHA (prefix match, client-side)
             limit: Results per page (default 20)
             max_pages: Maximum pages to fetch (default 10, prevents DoS)
 
@@ -1610,6 +1612,9 @@ class GiteaClient:
                 run = WorkflowRun.model_validate(item)
                 # Client-side workflow filter (Gitea API doesn't support it)
                 if workflow and not run.path.endswith(workflow):
+                    continue
+                # Client-side SHA filter (prefix match)
+                if head_sha and not run.head_sha.startswith(head_sha):
                     continue
                 runs.append(run)
 

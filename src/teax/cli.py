@@ -870,29 +870,91 @@ class OutputFormat:
                 )
             console.print(table)
 
-    def print_run_status(self, runs: list[Any]) -> None:
-        """Print workflow health status (latest run per workflow)."""
-        # Group runs by workflow
+    def print_run_status(
+        self, runs: list[Any], commit_sha: str | None = None
+    ) -> str:
+        """Print workflow health status (latest run per workflow).
+
+        Args:
+            runs: List of workflow runs
+            commit_sha: Optional commit SHA being queried (for display)
+
+        Returns:
+            Overall status: "success", "failure", "running", or "no_runs"
+        """
+        # Group runs by workflow (keep latest per workflow)
         workflow_runs: dict[str, Any] = {}
         for r in runs:
             workflow_name = r.path.split("/")[-1] if r.path else "unknown"
             if workflow_name not in workflow_runs:
                 workflow_runs[workflow_name] = r
 
+        # Calculate overall status
+        if not workflow_runs:
+            overall_status = "no_runs"
+        elif any(r.conclusion == "failure" for r in workflow_runs.values()):
+            overall_status = "failure"
+        elif any(
+            r.status in ("queued", "in_progress", "waiting")
+            for r in workflow_runs.values()
+        ):
+            overall_status = "running"
+        elif all(r.conclusion == "success" for r in workflow_runs.values()):
+            overall_status = "success"
+        else:
+            # Mixed state (cancelled, skipped, etc.) - treat as success if no failures
+            overall_status = "success"
+
         if self.format_type == "json":
             output_data = {
-                wf: {
-                    "run_id": r.id,
-                    "run_number": r.run_number,
-                    "status": terminal_safe(r.status),
-                    "conclusion": terminal_safe(r.conclusion) if r.conclusion else None,
-                    "head_sha": terminal_safe(r.head_sha[:8]),
-                    "head_branch": terminal_safe(r.head_branch),
-                    "started_at": terminal_safe(r.started_at) if r.started_at else None,
-                }
-                for wf, r in workflow_runs.items()
+                "commit": terminal_safe(commit_sha[:8]) if commit_sha else None,
+                "commit_full": terminal_safe(commit_sha) if commit_sha else None,
+                "overall_status": overall_status,
+                "workflows": {
+                    wf: {
+                        "run_id": r.id,
+                        "run_number": r.run_number,
+                        "status": terminal_safe(r.status),
+                        "conclusion": (
+                            terminal_safe(r.conclusion) if r.conclusion else None
+                        ),
+                        "head_sha": terminal_safe(r.head_sha[:8]),
+                        "head_branch": terminal_safe(r.head_branch),
+                        "started_at": (
+                            terminal_safe(r.started_at) if r.started_at else None
+                        ),
+                    }
+                    for wf, r in workflow_runs.items()
+                },
             }
             click.echo(json.dumps(output_data, indent=2))
+
+        elif self.format_type == "tmux":
+            # Compact format for tmux status bars: C:✓ B:✓ D:✓
+            # Use first letter of workflow name as abbreviation
+            if not workflow_runs:
+                click.echo("CI:?")
+                return overall_status
+
+            parts = []
+            for wf, r in sorted(workflow_runs.items()):
+                # Get abbreviation: first letter uppercase, sanitized for safety
+                # Only use alphanumeric chars to prevent tmux/terminal injection
+                safe_wf = terminal_safe(wf)
+                abbrev = safe_wf[0].upper() if safe_wf and safe_wf[0].isalnum() else "?"
+                conclusion = r.conclusion or r.status
+                if conclusion == "success":
+                    symbol = "✓"
+                elif conclusion == "failure":
+                    symbol = "✗"
+                elif r.status in ("queued", "in_progress", "waiting"):
+                    symbol = "⋯"
+                elif conclusion in ("cancelled", "skipped"):
+                    symbol = "○"
+                else:
+                    symbol = "-"
+                parts.append(f"{abbrev}:{symbol}")
+            click.echo(" ".join(parts))
 
         elif self.format_type == "simple":
             for wf, r in workflow_runs.items():
@@ -924,7 +986,20 @@ class OutputFormat:
         else:  # table (default)
             if not workflow_runs:
                 console.print("[dim]No workflow runs found[/dim]")
-                return
+                return overall_status
+
+            # Show commit SHA if filtering
+            if commit_sha:
+                console.print(f"[dim]Commit: {safe_rich(commit_sha[:8])}[/dim]")
+
+            # Show overall status
+            if overall_status == "success":
+                console.print("[green]Pipeline Status: ✅ All passed[/green]")
+            elif overall_status == "failure":
+                console.print("[red]Pipeline Status: ❌ Failed[/red]")
+            elif overall_status == "running":
+                console.print("[blue]Pipeline Status: ⏳ Running[/blue]")
+            console.print()
 
             for wf, r in workflow_runs.items():
                 conclusion = r.conclusion or r.status
@@ -942,6 +1017,8 @@ class OutputFormat:
                     f"[bold]{safe_rich(wf)}[/bold]: {status_str} "
                     f"(#{r.run_number}, {safe_rich(sha)})"
                 )
+
+        return overall_status
 
     def print_jobs(self, jobs: list[Any], errors_only: bool = False) -> None:
         """Print jobs list with steps."""
@@ -1059,9 +1136,9 @@ class OutputFormat:
 @click.option(
     "--output",
     "-o",
-    type=click.Choice(["table", "simple", "csv", "json"]),
+    type=click.Choice(["table", "simple", "csv", "json", "tmux"]),
     default="table",
-    help="Output format",
+    help="Output format (tmux is compact for status bars)",
 )
 @click.pass_context
 def main(ctx: click.Context, login_name: str | None, output: str) -> None:
@@ -3104,26 +3181,72 @@ def runs() -> None:
 
 @runs.command("status")
 @click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option(
+    "--sha",
+    "-s",
+    help="Filter by commit SHA (prefix match). Use 'HEAD' for current git HEAD.",
+)
 @click.pass_context
-def runs_status(ctx: click.Context, repo: str) -> None:
+def runs_status(ctx: click.Context, repo: str, sha: str | None) -> None:
     """Show workflow health status (latest run per workflow).
 
     Quick overview of CI/CD health for all workflows.
 
+    Exit codes:
+      0 = All workflows succeeded
+      1 = Any workflow failed
+      2 = Workflows still running (none failed)
+      3 = No workflows found for commit
+      4 = Error (git HEAD resolution failed, API error)
+
     Examples:
         teax runs status -r owner/repo
         teax runs status -r owner/repo -o json
+        teax runs status -r owner/repo --sha HEAD
+        teax runs status -r owner/repo --sha abc123
+        teax runs status -r owner/repo -o tmux  # For status bars
     """
+    import subprocess
+
     owner, repo_name = parse_repo(repo)
     output: OutputFormat = ctx.obj["output"]
 
+    # Resolve HEAD to actual SHA if requested
+    head_sha = sha
+    if sha and sha.upper() == "HEAD":
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            head_sha = result.stdout.strip()[:12]
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            err_console.print(
+                "[red]Error:[/red] Could not resolve HEAD (not in git repo?)"
+            )
+            sys.exit(4)
+
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
-            runs_list = client.list_runs(owner, repo_name, limit=50, max_pages=2)
-            output.print_run_status(runs_list)
+            runs_list = client.list_runs(
+                owner, repo_name, head_sha=head_sha, limit=50, max_pages=5
+            )
+            overall_status = output.print_run_status(runs_list, commit_sha=head_sha)
+
+            # Exit codes based on overall status
+            if overall_status == "success":
+                sys.exit(0)
+            elif overall_status == "failure":
+                sys.exit(1)
+            elif overall_status == "running":
+                sys.exit(2)
+            else:  # no_runs
+                sys.exit(3)
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
-        sys.exit(1)
+        sys.exit(4)
 
 
 @runs.command("list")
