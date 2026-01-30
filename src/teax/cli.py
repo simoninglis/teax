@@ -103,6 +103,39 @@ def parse_repo(repo: str) -> tuple[str, str]:
 # Maximum number of issues allowed in a single bulk operation
 MAX_BULK_ISSUES = 10000
 
+# Job name abbreviation mappings for compact output (e.g., tmux status bars)
+JOB_ABBREVIATIONS: dict[str, list[str]] = {
+    "lint": ["lint", "type check", "linting"],
+    "unit": ["unit test", "unit tests"],
+    "int": ["integration test", "integration tests"],
+    "smoke": ["smoke test", "smoke tests"],
+    "e2e": ["e2e test", "e2e tests", "end-to-end"],
+    "visual": ["visual test", "visual tests"],
+    "build": ["build", "push", "package"],
+    "deploy": ["deploy"],
+    "verify": ["verify"],
+}
+
+
+def abbreviate_job_name(name: str) -> str:
+    """Get short abbreviation for job name.
+
+    Matches job names against known patterns (case-insensitive substring match).
+    Falls back to first 4 alphanumeric characters if no pattern matches.
+
+    Args:
+        name: Job name to abbreviate
+
+    Returns:
+        Short abbreviation (typically 3-5 chars)
+    """
+    lower_name = name.lower()
+    for abbrev, patterns in JOB_ABBREVIATIONS.items():
+        if any(p in lower_name for p in patterns):
+            return abbrev
+    # Fallback: first 4 alphanumeric chars
+    return "".join(c for c in name if c.isalnum())[:4].lower() or "job"
+
 
 def parse_issue_spec(spec: str) -> list[int]:
     """Parse issue specification into list of issue numbers.
@@ -871,17 +904,25 @@ class OutputFormat:
             console.print(table)
 
     def print_run_status(
-        self, runs: list[Any], commit_sha: str | None = None
+        self,
+        runs: list[Any],
+        commit_sha: str | None = None,
+        verbose: bool = False,
+        workflow_jobs: dict[int, list[Any]] | None = None,
     ) -> str:
         """Print workflow health status (latest run per workflow).
 
         Args:
             runs: List of workflow runs
             commit_sha: Optional commit SHA being queried (for display)
+            verbose: If True, show failed job details
+            workflow_jobs: Pre-fetched jobs for failed workflows {run_id: [jobs]}
 
         Returns:
             Overall status: "success", "failure", "running", or "no_runs"
         """
+        workflow_jobs = workflow_jobs or {}
+
         # Group runs by workflow (keep latest per workflow)
         workflow_runs: dict[str, Any] = {}
         for r in runs:
@@ -906,32 +947,51 @@ class OutputFormat:
             overall_status = "success"
 
         if self.format_type == "json":
-            output_data = {
+            output_data: dict[str, Any] = {
                 "commit": terminal_safe(commit_sha[:8]) if commit_sha else None,
                 "commit_full": terminal_safe(commit_sha) if commit_sha else None,
                 "overall_status": overall_status,
-                "workflows": {
-                    wf: {
-                        "run_id": r.id,
-                        "run_number": r.run_number,
-                        "status": terminal_safe(r.status),
-                        "conclusion": (
-                            terminal_safe(r.conclusion) if r.conclusion else None
-                        ),
-                        "head_sha": terminal_safe(r.head_sha[:8]),
-                        "head_branch": terminal_safe(r.head_branch),
-                        "started_at": (
-                            terminal_safe(r.started_at) if r.started_at else None
-                        ),
-                    }
-                    for wf, r in workflow_runs.items()
-                },
+                "workflows": {},
             }
+            for wf, r in workflow_runs.items():
+                wf_data: dict[str, Any] = {
+                    "run_id": r.id,
+                    "run_number": r.run_number,
+                    "status": terminal_safe(r.status),
+                    "conclusion": (
+                        terminal_safe(r.conclusion) if r.conclusion else None
+                    ),
+                    "head_sha": terminal_safe(r.head_sha[:8]),
+                    "head_branch": terminal_safe(r.head_branch or ""),
+                    "started_at": (
+                        terminal_safe(r.started_at) if r.started_at else None
+                    ),
+                }
+                # Add jobs data if verbose and available
+                if verbose and r.id in workflow_jobs:
+                    jobs = workflow_jobs[r.id]
+                    wf_data["jobs"] = [
+                        {
+                            "id": j.id,
+                            "name": terminal_safe(j.name),
+                            "status": terminal_safe(j.status),
+                            "conclusion": (
+                                terminal_safe(j.conclusion) if j.conclusion else None
+                            ),
+                        }
+                        for j in jobs
+                    ]
+                    wf_data["failed_jobs"] = [
+                        terminal_safe(j.name)
+                        for j in jobs
+                        if j.conclusion == "failure"
+                    ]
+                output_data["workflows"][wf] = wf_data
             click.echo(json.dumps(output_data, indent=2))
 
         elif self.format_type == "tmux":
             # Compact format for tmux status bars: C:✓ B:✓ D:✓
-            # Use first letter of workflow name as abbreviation
+            # For failures with jobs, show hints: M:✗[lint] or M:✗[3]
             if not workflow_runs:
                 click.echo("CI:?")
                 return overall_status
@@ -944,16 +1004,27 @@ class OutputFormat:
                 abbrev = safe_wf[0].upper() if safe_wf and safe_wf[0].isalnum() else "?"
                 conclusion = r.conclusion or r.status
                 if conclusion == "success":
-                    symbol = "✓"
+                    parts.append(f"{abbrev}:✓")
                 elif conclusion == "failure":
-                    symbol = "✗"
+                    # Check if we have job info for failure hints
+                    if r.id in workflow_jobs:
+                        jobs = workflow_jobs[r.id]
+                        failed = [j for j in jobs if j.conclusion == "failure"]
+                        if len(failed) == 1:
+                            hint = abbreviate_job_name(failed[0].name)
+                            parts.append(f"{abbrev}:✗[{terminal_safe(hint)}]")
+                        elif len(failed) > 1:
+                            parts.append(f"{abbrev}:✗[{len(failed)}]")
+                        else:
+                            parts.append(f"{abbrev}:✗")
+                    else:
+                        parts.append(f"{abbrev}:✗")
                 elif r.status in ("queued", "in_progress", "waiting"):
-                    symbol = "⋯"
+                    parts.append(f"{abbrev}:⋯")
                 elif conclusion in ("cancelled", "skipped"):
-                    symbol = "○"
+                    parts.append(f"{abbrev}:○")
                 else:
-                    symbol = "-"
-                parts.append(f"{abbrev}:{symbol}")
+                    parts.append(f"{abbrev}:-")
             click.echo(" ".join(parts))
 
         elif self.format_type == "simple":
@@ -964,23 +1035,49 @@ class OutputFormat:
                     f"{terminal_safe(wf)}: {symbol} {terminal_safe(conclusion)} "
                     f"(#{r.run_number})"
                 )
+                # Show failed jobs if verbose
+                if verbose and r.id in workflow_jobs:
+                    failed = [
+                        j for j in workflow_jobs[r.id] if j.conclusion == "failure"
+                    ]
+                    for j in failed:
+                        click.echo(f"  ✗ {terminal_safe(j.name)}")
 
         elif self.format_type == "csv":
             output = io.StringIO()
             writer = csv.writer(output)
-            writer.writerow(
-                ["workflow", "status", "conclusion", "run_number", "head_sha"]
-            )
-            for wf, r in workflow_runs.items():
+            if verbose:
                 writer.writerow(
                     [
-                        csv_safe(wf),
-                        csv_safe(r.status),
-                        csv_safe(r.conclusion or ""),
-                        r.run_number,
-                        csv_safe(r.head_sha[:8] if r.head_sha else ""),
+                        "workflow",
+                        "status",
+                        "conclusion",
+                        "run_number",
+                        "head_sha",
+                        "failed_jobs",
                     ]
                 )
+            else:
+                writer.writerow(
+                    ["workflow", "status", "conclusion", "run_number", "head_sha"]
+                )
+            for wf, r in workflow_runs.items():
+                row = [
+                    csv_safe(wf),
+                    csv_safe(r.status),
+                    csv_safe(r.conclusion or ""),
+                    r.run_number,
+                    csv_safe(r.head_sha[:8] if r.head_sha else ""),
+                ]
+                if verbose:
+                    if r.id in workflow_jobs:
+                        failed = [
+                            j for j in workflow_jobs[r.id] if j.conclusion == "failure"
+                        ]
+                        row.append(csv_safe(";".join(j.name for j in failed)))
+                    else:
+                        row.append("")
+                writer.writerow(row)
             click.echo(output.getvalue().rstrip())
 
         else:  # table (default)
@@ -1017,6 +1114,14 @@ class OutputFormat:
                     f"[bold]{safe_rich(wf)}[/bold]: {status_str} "
                     f"(#{r.run_number}, {safe_rich(sha)})"
                 )
+
+                # Show failed jobs if verbose
+                if verbose and r.id in workflow_jobs:
+                    failed = [
+                        j for j in workflow_jobs[r.id] if j.conclusion == "failure"
+                    ]
+                    for j in failed:
+                        console.print(f"  [red]✗ {safe_rich(j.name)}[/red]")
 
         return overall_status
 
@@ -3173,6 +3278,70 @@ def workflow_disable(ctx: click.Context, workflow_id: str, repo: str) -> None:
 # --- Runs Group ---
 
 
+def resolve_run_id(
+    client: GiteaClient,
+    owner: str,
+    repo: str,
+    run_ref: str,
+    *,
+    force_number: bool = False,
+    force_id: bool = False,
+) -> int:
+    """Resolve run_number or run_id to actual run_id.
+
+    Uses a heuristic to distinguish run_numbers (typically < 10000) from run_ids
+    (Gitea's global sequential IDs, typically larger numbers). Use force_number
+    or force_id to override the heuristic.
+
+    Args:
+        client: GiteaClient instance
+        owner: Repository owner
+        repo: Repository name
+        run_ref: Either a run_number or run_id as string
+        force_number: If True, interpret as run_number regardless of value
+        force_id: If True, interpret as run_id regardless of value
+
+    Returns:
+        The resolved run_id (Gitea's internal ID)
+
+    Raises:
+        ValueError: If run_ref can't be resolved or is invalid
+    """
+    if force_number and force_id:
+        raise ValueError("Cannot specify both --by-number and --by-id")
+
+    try:
+        ref_int = int(run_ref)
+    except ValueError as e:
+        raise ValueError(f"Invalid run reference: {run_ref}") from e
+
+    # Validate positive integer
+    if ref_int <= 0:
+        raise ValueError(f"Run reference must be positive, got: {ref_int}")
+
+    # Force interpretation as run_id
+    if force_id:
+        return ref_int
+
+    # Force interpretation as run_number or use heuristic for small numbers
+    if force_number or ref_int < 10000:
+        runs_list = client.list_runs(owner, repo, limit=100, max_pages=5)
+        for r in runs_list:
+            if r.run_number == ref_int:
+                return r.id
+        # Not found as run_number
+        if force_number:
+            raise ValueError(
+                f"Run number {ref_int} not found in recent runs."
+            )
+        raise ValueError(
+            f"Run number {ref_int} not found in recent runs. "
+            f"If this is a run_id, use --by-id flag."
+        )
+
+    return ref_int
+
+
 @main.group()
 def runs() -> None:
     """Manage workflow runs - list, inspect, and debug CI/CD."""
@@ -3186,8 +3355,16 @@ def runs() -> None:
     "-s",
     help="Filter by commit SHA (prefix match). Use 'HEAD' for current git HEAD.",
 )
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Show failed job details (fetches jobs for failed workflows)",
+)
 @click.pass_context
-def runs_status(ctx: click.Context, repo: str, sha: str | None) -> None:
+def runs_status(
+    ctx: click.Context, repo: str, sha: str | None, verbose: bool
+) -> None:
     """Show workflow health status (latest run per workflow).
 
     Quick overview of CI/CD health for all workflows.
@@ -3205,6 +3382,7 @@ def runs_status(ctx: click.Context, repo: str, sha: str | None) -> None:
         teax runs status -r owner/repo --sha HEAD
         teax runs status -r owner/repo --sha abc123
         teax runs status -r owner/repo -o tmux  # For status bars
+        teax runs status -r owner/repo --verbose  # Show failed job details
     """
     import subprocess
 
@@ -3233,7 +3411,32 @@ def runs_status(ctx: click.Context, repo: str, sha: str | None) -> None:
             runs_list = client.list_runs(
                 owner, repo_name, head_sha=head_sha, limit=50, max_pages=5
             )
-            overall_status = output.print_run_status(runs_list, commit_sha=head_sha)
+
+            # Pre-fetch jobs for failed workflows when verbose
+            workflow_jobs: dict[int, list[Any]] = {}
+            if verbose:
+                # Group runs by workflow, keep latest per workflow
+                seen_workflows: set[str] = set()
+                for r in runs_list:
+                    wf_name = r.path.split("/")[-1] if r.path else "unknown"
+                    if wf_name not in seen_workflows:
+                        seen_workflows.add(wf_name)
+                        # Fetch jobs only for failed workflows
+                        if r.conclusion == "failure":
+                            try:
+                                workflow_jobs[r.id] = client.list_run_jobs(
+                                    owner, repo_name, r.id
+                                )
+                            except CLI_ERRORS:
+                                # Degrade gracefully - skip job details for this run
+                                pass
+
+            overall_status = output.print_run_status(
+                runs_list,
+                commit_sha=head_sha,
+                verbose=verbose,
+                workflow_jobs=workflow_jobs,
+            )
 
             # Exit codes based on overall status
             if overall_status == "success":
@@ -3247,6 +3450,193 @@ def runs_status(ctx: click.Context, repo: str, sha: str | None) -> None:
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(4)
+
+
+@runs.command("failed")
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--sha", "-s", help="Check specific commit (default: latest failure)")
+@click.option("--workflow", "-w", help="Filter to specific workflow")
+@click.option(
+    "--logs", is_flag=True, help="Fetch first 50 lines of failed job logs"
+)
+@click.pass_context
+def runs_failed(
+    ctx: click.Context,
+    repo: str,
+    sha: str | None,
+    workflow: str | None,
+    logs: bool,
+) -> None:
+    """Show details of the most recent failed run.
+
+    Finds the most recent failed workflow run and shows job-level details
+    including which jobs failed and their status.
+
+    Examples:
+        teax runs failed -r owner/repo
+        teax runs failed -r owner/repo --sha abc123
+        teax runs failed -r owner/repo --workflow ci.yml
+        teax runs failed -r owner/repo --logs
+        teax runs failed -r owner/repo -o json
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            # Find most recent failed run
+            runs_list = client.list_runs(
+                owner,
+                repo_name,
+                workflow=workflow,
+                head_sha=sha,
+                limit=50,
+                max_pages=5,
+            )
+
+            failed_run = None
+            for r in runs_list:
+                if r.conclusion == "failure":
+                    failed_run = r
+                    break
+
+            if not failed_run:
+                if sha:
+                    console.print(
+                        f"[dim]No failed runs found for commit {safe_rich(sha)}[/dim]"
+                    )
+                else:
+                    console.print("[dim]No failed runs found[/dim]")
+                sys.exit(0)
+
+            # Fetch jobs for the failed run
+            jobs = client.list_run_jobs(owner, repo_name, failed_run.id)
+            failed_jobs = [j for j in jobs if j.conclusion == "failure"]
+
+            if output.format_type == "json":
+                output_data: dict[str, Any] = {
+                    "run_id": failed_run.id,
+                    "run_number": failed_run.run_number,
+                    "workflow": terminal_safe(
+                        failed_run.path.split("/")[-1] if failed_run.path else ""
+                    ),
+                    "head_sha": terminal_safe(failed_run.head_sha),
+                    "head_branch": terminal_safe(failed_run.head_branch or ""),
+                    "event": terminal_safe(failed_run.event),
+                    "jobs": [
+                        {
+                            "id": j.id,
+                            "name": terminal_safe(j.name),
+                            "status": terminal_safe(j.status),
+                            "conclusion": (
+                                terminal_safe(j.conclusion) if j.conclusion else None
+                            ),
+                        }
+                        for j in jobs
+                    ],
+                    "failed_jobs": [terminal_safe(j.name) for j in failed_jobs],
+                }
+                # Add log snippets if requested
+                if logs and failed_jobs:
+                    logs_dict: dict[str, list[str] | str] = {}
+                    for j in failed_jobs:
+                        try:
+                            job_logs = client.get_job_logs(owner, repo_name, j.id)
+                            # First 50 lines
+                            lines = job_logs.split("\n")[:50]
+                            logs_dict[terminal_safe(j.name)] = [
+                                terminal_safe(line) for line in lines
+                            ]
+                        except CLI_ERRORS:
+                            logs_dict[terminal_safe(j.name)] = "(log fetch failed)"
+                    output_data["logs"] = logs_dict
+                click.echo(json.dumps(output_data, indent=2))
+
+            elif output.format_type == "simple":
+                wf_name = (
+                    failed_run.path.split("/")[-1] if failed_run.path else "unknown"
+                )
+                click.echo(
+                    f"{terminal_safe(wf_name)} #{failed_run.run_number} "
+                    f"({terminal_safe(failed_run.head_sha[:8])})"
+                )
+                for j in failed_jobs:
+                    click.echo(f"  ✗ {terminal_safe(j.name)}")
+                    if logs:
+                        try:
+                            job_logs = client.get_job_logs(owner, repo_name, j.id)
+                            lines = job_logs.split("\n")[:50]
+                            for line in lines:
+                                click.echo(f"    {terminal_safe(line)}")
+                        except CLI_ERRORS:
+                            click.echo("    (log fetch failed)")
+
+            elif output.format_type == "csv":
+                out = io.StringIO()
+                writer = csv.writer(out)
+                writer.writerow(
+                    [
+                        "run_id",
+                        "run_number",
+                        "workflow",
+                        "head_sha",
+                        "job_id",
+                        "job_name",
+                        "job_conclusion",
+                    ]
+                )
+                wf_name = (
+                    failed_run.path.split("/")[-1] if failed_run.path else "unknown"
+                )
+                for j in failed_jobs:
+                    writer.writerow(
+                        [
+                            failed_run.id,
+                            failed_run.run_number,
+                            csv_safe(wf_name),
+                            csv_safe(failed_run.head_sha[:8]),
+                            j.id,
+                            csv_safe(j.name),
+                            csv_safe(j.conclusion or ""),
+                        ]
+                    )
+                click.echo(out.getvalue().rstrip())
+
+            else:  # table (default)
+                wf_name = (
+                    failed_run.path.split("/")[-1] if failed_run.path else "unknown"
+                )
+                console.print(
+                    f"[bold red]Failed:[/bold red] {safe_rich(wf_name)} "
+                    f"#{failed_run.run_number}"
+                )
+                console.print(
+                    f"[dim]Commit: {safe_rich(failed_run.head_sha[:8])} "
+                    f"({safe_rich(failed_run.head_branch or 'unknown')})[/dim]"
+                )
+                console.print()
+
+                if not failed_jobs:
+                    console.print("[yellow]No failed jobs found[/yellow]")
+                else:
+                    console.print("[bold]Failed Jobs:[/bold]")
+                    for j in failed_jobs:
+                        console.print(f"  [red]✗ {safe_rich(j.name)}[/red]")
+
+                        if logs:
+                            try:
+                                job_logs = client.get_job_logs(owner, repo_name, j.id)
+                                lines = job_logs.split("\n")[:50]
+                                console.print("[dim]  Log (first 50 lines):[/dim]")
+                                for line in lines:
+                                    console.print(f"    {safe_rich(line)}")
+                            except CLI_ERRORS:
+                                console.print(
+                                    "[dim]  (Could not fetch logs)[/dim]"
+                                )
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
 
 
 @runs.command("list")
@@ -3292,28 +3682,41 @@ def runs_list(
 
 
 @runs.command("get")
-@click.argument("run_id", type=int)
+@click.argument("run_ref")
 @click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
 @click.option("--errors-only", "-e", is_flag=True, help="Show only failed jobs/steps")
+@click.option("--by-number", is_flag=True, help="Force interpretation as run_number")
+@click.option("--by-id", is_flag=True, help="Force interpretation as run_id")
 @click.pass_context
 def runs_get(
     ctx: click.Context,
-    run_id: int,
+    run_ref: str,
     repo: str,
     errors_only: bool,
+    by_number: bool,
+    by_id: bool,
 ) -> None:
     """Get workflow run details with jobs and steps.
 
+    RUN_REF can be either a run_number (small sequential number like 223)
+    or a run_id (Gitea's internal ID). Small numbers (< 10000) are first
+    checked as run_numbers. Use --by-number or --by-id to override.
+
     Examples:
-        teax runs get 42 -r owner/repo
-        teax runs get 42 -r owner/repo --errors-only
-        teax runs get 42 -r owner/repo -o json
+        teax runs get 223 -r owner/repo           # Uses run_number
+        teax runs get 12345 -r owner/repo         # Uses run_id
+        teax runs get 42 -r owner/repo --by-id    # Force as run_id
+        teax runs get 15000 --by-number           # Force as run_number
     """
     owner, repo_name = parse_repo(repo)
     output: OutputFormat = ctx.obj["output"]
 
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            run_id = resolve_run_id(
+                client, owner, repo_name, run_ref,
+                force_number=by_number, force_id=by_id
+            )
             jobs = client.list_run_jobs(owner, repo_name, run_id)
             output.print_jobs(jobs, errors_only=errors_only)
     except CLI_ERRORS as e:
@@ -3322,27 +3725,40 @@ def runs_get(
 
 
 @runs.command("jobs")
-@click.argument("run_id", type=int)
+@click.argument("run_ref")
 @click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
 @click.option("--errors-only", "-e", is_flag=True, help="Show only failed jobs")
+@click.option("--by-number", is_flag=True, help="Force interpretation as run_number")
+@click.option("--by-id", is_flag=True, help="Force interpretation as run_id")
 @click.pass_context
 def runs_jobs(
     ctx: click.Context,
-    run_id: int,
+    run_ref: str,
     repo: str,
     errors_only: bool,
+    by_number: bool,
+    by_id: bool,
 ) -> None:
     """List jobs for a workflow run.
 
+    RUN_REF can be either a run_number (small sequential number like 223)
+    or a run_id (Gitea's internal ID). Small numbers (< 10000) are first
+    checked as run_numbers. Use --by-number or --by-id to override.
+
     Examples:
-        teax runs jobs 42 -r owner/repo
-        teax runs jobs 42 -r owner/repo --errors-only
+        teax runs jobs 223 -r owner/repo           # Uses run_number
+        teax runs jobs 12345 -r owner/repo         # Uses run_id
+        teax runs jobs 42 -r owner/repo --by-id    # Force as run_id
     """
     owner, repo_name = parse_repo(repo)
     output: OutputFormat = ctx.obj["output"]
 
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            run_id = resolve_run_id(
+                client, owner, repo_name, run_ref,
+                force_number=by_number, force_id=by_id
+            )
             jobs = client.list_run_jobs(owner, repo_name, run_id)
             output.print_jobs(jobs, errors_only=errors_only)
     except CLI_ERRORS as e:
@@ -3481,11 +3897,19 @@ def runs_logs(
 
 
 @runs.command("rerun")
-@click.argument("run_id", type=int)
+@click.argument("run_ref")
 @click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--by-number", is_flag=True, help="Force interpretation as run_number")
+@click.option("--by-id", is_flag=True, help="Force interpretation as run_id")
 @click.pass_context
-def runs_rerun(ctx: click.Context, run_id: int, repo: str) -> None:
+def runs_rerun(
+    ctx: click.Context, run_ref: str, repo: str, by_number: bool, by_id: bool
+) -> None:
     """Rerun a workflow (via dispatch).
+
+    RUN_REF can be either a run_number (small sequential number like 223)
+    or a run_id (Gitea's internal ID). Small numbers (< 10000) are first
+    checked as run_numbers. Use --by-number or --by-id to override.
 
     Note: Uses workflow dispatch as a workaround since Gitea's native
     rerun API is not yet available. Limitations:
@@ -3494,13 +3918,19 @@ def runs_rerun(ctx: click.Context, run_id: int, repo: str) -> None:
     - Original event context (PR number, etc.) lost
 
     Examples:
-        teax runs rerun 42 -r owner/repo
+        teax runs rerun 223 -r owner/repo           # Uses run_number
+        teax runs rerun 12345 -r owner/repo         # Uses run_id
+        teax runs rerun 42 -r owner/repo --by-id    # Force as run_id
     """
     owner, repo_name = parse_repo(repo)
     output: OutputFormat = ctx.obj["output"]
 
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            run_id = resolve_run_id(
+                client, owner, repo_name, run_ref,
+                force_number=by_number, force_id=by_id
+            )
             # Get run info first to show what we're rerunning
             run = client.get_run(owner, repo_name, run_id)
             workflow_name = run.path.split("/")[-1] if run.path else "unknown"
@@ -3521,29 +3951,58 @@ def runs_rerun(ctx: click.Context, run_id: int, repo: str) -> None:
 
 
 @runs.command("delete")
-@click.argument("run_id", type=int)
+@click.argument("run_ref")
 @click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+@click.option("--by-number", is_flag=True, help="Force interpretation as run_number")
+@click.option("--by-id", is_flag=True, help="Force interpretation as run_id")
 @click.pass_context
-def runs_delete(ctx: click.Context, run_id: int, repo: str, yes: bool) -> None:
+def runs_delete(
+    ctx: click.Context,
+    run_ref: str,
+    repo: str,
+    yes: bool,
+    by_number: bool,
+    by_id: bool,
+) -> None:
     """Delete a workflow run.
 
+    RUN_REF can be either a run_number (small sequential number like 223)
+    or a run_id (Gitea's internal ID). Small numbers (< 10000) are first
+    checked as run_numbers. Use --by-number or --by-id to override.
+
     Examples:
-        teax runs delete 42 -r owner/repo
-        teax runs delete 42 -r owner/repo -y
+        teax runs delete 223 -r owner/repo           # Uses run_number
+        teax runs delete 12345 -r owner/repo         # Uses run_id
+        teax runs delete 42 -r owner/repo --by-id    # Force as run_id
+        teax runs delete 42 -r owner/repo -y         # Skip confirmation
     """
     owner, repo_name = parse_repo(repo)
     output: OutputFormat = ctx.obj["output"]
 
-    if not yes:
-        if not click.confirm(f"Delete run #{run_id}?"):
-            console.print("[yellow]Cancelled[/yellow]")
-            return
-
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            # Resolve and fetch run details first for confirmation
+            run_id = resolve_run_id(
+                client, owner, repo_name, run_ref,
+                force_number=by_number, force_id=by_id
+            )
+            run = client.get_run(owner, repo_name, run_id)
+
+            # Confirm with details after resolution
+            if not yes:
+                wf_name = run.path.split("/")[-1] if run.path else "unknown"
+                sha = run.head_sha[:8] if run.head_sha else "unknown"
+                confirm_msg = (
+                    f"Delete run #{run.run_number} "
+                    f"({terminal_safe(wf_name)}, {terminal_safe(sha)})?"
+                )
+                if not click.confirm(confirm_msg):
+                    console.print("[yellow]Cancelled[/yellow]")
+                    return
+
             client.delete_run(owner, repo_name, run_id)
-            output.print_mutation("deleted", f"run #{run_id}")
+            output.print_mutation("deleted", f"run #{run.run_number}")
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)

@@ -4703,7 +4703,7 @@ def test_runs_get_help(runner: CliRunner):
     assert result.exit_code == 0
     assert "--repo" in result.output
     assert "--errors-only" in result.output
-    assert "RUN_ID" in result.output
+    assert "RUN_REF" in result.output
 
 
 def test_runs_jobs_help(runner: CliRunner):
@@ -4712,7 +4712,7 @@ def test_runs_jobs_help(runner: CliRunner):
     assert result.exit_code == 0
     assert "--repo" in result.output
     assert "--errors-only" in result.output
-    assert "RUN_ID" in result.output
+    assert "RUN_REF" in result.output
 
 
 def test_runs_logs_help(runner: CliRunner):
@@ -4734,7 +4734,7 @@ def test_runs_rerun_help(runner: CliRunner):
     result = runner.invoke(main, ["runs", "rerun", "--help"])
     assert result.exit_code == 0
     assert "--repo" in result.output
-    assert "RUN_ID" in result.output
+    assert "RUN_REF" in result.output
 
 
 def test_runs_delete_help(runner: CliRunner):
@@ -4743,7 +4743,7 @@ def test_runs_delete_help(runner: CliRunner):
     assert result.exit_code == 0
     assert "--repo" in result.output
     assert "--yes" in result.output
-    assert "RUN_ID" in result.output
+    assert "RUN_REF" in result.output
 
 
 # --- Package Linking Help Tests ---
@@ -5628,8 +5628,9 @@ def test_runs_get_command(runner: CliRunner):
     import respx
 
     with respx.mock:
+        # Use run_id >= 10000 to skip run_number resolution
         route = respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42000/jobs"
         )
         route.mock(
             return_value=httpx.Response(
@@ -5638,7 +5639,7 @@ def test_runs_get_command(runner: CliRunner):
                     "jobs": [
                         {
                             "id": 123,
-                            "run_id": 42,
+                            "run_id": 42000,
                             "name": "build",
                             "status": "completed",
                             "conclusion": "success",
@@ -5659,7 +5660,7 @@ def test_runs_get_command(runner: CliRunner):
             )
         )
 
-        result = runner.invoke(main, ["runs", "get", "42", "--repo", "owner/repo"])
+        result = runner.invoke(main, ["runs", "get", "42000", "--repo", "owner/repo"])
 
         assert result.exit_code == 0
         assert route.called
@@ -5672,8 +5673,9 @@ def test_runs_jobs_command(runner: CliRunner):
     import respx
 
     with respx.mock:
+        # Use run_id >= 10000 to skip run_number resolution
         route = respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42000/jobs"
         )
         route.mock(
             return_value=httpx.Response(
@@ -5682,7 +5684,7 @@ def test_runs_jobs_command(runner: CliRunner):
                     "jobs": [
                         {
                             "id": 123,
-                            "run_id": 42,
+                            "run_id": 42000,
                             "name": "build",
                             "status": "completed",
                             "conclusion": "success",
@@ -5703,7 +5705,7 @@ def test_runs_jobs_command(runner: CliRunner):
             )
         )
 
-        result = runner.invoke(main, ["runs", "jobs", "42", "--repo", "owner/repo"])
+        result = runner.invoke(main, ["runs", "jobs", "42000", "--repo", "owner/repo"])
 
         assert result.exit_code == 0
         assert route.called
@@ -5995,9 +5997,10 @@ def test_runs_rerun_command(runner: CliRunner):
     import respx
 
     with respx.mock:
+        # Use run_id >= 10000 to skip run_number resolution
         # Mock jobs endpoint (get_run uses this first to verify run exists)
         respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42000/jobs"
         ).mock(
             return_value=httpx.Response(
                 200,
@@ -6005,7 +6008,7 @@ def test_runs_rerun_command(runner: CliRunner):
                     "jobs": [
                         {
                             "id": 123,
-                            "run_id": 42,
+                            "run_id": 42000,
                             "name": "build",
                             "status": "completed",
                             "conclusion": "failure",
@@ -6033,7 +6036,7 @@ def test_runs_rerun_command(runner: CliRunner):
                 json={
                     "workflow_runs": [
                         {
-                            "id": 42,
+                            "id": 42000,
                             "run_number": 15,
                             "run_attempt": 1,
                             "status": "completed",
@@ -6059,7 +6062,7 @@ def test_runs_rerun_command(runner: CliRunner):
             "https://test.example.com/api/v1/repos/owner/repo/actions/workflows/ci.yml/dispatches"
         ).mock(return_value=httpx.Response(204))
 
-        result = runner.invoke(main, ["runs", "rerun", "42", "--repo", "owner/repo"])
+        result = runner.invoke(main, ["runs", "rerun", "42000", "--repo", "owner/repo"])
 
         assert result.exit_code == 0
         assert dispatch_route.called
@@ -6073,13 +6076,74 @@ def test_runs_delete_command(runner: CliRunner):
     import respx
 
     with respx.mock:
+        # Use run_id >= 10000 to skip run_number resolution
+        # Mock jobs endpoint (get_run uses this first to verify run exists)
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42000/jobs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jobs": [
+                        {
+                            "id": 123,
+                            "run_id": 42000,
+                            "name": "build",
+                            "status": "completed",
+                            "conclusion": "success",
+                            "started_at": "",
+                            "completed_at": "",
+                            "created_at": "",
+                            "head_sha": "",
+                            "head_branch": "",
+                            "runner_id": None,
+                            "runner_name": None,
+                            "labels": [],
+                            "steps": [],
+                            "html_url": "",
+                            "run_url": "",
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Mock list_runs (get_run fetches from here after jobs endpoint)
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42000,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Mock delete endpoint
         route = respx.delete(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42"
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42000"
         )
         route.mock(return_value=httpx.Response(204))
 
         result = runner.invoke(
-            main, ["runs", "delete", "42", "--repo", "owner/repo", "-y"]
+            main, ["runs", "delete", "42000", "--repo", "owner/repo", "-y"]
         )
 
         assert result.exit_code == 0
@@ -6090,14 +6154,77 @@ def test_runs_delete_command(runner: CliRunner):
 @pytest.mark.usefixtures("mock_client")
 def test_runs_delete_cancelled_without_confirm(runner: CliRunner):
     """Test runs delete command cancelled without confirmation."""
-    result = runner.invoke(
-        main,
-        ["runs", "delete", "42", "--repo", "owner/repo"],
-        input="n\n",
-    )
+    import httpx
+    import respx
 
-    assert result.exit_code == 0
-    assert "Cancelled" in result.output
+    with respx.mock:
+        # Mock jobs endpoint (get_run uses this first)
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42000/jobs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jobs": [
+                        {
+                            "id": 123,
+                            "run_id": 42000,
+                            "name": "build",
+                            "status": "completed",
+                            "conclusion": "success",
+                            "started_at": "",
+                            "completed_at": "",
+                            "created_at": "",
+                            "head_sha": "",
+                            "head_branch": "",
+                            "runner_id": None,
+                            "runner_name": None,
+                            "labels": [],
+                            "steps": [],
+                            "html_url": "",
+                            "run_url": "",
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Mock list_runs (get_run fetches from here after jobs endpoint)
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42000,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["runs", "delete", "42000", "--repo", "owner/repo"],
+            input="n\n",
+        )
+
+        assert result.exit_code == 0
+        assert "Cancelled" in result.output
 
 
 @pytest.mark.usefixtures("mock_client")
@@ -6256,3 +6383,988 @@ def test_pkg_link_error_handling(runner: CliRunner):
 
         assert result.exit_code != 0
         assert "Error" in result.output
+
+
+# --- Runs Enhancement Tests ---
+
+
+def test_abbreviate_job_name_lint():
+    """Test abbreviate_job_name for lint patterns."""
+    from teax.cli import abbreviate_job_name
+
+    assert abbreviate_job_name("lint") == "lint"
+    assert abbreviate_job_name("Lint") == "lint"
+    assert abbreviate_job_name("Run linting") == "lint"
+    assert abbreviate_job_name("type check") == "lint"
+    assert abbreviate_job_name("Type Check (Python)") == "lint"
+
+
+def test_abbreviate_job_name_tests():
+    """Test abbreviate_job_name for test patterns."""
+    from teax.cli import abbreviate_job_name
+
+    assert abbreviate_job_name("unit test") == "unit"
+    assert abbreviate_job_name("Unit Tests (Python 3.11)") == "unit"
+    assert abbreviate_job_name("integration test") == "int"
+    assert abbreviate_job_name("e2e test") == "e2e"
+    assert abbreviate_job_name("End-to-End Tests") == "e2e"
+    assert abbreviate_job_name("smoke test") == "smoke"
+    assert abbreviate_job_name("visual test") == "visual"
+
+
+def test_abbreviate_job_name_build():
+    """Test abbreviate_job_name for build patterns."""
+    from teax.cli import abbreviate_job_name
+
+    assert abbreviate_job_name("build") == "build"
+    assert abbreviate_job_name("Build Docker") == "build"
+    assert abbreviate_job_name("package") == "build"
+    assert abbreviate_job_name("push") == "build"
+    assert abbreviate_job_name("deploy") == "deploy"
+
+
+def test_abbreviate_job_name_fallback():
+    """Test abbreviate_job_name fallback to first 4 chars."""
+    from teax.cli import abbreviate_job_name
+
+    assert abbreviate_job_name("my-custom-job") == "mycu"
+    assert abbreviate_job_name("!@#$unknown123") == "unkn"
+    assert abbreviate_job_name("AB") == "ab"
+    assert abbreviate_job_name("") == "job"
+    assert abbreviate_job_name("!@#$%") == "job"  # No alphanumeric chars
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_resolve_run_id_by_run_number(runner: CliRunner):
+    """Test resolve_run_id resolves run_number to run_id."""
+    import httpx
+    import respx
+
+    from teax.api import GiteaClient
+    from teax.cli import resolve_run_id
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 99999,
+                            "run_number": 223,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc123",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        with GiteaClient() as client:
+            # Small number should be resolved as run_number
+            run_id = resolve_run_id(client, "owner", "repo", "223")
+            assert run_id == 99999
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_resolve_run_id_large_number_as_run_id(runner: CliRunner):
+    """Test resolve_run_id treats large numbers as run_id directly."""
+    from teax.api import GiteaClient
+    from teax.cli import resolve_run_id
+
+    with GiteaClient() as client:
+        # Large number should be used directly as run_id
+        run_id = resolve_run_id(client, "owner", "repo", "99999")
+        assert run_id == 99999
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_resolve_run_id_negative_rejected(runner: CliRunner):
+    """Test resolve_run_id rejects negative numbers."""
+    import pytest
+
+    from teax.api import GiteaClient
+    from teax.cli import resolve_run_id
+
+    with GiteaClient() as client:
+        with pytest.raises(ValueError, match="must be positive"):
+            resolve_run_id(client, "owner", "repo", "-1")
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_resolve_run_id_zero_rejected(runner: CliRunner):
+    """Test resolve_run_id rejects zero."""
+    import pytest
+
+    from teax.api import GiteaClient
+    from teax.cli import resolve_run_id
+
+    with GiteaClient() as client:
+        with pytest.raises(ValueError, match="must be positive"):
+            resolve_run_id(client, "owner", "repo", "0")
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_resolve_run_id_not_found_errors(runner: CliRunner):
+    """Test resolve_run_id errors when run_number not found."""
+    import httpx
+    import respx
+
+    from teax.api import GiteaClient
+    from teax.cli import resolve_run_id
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={"workflow_runs": []},  # Empty - no runs found
+            )
+        )
+
+        with GiteaClient() as client:
+            # Small number not found should error, not fall through
+            with pytest.raises(ValueError, match="not found in recent runs"):
+                resolve_run_id(client, "owner", "repo", "999")
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_resolve_run_id_by_id_flag_forces_small_as_run_id(runner: CliRunner):
+    """Test --by-id flag forces small number to be treated as run_id."""
+    from teax.api import GiteaClient
+    from teax.cli import resolve_run_id
+
+    with GiteaClient() as client:
+        # With force_id=True, small number should be returned directly
+        run_id = resolve_run_id(client, "owner", "repo", "42", force_id=True)
+        assert run_id == 42
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_resolve_run_id_by_number_flag_forces_large_as_run_number(runner: CliRunner):
+    """Test --by-number flag forces large number to be looked up as run_number."""
+    import httpx
+    import respx
+
+    from teax.api import GiteaClient
+    from teax.cli import resolve_run_id
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 500000,
+                            "run_number": 15000,  # Large run_number
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc123",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        with GiteaClient() as client:
+            # With force_number=True, large number should be looked up as run_number
+            run_id = resolve_run_id(client, "owner", "repo", "15000", force_number=True)
+            assert run_id == 500000
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_resolve_run_id_both_flags_errors(runner: CliRunner):
+    """Test that both --by-number and --by-id flags together raises error."""
+    from teax.api import GiteaClient
+    from teax.cli import resolve_run_id
+
+    with GiteaClient() as client:
+        with pytest.raises(ValueError, match="Cannot specify both"):
+            resolve_run_id(
+                client, "owner", "repo", "42", force_number=True, force_id=True
+            )
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_resolve_run_id_non_numeric_errors(runner: CliRunner):
+    """Test that non-numeric run_ref raises error."""
+    from teax.api import GiteaClient
+    from teax.cli import resolve_run_id
+
+    with GiteaClient() as client:
+        with pytest.raises(ValueError, match="Invalid run reference"):
+            resolve_run_id(client, "owner", "repo", "abc")
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_failed_sha_sanitization(runner: CliRunner):
+    """Test that sha parameter is sanitized in output (appears as literal text)."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={"workflow_runs": []},  # Empty - no failures
+            )
+        )
+
+        # Test with Rich markup in sha (should be escaped and appear as literal text)
+        result = runner.invoke(
+            main,
+            ["runs", "failed", "--repo", "owner/repo", "--sha", "[red]malicious[/red]"],
+        )
+
+        # Escaped markup appears as literal text [red] in output
+        # (not rendered as ANSI color codes)
+        assert "[red]malicious[/red]" in result.output
+        assert result.exit_code == 0
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_tmux_multiple_failed_jobs(runner: CliRunner):
+    """Test runs status -o tmux shows count for multiple failed jobs."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock runs list
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/main.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Mock jobs list with multiple failures
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jobs": [
+                        {
+                            "id": 101,
+                            "name": "lint",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "run_id": 42,
+                            "workflow_name": "CI",
+                            "head_sha": "abc12345",
+                            "runner_name": "",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "steps": [],
+                        },
+                        {
+                            "id": 102,
+                            "name": "test",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "run_id": 42,
+                            "workflow_name": "CI",
+                            "head_sha": "abc12345",
+                            "runner_name": "",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "steps": [],
+                        },
+                        {
+                            "id": 103,
+                            "name": "build",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "run_id": 42,
+                            "workflow_name": "CI",
+                            "head_sha": "abc12345",
+                            "runner_name": "",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "steps": [],
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "tmux", "runs", "status", "--repo", "owner/repo", "--verbose"]
+        )
+
+        # Should show count [3] for multiple failed jobs
+        assert "M:✗[3]" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_verbose_shows_failed_jobs(runner: CliRunner):
+    """Test runs status --verbose shows failed job details."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock runs list
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Mock jobs list for the failed run
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jobs": [
+                        {
+                            "id": 101,
+                            "name": "lint",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "run_id": 42,
+                            "workflow_name": "CI",
+                            "head_sha": "abc12345",
+                            "runner_name": "runner-1",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "steps": [],
+                        },
+                        {
+                            "id": 102,
+                            "name": "test",
+                            "status": "completed",
+                            "conclusion": "success",
+                            "run_id": 42,
+                            "workflow_name": "CI",
+                            "head_sha": "abc12345",
+                            "runner_name": "runner-1",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "steps": [],
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["runs", "status", "--repo", "owner/repo", "--verbose"]
+        )
+
+        # Should show failed job name
+        assert "lint" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_tmux_with_failure_hint(runner: CliRunner):
+    """Test runs status -o tmux shows failure hints."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock runs list
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/main.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Mock jobs list
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jobs": [
+                        {
+                            "id": 101,
+                            "name": "Run linting",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "run_id": 42,
+                            "workflow_name": "CI",
+                            "head_sha": "abc12345",
+                            "runner_name": "runner-1",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "steps": [],
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "tmux", "runs", "status", "--repo", "owner/repo", "--verbose"]
+        )
+
+        # Should show abbreviated job name in brackets
+        assert "M:✗[lint]" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_json_with_verbose_includes_jobs(runner: CliRunner):
+    """Test runs status -o json --verbose includes jobs array."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock runs list
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Mock jobs list
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jobs": [
+                        {
+                            "id": 101,
+                            "name": "lint",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "run_id": 42,
+                            "workflow_name": "CI",
+                            "head_sha": "abc12345",
+                            "runner_name": "",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "steps": [],
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "json", "runs", "status", "--repo", "owner/repo", "--verbose"]
+        )
+
+        data = json.loads(result.output)
+        ci_workflow = data["workflows"]["ci.yml"]
+        assert "jobs" in ci_workflow
+        assert "failed_jobs" in ci_workflow
+        assert ci_workflow["failed_jobs"] == ["lint"]
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_failed_command(runner: CliRunner):
+    """Test runs failed command shows most recent failure."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock runs list
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Mock jobs list
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jobs": [
+                        {
+                            "id": 101,
+                            "name": "lint",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "run_id": 42,
+                            "workflow_name": "CI",
+                            "head_sha": "abc12345",
+                            "runner_name": "",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "steps": [],
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(main, ["runs", "failed", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        assert "ci.yml" in result.output
+        assert "lint" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_failed_no_failures(runner: CliRunner):
+    """Test runs failed with no failures."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(main, ["runs", "failed", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        assert "No failed runs found" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_failed_json_output(runner: CliRunner):
+    """Test runs failed with JSON output."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock runs list
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Mock jobs list
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jobs": [
+                        {
+                            "id": 101,
+                            "name": "lint",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "run_id": 42,
+                            "workflow_name": "CI",
+                            "head_sha": "abc12345",
+                            "runner_name": "",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "steps": [],
+                        },
+                        {
+                            "id": 102,
+                            "name": "test",
+                            "status": "completed",
+                            "conclusion": "success",
+                            "run_id": 42,
+                            "workflow_name": "CI",
+                            "head_sha": "abc12345",
+                            "runner_name": "",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "steps": [],
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "json", "runs", "failed", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["run_id"] == 42
+        assert data["run_number"] == 15
+        assert data["workflow"] == "ci.yml"
+        assert data["failed_jobs"] == ["lint"]
+        assert len(data["jobs"]) == 2
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_get_with_run_number(runner: CliRunner):
+    """Test runs get accepts run_number and resolves to run_id."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock runs list for resolution
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 99999,
+                            "run_number": 223,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Mock jobs list for the resolved run_id
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/99999/jobs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jobs": [
+                        {
+                            "id": 101,
+                            "name": "build",
+                            "status": "completed",
+                            "conclusion": "success",
+                            "run_id": 99999,
+                            "workflow_name": "CI",
+                            "head_sha": "abc12345",
+                            "runner_name": "",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "steps": [],
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(main, ["runs", "get", "223", "--repo", "owner/repo"])
+
+        assert result.exit_code == 0
+        assert "build" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_get_by_id_flag_skips_resolution(runner: CliRunner):
+    """Test runs get --by-id skips run_number resolution."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock the jobs endpoint for direct run_id access (no runs list call)
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jobs": [
+                        {
+                            "id": 101,
+                            "name": "build",
+                            "status": "completed",
+                            "conclusion": "success",
+                            "run_id": 42,
+                            "workflow_name": "CI",
+                            "head_sha": "abc12345",
+                            "runner_name": "",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "steps": [],
+                        },
+                    ]
+                },
+            )
+        )
+
+        # With --by-id, small number 42 should be used directly as run_id
+        result = runner.invoke(
+            main, ["runs", "get", "42", "--repo", "owner/repo", "--by-id"]
+        )
+
+        assert result.exit_code == 0
+        assert "build" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_verbose_degrades_gracefully(runner: CliRunner):
+    """Test runs status --verbose continues when job fetch fails for some workflows."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock runs list with one failed workflow
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Mock jobs endpoint to return 500 error (simulating fetch failure)
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+        ).mock(return_value=httpx.Response(500, json={"message": "Server error"}))
+
+        # Status should still work even though jobs fetch failed
+        result = runner.invoke(
+            main, ["runs", "status", "--repo", "owner/repo", "--verbose"]
+        )
+
+        # Should not fail with exit code != 0 (degrades gracefully)
+        # The run shows up but without job details
+        assert result.exit_code == 1  # failure exit code from run conclusion
+        assert "ci.yml" in result.output or "CI" in result.output
