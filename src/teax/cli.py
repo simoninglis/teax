@@ -65,6 +65,7 @@ def csv_safe(value: str) -> str:
         return "'" + value
     return value
 
+
 console = Console()
 err_console = Console(stderr=True)
 
@@ -188,12 +189,14 @@ class OutputFormat:
             writer = csv.writer(output)
             writer.writerow(["number", "title", "state", "repository"])
             for d in deps:
-                writer.writerow([
-                    d.number,
-                    csv_safe(d.title),
-                    csv_safe(d.state),
-                    csv_safe(d.repository.full_name),
-                ])
+                writer.writerow(
+                    [
+                        d.number,
+                        csv_safe(d.title),
+                        csv_safe(d.state),
+                        csv_safe(d.repository.full_name),
+                    ]
+                )
             click.echo(output.getvalue().rstrip())
         else:  # table (default)
             if not deps:
@@ -226,11 +229,13 @@ class OutputFormat:
             writer = csv.writer(output)
             writer.writerow(["name", "color", "description"])
             for label in labels:
-                writer.writerow([
-                    csv_safe(label.name),
-                    csv_safe(label.color),
-                    csv_safe(label.description),
-                ])
+                writer.writerow(
+                    [
+                        csv_safe(label.name),
+                        csv_safe(label.color),
+                        csv_safe(label.description),
+                    ]
+                )
             click.echo(output.getvalue().rstrip())
         else:  # table
             if not labels:
@@ -284,22 +289,18 @@ class OutputFormat:
                     }
                     for issue in issues
                 ],
-                "errors": {
-                    str(num): terminal_safe(msg) for num, msg in errors.items()
-                },
+                "errors": {str(num): terminal_safe(msg) for num, msg in errors.items()},
             }
             click.echo(json.dumps(output_data, indent=2))
 
         elif self.format_type == "csv":
             output = io.StringIO()
             writer = csv.writer(output)
-            writer.writerow([
-                "number", "title", "state", "labels", "assignees", "milestone", "body"
-            ])
+            writer.writerow(
+                ["number", "title", "state", "labels", "assignees", "milestone", "body"]
+            )
             for issue in issues:
-                labels_str = ",".join(
-                    csv_safe(lb.name) for lb in (issue.labels or [])
-                )
+                labels_str = ",".join(csv_safe(lb.name) for lb in (issue.labels or []))
                 assignees_str = ",".join(
                     csv_safe(a.login) for a in (issue.assignees or [])
                 )
@@ -309,15 +310,17 @@ class OutputFormat:
                 # Truncate body for CSV
                 body = issue.body or ""
                 body_preview = body[:200] + "..." if len(body) > 200 else body
-                writer.writerow([
-                    issue.number,
-                    csv_safe(issue.title),
-                    csv_safe(issue.state),
-                    labels_str,
-                    assignees_str,
-                    milestone_str,
-                    csv_safe(body_preview),
-                ])
+                writer.writerow(
+                    [
+                        issue.number,
+                        csv_safe(issue.title),
+                        csv_safe(issue.state),
+                        labels_str,
+                        assignees_str,
+                        milestone_str,
+                        csv_safe(body_preview),
+                    ]
+                )
             # Add error rows if any
             for num, msg in errors.items():
                 writer.writerow([num, f"ERROR: {csv_safe(msg)}", "", "", "", "", ""])
@@ -370,9 +373,7 @@ class OutputFormat:
             # Add error rows
             for num, msg in errors.items():
                 table.add_row(
-                    str(num),
-                    f"[red]ERROR: {safe_rich(msg)}[/red]",
-                    "", "", "", "", ""
+                    str(num), f"[red]ERROR: {safe_rich(msg)}[/red]", "", "", "", "", ""
                 )
 
             console.print(table)
@@ -403,14 +404,16 @@ class OutputFormat:
             writer.writerow(["id", "name", "status", "busy", "labels", "version"])
             for r in runners:
                 labels_str = ",".join(csv_safe(lb) for lb in r.labels)
-                writer.writerow([
-                    r.id,
-                    csv_safe(r.name),
-                    csv_safe(r.status),
-                    r.busy,
-                    labels_str,
-                    csv_safe(r.version),
-                ])
+                writer.writerow(
+                    [
+                        r.id,
+                        csv_safe(r.name),
+                        csv_safe(r.status),
+                        r.busy,
+                        labels_str,
+                        csv_safe(r.version),
+                    ]
+                )
             click.echo(output.getvalue().rstrip())
 
         else:  # table (default)
@@ -468,13 +471,15 @@ class OutputFormat:
             writer = csv.writer(output)
             writer.writerow(["name", "type", "version", "owner", "created_at"])
             for p in packages:
-                writer.writerow([
-                    csv_safe(p.name),
-                    csv_safe(p.type),
-                    csv_safe(p.version),
-                    csv_safe(p.owner.login),
-                    csv_safe(p.created_at),
-                ])
+                writer.writerow(
+                    [
+                        csv_safe(p.name),
+                        csv_safe(p.type),
+                        csv_safe(p.version),
+                        csv_safe(p.owner.login),
+                        csv_safe(p.created_at),
+                    ]
+                )
             click.echo(output.getvalue().rstrip())
 
         else:  # table (default)
@@ -528,11 +533,13 @@ class OutputFormat:
             writer = csv.writer(output)
             writer.writerow(["version", "created_at", "html_url"])
             for v in versions:
-                writer.writerow([
-                    csv_safe(v.version),
-                    csv_safe(v.created_at),
-                    csv_safe(v.html_url),
-                ])
+                writer.writerow(
+                    [
+                        csv_safe(v.version),
+                        csv_safe(v.created_at),
+                        csv_safe(v.html_url),
+                    ]
+                )
             click.echo(output.getvalue().rstrip())
 
         else:  # table (default)
@@ -735,12 +742,14 @@ class OutputFormat:
             writer = csv.writer(output)
             writer.writerow(["id", "name", "path", "state"])
             for w in workflows:
-                writer.writerow([
-                    csv_safe(w.id),
-                    csv_safe(w.name),
-                    csv_safe(w.path),
-                    csv_safe(w.state),
-                ])
+                writer.writerow(
+                    [
+                        csv_safe(w.id),
+                        csv_safe(w.name),
+                        csv_safe(w.path),
+                        csv_safe(w.state),
+                    ]
+                )
             click.echo(output.getvalue().rstrip())
 
         else:  # table (default)
@@ -797,21 +806,31 @@ class OutputFormat:
         elif self.format_type == "csv":
             output = io.StringIO()
             writer = csv.writer(output)
-            writer.writerow([
-                "id", "run_number", "status", "conclusion",
-                "head_sha", "head_branch", "event", "path"
-            ])
+            writer.writerow(
+                [
+                    "id",
+                    "run_number",
+                    "status",
+                    "conclusion",
+                    "head_sha",
+                    "head_branch",
+                    "event",
+                    "path",
+                ]
+            )
             for r in runs:
-                writer.writerow([
-                    r.id,
-                    r.run_number,
-                    csv_safe(r.status),
-                    csv_safe(r.conclusion or ""),
-                    csv_safe(r.head_sha[:8] if r.head_sha else ""),
-                    csv_safe(r.head_branch),
-                    csv_safe(r.event),
-                    csv_safe(r.path),
-                ])
+                writer.writerow(
+                    [
+                        r.id,
+                        r.run_number,
+                        csv_safe(r.status),
+                        csv_safe(r.conclusion or ""),
+                        csv_safe(r.head_sha[:8] if r.head_sha else ""),
+                        csv_safe(r.head_branch),
+                        csv_safe(r.event),
+                        csv_safe(r.path),
+                    ]
+                )
             click.echo(output.getvalue().rstrip())
 
         else:  # table (default)
@@ -887,17 +906,19 @@ class OutputFormat:
         elif self.format_type == "csv":
             output = io.StringIO()
             writer = csv.writer(output)
-            writer.writerow([
-                "workflow", "status", "conclusion", "run_number", "head_sha"
-            ])
+            writer.writerow(
+                ["workflow", "status", "conclusion", "run_number", "head_sha"]
+            )
             for wf, r in workflow_runs.items():
-                writer.writerow([
-                    csv_safe(wf),
-                    csv_safe(r.status),
-                    csv_safe(r.conclusion or ""),
-                    r.run_number,
-                    csv_safe(r.head_sha[:8] if r.head_sha else ""),
-                ])
+                writer.writerow(
+                    [
+                        csv_safe(wf),
+                        csv_safe(r.status),
+                        csv_safe(r.conclusion or ""),
+                        r.run_number,
+                        csv_safe(r.head_sha[:8] if r.head_sha else ""),
+                    ]
+                )
             click.echo(output.getvalue().rstrip())
 
         else:  # table (default)
@@ -973,20 +994,28 @@ class OutputFormat:
         elif self.format_type == "csv":
             output = io.StringIO()
             writer = csv.writer(output)
-            writer.writerow([
-                "job_id", "job_name", "job_conclusion",
-                "step_number", "step_name", "step_conclusion"
-            ])
+            writer.writerow(
+                [
+                    "job_id",
+                    "job_name",
+                    "job_conclusion",
+                    "step_number",
+                    "step_name",
+                    "step_conclusion",
+                ]
+            )
             for j in jobs:
                 for s in j.steps:
-                    writer.writerow([
-                        j.id,
-                        csv_safe(j.name),
-                        csv_safe(j.conclusion or ""),
-                        s.number,
-                        csv_safe(s.name),
-                        csv_safe(s.conclusion or ""),
-                    ])
+                    writer.writerow(
+                        [
+                            j.id,
+                            csv_safe(j.name),
+                            csv_safe(j.conclusion or ""),
+                            s.number,
+                            csv_safe(s.name),
+                            csv_safe(s.conclusion or ""),
+                        ]
+                    )
             click.echo(output.getvalue().rstrip())
 
         else:  # table (default)
@@ -1196,9 +1225,7 @@ def issue() -> None:
 @click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
 @click.option("--comments", "-c", is_flag=True, help="Show comments")
 @click.pass_context
-def issue_view(
-    ctx: click.Context, issue_num: int, repo: str, comments: bool
-) -> None:
+def issue_view(ctx: click.Context, issue_num: int, repo: str, comments: bool) -> None:
     """View issue details and optionally comments.
 
     Example:
@@ -1529,9 +1556,7 @@ def issue_bulk(
             if needs_milestone:
                 assert milestone is not None  # Type guard: checked in needs_milestone
                 try:
-                    milestone_id = client.resolve_milestone(
-                        owner, repo_name, milestone
-                    )
+                    milestone_id = client.resolve_milestone(owner, repo_name, milestone)
                 except (ValueError, httpx.HTTPStatusError) as e:
                     if isinstance(e, httpx.HTTPStatusError):
                         if e.response.status_code == 404:
@@ -2364,11 +2389,7 @@ def pkg_prune(
 
     output: OutputFormat = ctx.obj["output"]
     # Use stderr for status messages in machine-readable formats
-    log = (
-        err_console
-        if output.format_type in ("json", "csv", "simple")
-        else console
-    )
+    log = err_console if output.format_type in ("json", "csv", "simple") else console
 
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
@@ -2398,9 +2419,7 @@ def pkg_prune(
 
                 for v in to_delete:
                     try:
-                        client.delete_package_version(
-                            owner, pkg_type, name, v.version
-                        )
+                        client.delete_package_version(owner, pkg_type, name, v.version)
                         ver = safe_rich(v.version)
                         log.print(f"  [green]✓[/green] Deleted {ver}")
                         success_count += 1
@@ -2418,9 +2437,7 @@ def pkg_prune(
                     sys.exit(1)
             else:
                 log.print()
-                log.print(
-                    "[dim]Use --execute to actually delete these versions[/dim]"
-                )
+                log.print("[dim]Use --execute to actually delete these versions[/dim]")
 
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
@@ -2487,9 +2504,7 @@ def validate_secrets_scope(
         # Validate and sanitize org name
         org_name = org.strip()
         if not org_name or "/" in org_name:
-            raise click.BadParameter(
-                f"Invalid organisation name: {terminal_safe(org)}"
-            )
+            raise click.BadParameter(f"Invalid organisation name: {terminal_safe(org)}")
 
     return owner, repo_name, org_name, user_scope
 
@@ -2890,9 +2905,7 @@ def validate_workflow_id(workflow_id: str) -> str:
     """
     workflow_id = workflow_id.strip()
     if not workflow_id:
-        raise click.BadParameter(
-            "Workflow ID cannot be empty or whitespace-only"
-        )
+        raise click.BadParameter("Workflow ID cannot be empty or whitespace-only")
     return workflow_id
 
 
@@ -3142,7 +3155,8 @@ def runs_list(
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
             runs_list = client.list_runs(
-                owner, repo_name,
+                owner,
+                repo_name,
                 workflow=workflow,
                 branch=branch,
                 status=status,
@@ -3267,7 +3281,7 @@ def filter_logs(
     elif tail is not None and tail > 0:
         lines = lines[-tail:]
 
-    return '\n'.join(lines)
+    return "\n".join(lines)
 
 
 @runs.command("logs")
@@ -3279,8 +3293,7 @@ def filter_logs(
 @click.option("--context", "-C", type=int, default=0, help="Context lines around grep")
 @click.option("--strip-ansi", is_flag=True, help="Strip all escape sequences")
 @click.option(
-    "--raw", is_flag=True,
-    help="Output exact server bytes (no filtering/sanitization)"
+    "--raw", is_flag=True, help="Output exact server bytes (no filtering/sanitization)"
 )
 @click.pass_context
 def runs_logs(
@@ -3307,13 +3320,7 @@ def runs_logs(
         teax runs logs 123 -r owner/repo --raw
     """
     # Validate mutually exclusive options
-    if raw and (
-        strip_ansi
-        or tail is not None
-        or head is not None
-        or grep
-        or context
-    ):
+    if raw and (strip_ansi or tail is not None or head is not None or grep or context):
         err_console.print(
             "[red]Error:[/red] --raw cannot be used with filtering options"
         )
@@ -3383,7 +3390,7 @@ def runs_rerun(ctx: click.Context, run_id: int, repo: str) -> None:
             )
             output.print_mutation(
                 "dispatched",
-                f"{terminal_safe(workflow_name)} on {terminal_safe(run.head_branch)}"
+                f"{terminal_safe(workflow_name)} on {terminal_safe(run.head_branch)}",
             )
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")

@@ -233,9 +233,13 @@ def test_issue_bulk_shows_preview(runner: CliRunner):
     result = runner.invoke(
         main,
         [
-            "issue", "bulk", "17-19",
-            "--repo", "owner/repo",
-            "--add-labels", "bug,feature",
+            "issue",
+            "bulk",
+            "17-19",
+            "--repo",
+            "owner/repo",
+            "--add-labels",
+            "bug,feature",
         ],
         input="n\n",  # Respond 'no' to confirmation
     )
@@ -264,13 +268,21 @@ def test_issue_bulk_preview_shows_all_changes(runner: CliRunner):
     result = runner.invoke(
         main,
         [
-            "issue", "bulk", "17",
-            "--repo", "owner/repo",
-            "--set-labels", "bug",
-            "--add-labels", "urgent",
-            "--rm-labels", "stale",
-            "--assignees", "user1,user2",
-            "--milestone", "5",
+            "issue",
+            "bulk",
+            "17",
+            "--repo",
+            "owner/repo",
+            "--set-labels",
+            "bug",
+            "--add-labels",
+            "urgent",
+            "--rm-labels",
+            "stale",
+            "--assignees",
+            "user1,user2",
+            "--milestone",
+            "5",
         ],
         input="n\n",
     )
@@ -772,7 +784,9 @@ def test_deps_list_command(runner: CliRunner):
 
     with respx.mock:
         # Mock dependencies endpoint
-        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies").mock(
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies"
+        ).mock(
             return_value=httpx.Response(
                 200,
                 json=[
@@ -792,9 +806,9 @@ def test_deps_list_command(runner: CliRunner):
             )
         )
         # Mock blocks endpoint
-        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/25/blocks").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/25/blocks"
+        ).mock(return_value=httpx.Response(200, json=[]))
 
         result = runner.invoke(main, ["deps", "list", "25", "--repo", "owner/repo"])
 
@@ -808,10 +822,12 @@ def test_deps_list_with_blocks(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies").mock(
-            return_value=httpx.Response(200, json=[])
-        )
-        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/25/blocks").mock(
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies"
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/25/blocks"
+        ).mock(
             return_value=httpx.Response(
                 200,
                 json=[
@@ -843,9 +859,9 @@ def test_deps_list_error_handling(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/999/dependencies").mock(
-            return_value=httpx.Response(404, json={"message": "Not found"})
-        )
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/999/dependencies"
+        ).mock(return_value=httpx.Response(404, json={"message": "Not found"}))
 
         result = runner.invoke(main, ["deps", "list", "999", "--repo", "owner/repo"])
 
@@ -863,9 +879,9 @@ def test_deps_add_depends_on(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies").mock(
-            return_value=httpx.Response(201)
-        )
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies"
+        ).mock(return_value=httpx.Response(201))
 
         result = runner.invoke(
             main, ["deps", "add", "25", "--repo", "owner/repo", "--on", "17"]
@@ -882,9 +898,9 @@ def test_deps_add_blocks(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/30/dependencies").mock(
-            return_value=httpx.Response(201)
-        )
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/30/dependencies"
+        ).mock(return_value=httpx.Response(201))
 
         result = runner.invoke(
             main, ["deps", "add", "25", "--repo", "owner/repo", "--blocks", "30"]
@@ -901,9 +917,9 @@ def test_deps_add_error_handling(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies").mock(
-            return_value=httpx.Response(404, json={"message": "Not found"})
-        )
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies"
+        ).mock(return_value=httpx.Response(404, json={"message": "Not found"}))
 
         result = runner.invoke(
             main, ["deps", "add", "25", "--repo", "owner/repo", "--on", "999"]
@@ -922,9 +938,9 @@ def test_deps_rm_depends_on(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.delete("https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies").mock(
-            return_value=httpx.Response(200)
-        )
+        respx.delete(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies"
+        ).mock(return_value=httpx.Response(200))
 
         result = runner.invoke(
             main, ["deps", "rm", "25", "--repo", "owner/repo", "--on", "17"]
@@ -941,9 +957,9 @@ def test_deps_rm_blocks(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.delete("https://test.example.com/api/v1/repos/owner/repo/issues/30/dependencies").mock(
-            return_value=httpx.Response(200)
-        )
+        respx.delete(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/30/dependencies"
+        ).mock(return_value=httpx.Response(200))
 
         result = runner.invoke(
             main, ["deps", "rm", "25", "--repo", "owner/repo", "--blocks", "30"]
@@ -960,9 +976,9 @@ def test_deps_rm_error_handling(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.delete("https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies").mock(
-            return_value=httpx.Response(404, json={"message": "Not found"})
-        )
+        respx.delete(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/25/dependencies"
+        ).mock(return_value=httpx.Response(404, json={"message": "Not found"}))
 
         result = runner.invoke(
             main, ["deps", "rm", "25", "--repo", "owner/repo", "--on", "17"]
@@ -994,7 +1010,9 @@ def test_issue_edit_add_labels(runner: CliRunner):
             ]
         )
         # Mock add labels
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/25/labels").mock(
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/25/labels"
+        ).mock(
             return_value=httpx.Response(
                 200,
                 json=[{"id": 1, "name": "bug", "color": "ff0000"}],
@@ -1030,9 +1048,9 @@ def test_issue_edit_rm_labels(runner: CliRunner):
             ]
         )
         # Mock remove label
-        respx.delete("https://test.example.com/api/v1/repos/owner/repo/issues/25/labels/1").mock(
-            return_value=httpx.Response(204)
-        )
+        respx.delete(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/25/labels/1"
+        ).mock(return_value=httpx.Response(204))
 
         result = runner.invoke(
             main, ["issue", "edit", "25", "--repo", "owner/repo", "--rm-labels", "bug"]
@@ -1063,7 +1081,9 @@ def test_issue_edit_set_labels(runner: CliRunner):
             ]
         )
         # Mock set labels
-        respx.put("https://test.example.com/api/v1/repos/owner/repo/issues/25/labels").mock(
+        respx.put(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/25/labels"
+        ).mock(
             return_value=httpx.Response(
                 200,
                 json=[
@@ -1108,10 +1128,15 @@ def test_issue_edit_with_title_and_assignees(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "issue", "edit", "25",
-                "--repo", "owner/repo",
-                "--title", "New Title",
-                "--assignees", "user1,user2",
+                "issue",
+                "edit",
+                "25",
+                "--repo",
+                "owner/repo",
+                "--title",
+                "New Title",
+                "--assignees",
+                "user1,user2",
             ],
         )
 
@@ -1784,9 +1809,7 @@ def test_issue_batch_empty_result(runner: CliRunner):
             return_value=httpx.Response(404, json={"message": "Not found"})
         )
 
-        result = runner.invoke(
-            main, ["issue", "batch", "999", "--repo", "owner/repo"]
-        )
+        result = runner.invoke(main, ["issue", "batch", "999", "--repo", "owner/repo"])
 
         assert result.exit_code == 1
         assert "999" in result.output
@@ -1873,7 +1896,9 @@ def test_issue_labels_command(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/25/labels").mock(
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/25/labels"
+        ).mock(
             return_value=httpx.Response(
                 200,
                 json=[{"id": 1, "name": "bug", "color": "ff0000"}],
@@ -1892,9 +1917,9 @@ def test_issue_labels_error_handling(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/999/labels").mock(
-            return_value=httpx.Response(404, json={"message": "Not found"})
-        )
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/999/labels"
+        ).mock(return_value=httpx.Response(404, json={"message": "Not found"}))
 
         result = runner.invoke(main, ["issue", "labels", "999", "--repo", "owner/repo"])
 
@@ -1922,12 +1947,12 @@ def test_issue_bulk_execute_with_yes_flag(runner: CliRunner):
             ]
         )
         # Mock add labels for each issue
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/17/labels").mock(
-            return_value=httpx.Response(200, json=[])
-        )
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/18/labels").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/17/labels"
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/18/labels"
+        ).mock(return_value=httpx.Response(200, json=[]))
 
         result = runner.invoke(
             main,
@@ -2013,9 +2038,9 @@ def test_issue_bulk_milestone_not_found(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones/999").mock(
-            return_value=httpx.Response(404, json={"message": "Not found"})
-        )
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/milestones/999"
+        ).mock(return_value=httpx.Response(404, json={"message": "Not found"}))
 
         result = runner.invoke(
             main,
@@ -2079,9 +2104,9 @@ def test_issue_bulk_rm_labels(runner: CliRunner):
             ]
         )
         # Mock remove label
-        respx.delete("https://test.example.com/api/v1/repos/owner/repo/issues/17/labels/1").mock(
-            return_value=httpx.Response(204)
-        )
+        respx.delete(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/17/labels/1"
+        ).mock(return_value=httpx.Response(204))
 
         result = runner.invoke(
             main,
@@ -2109,9 +2134,9 @@ def test_issue_bulk_set_labels(runner: CliRunner):
             ]
         )
         # Mock set labels
-        respx.put("https://test.example.com/api/v1/repos/owner/repo/issues/17/labels").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.put(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/17/labels"
+        ).mock(return_value=httpx.Response(200, json=[]))
 
         result = runner.invoke(
             main,
@@ -2196,9 +2221,7 @@ def test_epic_create_basic(runner: CliRunner):
             )
         )
 
-        result = runner.invoke(
-            main, ["epic", "create", "test", "--repo", "owner/repo"]
-        )
+        result = runner.invoke(main, ["epic", "create", "test", "--repo", "owner/repo"])
 
         assert result.exit_code == 0
         assert "Epic created successfully" in result.output
@@ -2253,12 +2276,12 @@ def test_epic_create_with_children(runner: CliRunner):
             )
         )
         # Mock add labels to children
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/17/labels").mock(
-            return_value=httpx.Response(200, json=[])
-        )
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/18/labels").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/17/labels"
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/18/labels"
+        ).mock(return_value=httpx.Response(200, json=[]))
 
         result = runner.invoke(
             main,
@@ -2316,19 +2339,28 @@ def test_epic_create_deduplicates_children(runner: CliRunner, monkeypatch):
                 },
             )
         )
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/17/labels").mock(
-            return_value=httpx.Response(200, json=[])
-        )
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/18/labels").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/17/labels"
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/18/labels"
+        ).mock(return_value=httpx.Response(200, json=[]))
 
         # Pass duplicate children: 17, 18, 17 (will be deduplicated to 17, 18)
         result = runner.invoke(
             main,
             [
-                "epic", "create", "test", "-r", "owner/repo",
-                "-c", "17", "-c", "18", "-c", "17",
+                "epic",
+                "create",
+                "test",
+                "-r",
+                "owner/repo",
+                "-c",
+                "17",
+                "-c",
+                "18",
+                "-c",
+                "17",
             ],
         )
 
@@ -2375,9 +2407,7 @@ def test_epic_create_label_exists(runner: CliRunner):
             )
         )
 
-        result = runner.invoke(
-            main, ["epic", "create", "test", "--repo", "owner/repo"]
-        )
+        result = runner.invoke(main, ["epic", "create", "test", "--repo", "owner/repo"])
 
         assert result.exit_code == 0
         # Should not create a new label
@@ -2420,9 +2450,9 @@ def test_epic_create_child_label_error(runner: CliRunner):
             )
         )
         # Child labeling fails
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/999/labels").mock(
-            return_value=httpx.Response(404, json={"message": "Not found"})
-        )
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/999/labels"
+        ).mock(return_value=httpx.Response(404, json={"message": "Not found"}))
 
         result = runner.invoke(
             main,
@@ -2444,9 +2474,7 @@ def test_epic_create_error_handling(runner: CliRunner):
             return_value=httpx.Response(401, json={"message": "Unauthorized"})
         )
 
-        result = runner.invoke(
-            main, ["epic", "create", "test", "--repo", "owner/repo"]
-        )
+        result = runner.invoke(main, ["epic", "create", "test", "--repo", "owner/repo"])
 
         assert result.exit_code == 1
         assert "Error" in result.output
@@ -2545,9 +2573,7 @@ def test_epic_status_basic(runner: CliRunner):
             )
         )
 
-        result = runner.invoke(
-            main, ["epic", "status", "50", "--repo", "owner/repo"]
-        )
+        result = runner.invoke(main, ["epic", "status", "50", "--repo", "owner/repo"])
 
         assert result.exit_code == 0
         assert "Epic #50" in result.output
@@ -2580,9 +2606,7 @@ def test_epic_status_no_children(runner: CliRunner):
             )
         )
 
-        result = runner.invoke(
-            main, ["epic", "status", "50", "--repo", "owner/repo"]
-        )
+        result = runner.invoke(main, ["epic", "status", "50", "--repo", "owner/repo"])
 
         assert result.exit_code == 0
         assert "No child issues found" in result.output
@@ -2628,9 +2652,7 @@ def test_epic_status_child_fetch_error(runner: CliRunner):
             return_value=httpx.Response(404, json={"message": "Not found"})
         )
 
-        result = runner.invoke(
-            main, ["epic", "status", "50", "--repo", "owner/repo"]
-        )
+        result = runner.invoke(main, ["epic", "status", "50", "--repo", "owner/repo"])
 
         assert result.exit_code == 0
         assert "unable to fetch" in result.output
@@ -2647,9 +2669,7 @@ def test_epic_status_error_handling(runner: CliRunner):
             return_value=httpx.Response(404, json={"message": "Not found"})
         )
 
-        result = runner.invoke(
-            main, ["epic", "status", "999", "--repo", "owner/repo"]
-        )
+        result = runner.invoke(main, ["epic", "status", "999", "--repo", "owner/repo"])
 
         assert result.exit_code == 1
         assert "Error" in result.output
@@ -2675,9 +2695,7 @@ def test_epic_add_basic(runner: CliRunner):
                     "title": "Epic: test",
                     "body": "## Child Issues\n\n- [ ] #17\n",
                     "state": "open",
-                    "labels": [
-                        {"id": 10, "name": "epic/test", "color": "9b59b6"}
-                    ],
+                    "labels": [{"id": 10, "name": "epic/test", "color": "9b59b6"}],
                     "assignees": [],
                     "milestone": None,
                 },
@@ -2709,9 +2727,9 @@ def test_epic_add_basic(runner: CliRunner):
                 httpx.Response(200, json=[]),
             ]
         )
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/18/labels").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/18/labels"
+        ).mock(return_value=httpx.Response(200, json=[]))
 
         result = runner.invoke(
             main, ["epic", "add", "50", "18", "--repo", "owner/repo"]
@@ -2738,9 +2756,7 @@ def test_epic_add_multiple_children(runner: CliRunner):
                     "title": "Epic: test",
                     "body": "## Child Issues\n\n_No child issues yet._\n",
                     "state": "open",
-                    "labels": [
-                        {"id": 10, "name": "epic/test", "color": "9b59b6"}
-                    ],
+                    "labels": [{"id": 10, "name": "epic/test", "color": "9b59b6"}],
                     "assignees": [],
                     "milestone": None,
                 },
@@ -2769,12 +2785,12 @@ def test_epic_add_multiple_children(runner: CliRunner):
                 httpx.Response(200, json=[]),
             ]
         )
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/17/labels").mock(
-            return_value=httpx.Response(200, json=[])
-        )
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/18/labels").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/17/labels"
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/18/labels"
+        ).mock(return_value=httpx.Response(200, json=[]))
 
         result = runner.invoke(
             main, ["epic", "add", "50", "17", "18", "--repo", "owner/repo"]
@@ -2836,12 +2852,12 @@ def test_epic_add_deduplicates_children(runner: CliRunner, monkeypatch):
                 ),
             ]
         )
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/17/labels").mock(
-            return_value=httpx.Response(200, json=[])
-        )
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/18/labels").mock(
-            return_value=httpx.Response(200, json=[])
-        )
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/17/labels"
+        ).mock(return_value=httpx.Response(200, json=[]))
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/18/labels"
+        ).mock(return_value=httpx.Response(200, json=[]))
 
         # Pass duplicate children: 17, 18, 17
         result = runner.invoke(
@@ -2926,9 +2942,7 @@ def test_epic_add_child_label_error(runner: CliRunner):
                     "title": "Epic: test",
                     "body": "## Child Issues\n\n",
                     "state": "open",
-                    "labels": [
-                        {"id": 10, "name": "epic/test", "color": "9b59b6"}
-                    ],
+                    "labels": [{"id": 10, "name": "epic/test", "color": "9b59b6"}],
                     "assignees": [],
                     "milestone": None,
                 },
@@ -2957,9 +2971,9 @@ def test_epic_add_child_label_error(runner: CliRunner):
                 httpx.Response(200, json=[]),
             ]
         )
-        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues/999/labels").mock(
-            return_value=httpx.Response(404, json={"message": "Not found"})
-        )
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/999/labels"
+        ).mock(return_value=httpx.Response(404, json={"message": "Not found"}))
 
         result = runner.invoke(
             main, ["epic", "add", "50", "999", "--repo", "owner/repo"]
@@ -3068,9 +3082,7 @@ def test_runners_list_org_scope(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/orgs/myorg/actions/runners"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/orgs/myorg/actions/runners").mock(
             return_value=httpx.Response(
                 200,
                 json=[
@@ -3215,9 +3227,7 @@ def test_runners_get_basic(runner: CliRunner):
             )
         )
 
-        result = runner.invoke(
-            main, ["runners", "get", "42", "--repo", "owner/repo"]
-        )
+        result = runner.invoke(main, ["runners", "get", "42", "--repo", "owner/repo"])
 
         assert result.exit_code == 0
         assert "my-runner" in result.output
@@ -3234,9 +3244,7 @@ def test_runners_get_error(runner: CliRunner):
             "https://test.example.com/api/v1/repos/owner/repo/actions/runners/999"
         ).mock(return_value=httpx.Response(404, json={"message": "Not found"}))
 
-        result = runner.invoke(
-            main, ["runners", "get", "999", "--repo", "owner/repo"]
-        )
+        result = runner.invoke(main, ["runners", "get", "999", "--repo", "owner/repo"])
 
         assert result.exit_code == 1
         assert "Error" in result.output
@@ -3318,15 +3326,9 @@ def test_runners_token_table_shows_warning(runner: CliRunner):
     with respx.mock:
         respx.get(
             "https://test.example.com/api/v1/repos/owner/repo/actions/runners/registration-token"
-        ).mock(
-            return_value=httpx.Response(
-                200, json={"token": "AAABBBCCCDDD123456"}
-            )
-        )
+        ).mock(return_value=httpx.Response(200, json={"token": "AAABBBCCCDDD123456"}))
 
-        result = runner.invoke(
-            main, ["runners", "token", "--repo", "owner/repo"]
-        )
+        result = runner.invoke(main, ["runners", "token", "--repo", "owner/repo"])
 
         assert result.exit_code == 0
         assert "Warning" in result.output
@@ -3343,11 +3345,7 @@ def test_runners_token_simple_no_warning(runner: CliRunner):
     with respx.mock:
         respx.get(
             "https://test.example.com/api/v1/repos/owner/repo/actions/runners/registration-token"
-        ).mock(
-            return_value=httpx.Response(
-                200, json={"token": "AAABBBCCCDDD123456"}
-            )
-        )
+        ).mock(return_value=httpx.Response(200, json={"token": "AAABBBCCCDDD123456"}))
 
         result = runner.invoke(
             main, ["-o", "simple", "runners", "token", "--repo", "owner/repo"]
@@ -3369,11 +3367,7 @@ def test_runners_token_json_output(runner: CliRunner):
     with respx.mock:
         respx.get(
             "https://test.example.com/api/v1/repos/owner/repo/actions/runners/registration-token"
-        ).mock(
-            return_value=httpx.Response(
-                200, json={"token": "JSON_TOKEN_123"}
-            )
-        )
+        ).mock(return_value=httpx.Response(200, json={"token": "JSON_TOKEN_123"}))
 
         result = runner.invoke(
             main, ["-o", "json", "runners", "token", "--repo", "owner/repo"]
@@ -3395,9 +3389,7 @@ def test_runners_token_error(runner: CliRunner):
             "https://test.example.com/api/v1/repos/owner/repo/actions/runners/registration-token"
         ).mock(return_value=httpx.Response(403, json={"message": "Forbidden"}))
 
-        result = runner.invoke(
-            main, ["runners", "token", "--repo", "owner/repo"]
-        )
+        result = runner.invoke(main, ["runners", "token", "--repo", "owner/repo"])
 
         assert result.exit_code == 1
         assert "Error" in result.output
@@ -3427,8 +3419,12 @@ def test_output_format_print_runners_empty(capsys):
 def test_output_format_print_runners_csv(capsys):
     """Test OutputFormat.print_runners CSV format."""
     runner = SimpleNamespace(
-        id=1, name="runner-1", status="online", busy=False,
-        labels=["ubuntu-latest", "self-hosted"], version="v0.2.6"
+        id=1,
+        name="runner-1",
+        status="online",
+        busy=False,
+        labels=["ubuntu-latest", "self-hosted"],
+        version="v0.2.6",
     )
     output = OutputFormat("csv")
     output.print_runners([runner])
@@ -3583,9 +3579,7 @@ def test_pkg_info(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/packages/myorg/generic/mypackage"
-        ).mock(
+        respx.get("https://test.example.com/api/packages/myorg/generic/mypackage").mock(
             side_effect=[
                 httpx.Response(
                     200,
@@ -3655,10 +3649,15 @@ def test_pkg_delete(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "pkg", "delete", "mypackage",
-                "--owner", "myorg",
-                "--type", "generic",
-                "--version", "1.0.0",
+                "pkg",
+                "delete",
+                "mypackage",
+                "--owner",
+                "myorg",
+                "--type",
+                "generic",
+                "--version",
+                "1.0.0",
                 "--yes",
             ],
         )
@@ -3677,10 +3676,15 @@ def test_pkg_delete_pypi_blocked(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "pkg", "delete", "mypackage",
-                "--owner", "myorg",
-                "--type", "pypi",
-                "--version", "0.1.0",
+                "pkg",
+                "delete",
+                "mypackage",
+                "--owner",
+                "myorg",
+                "--type",
+                "pypi",
+                "--version",
+                "0.1.0",
                 "--yes",
             ],
         )
@@ -3696,10 +3700,15 @@ def test_pkg_delete_requires_confirmation(runner: CliRunner):
     result = runner.invoke(
         main,
         [
-            "pkg", "delete", "mypackage",
-            "--owner", "myorg",
-            "--type", "generic",
-            "--version", "1.0.0",
+            "pkg",
+            "delete",
+            "mypackage",
+            "--owner",
+            "myorg",
+            "--type",
+            "generic",
+            "--version",
+            "1.0.0",
         ],
         input="n\n",  # Say no to confirmation
     )
@@ -3723,10 +3732,15 @@ def test_pkg_delete_rich_injection_escaped(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "pkg", "delete", "[red]X[/red]",  # Malicious Rich markup
-                "--owner", "myorg",
-                "--type", "generic",
-                "--version", "1.0.0",
+                "pkg",
+                "delete",
+                "[red]X[/red]",  # Malicious Rich markup
+                "--owner",
+                "myorg",
+                "--type",
+                "generic",
+                "--version",
+                "1.0.0",
                 "-y",  # Skip confirmation
             ],
         )
@@ -3747,28 +3761,34 @@ def test_pkg_prune_dry_run(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/packages/myorg/container/myimage"
-        ).mock(
+        respx.get("https://test.example.com/api/packages/myorg/container/myimage").mock(
             side_effect=[
                 httpx.Response(
                     200,
                     json=[
                         {
-                            "id": 1, "version": "v1.0.0",
-                            "created_at": "2024-01-01T00:00:00Z", "html_url": "",
+                            "id": 1,
+                            "version": "v1.0.0",
+                            "created_at": "2024-01-01T00:00:00Z",
+                            "html_url": "",
                         },
                         {
-                            "id": 2, "version": "v1.1.0",
-                            "created_at": "2024-01-15T00:00:00Z", "html_url": "",
+                            "id": 2,
+                            "version": "v1.1.0",
+                            "created_at": "2024-01-15T00:00:00Z",
+                            "html_url": "",
                         },
                         {
-                            "id": 3, "version": "v1.2.0",
-                            "created_at": "2024-02-01T00:00:00Z", "html_url": "",
+                            "id": 3,
+                            "version": "v1.2.0",
+                            "created_at": "2024-02-01T00:00:00Z",
+                            "html_url": "",
                         },
                         {
-                            "id": 4, "version": "v1.3.0",
-                            "created_at": "2024-02-15T00:00:00Z", "html_url": "",
+                            "id": 4,
+                            "version": "v1.3.0",
+                            "created_at": "2024-02-15T00:00:00Z",
+                            "html_url": "",
                         },
                     ],
                 ),
@@ -3779,10 +3799,15 @@ def test_pkg_prune_dry_run(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "pkg", "prune", "myimage",
-                "--owner", "myorg",
-                "--type", "container",
-                "--keep", "2",
+                "pkg",
+                "prune",
+                "myimage",
+                "--owner",
+                "myorg",
+                "--type",
+                "container",
+                "--keep",
+                "2",
             ],
         )
 
@@ -3802,24 +3827,28 @@ def test_pkg_prune_execute(runner: CliRunner):
 
     with respx.mock:
         # Versions returned in descending order (newest first)
-        respx.get(
-            "https://test.example.com/api/packages/myorg/container/myimage"
-        ).mock(
+        respx.get("https://test.example.com/api/packages/myorg/container/myimage").mock(
             side_effect=[
                 httpx.Response(
                     200,
                     json=[
                         {
-                            "id": 3, "version": "v1.2.0",
-                            "created_at": "2024-02-01T00:00:00Z", "html_url": "",
+                            "id": 3,
+                            "version": "v1.2.0",
+                            "created_at": "2024-02-01T00:00:00Z",
+                            "html_url": "",
                         },
                         {
-                            "id": 2, "version": "v1.1.0",
-                            "created_at": "2024-01-15T00:00:00Z", "html_url": "",
+                            "id": 2,
+                            "version": "v1.1.0",
+                            "created_at": "2024-01-15T00:00:00Z",
+                            "html_url": "",
                         },
                         {
-                            "id": 1, "version": "v1.0.0",
-                            "created_at": "2024-01-01T00:00:00Z", "html_url": "",
+                            "id": 1,
+                            "version": "v1.0.0",
+                            "created_at": "2024-01-01T00:00:00Z",
+                            "html_url": "",
                         },
                     ],
                 ),
@@ -3834,10 +3863,15 @@ def test_pkg_prune_execute(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "pkg", "prune", "myimage",
-                "--owner", "myorg",
-                "--type", "container",
-                "--keep", "2",
+                "pkg",
+                "prune",
+                "myimage",
+                "--owner",
+                "myorg",
+                "--type",
+                "container",
+                "--keep",
+                "2",
                 "--execute",
             ],
         )
@@ -3852,10 +3886,15 @@ def test_pkg_prune_pypi_blocked(runner: CliRunner):
     result = runner.invoke(
         main,
         [
-            "pkg", "prune", "mypackage",
-            "--owner", "myorg",
-            "--type", "pypi",
-            "--keep", "3",
+            "pkg",
+            "prune",
+            "mypackage",
+            "--owner",
+            "myorg",
+            "--type",
+            "pypi",
+            "--keep",
+            "3",
             "--execute",
         ],
     )
@@ -3871,16 +3910,16 @@ def test_pkg_prune_nothing_to_delete(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/packages/myorg/container/myimage"
-        ).mock(
+        respx.get("https://test.example.com/api/packages/myorg/container/myimage").mock(
             side_effect=[
                 httpx.Response(
                     200,
                     json=[
                         {
-                            "id": 1, "version": "v1.0.0",
-                            "created_at": "2024-01-01T00:00:00Z", "html_url": "",
+                            "id": 1,
+                            "version": "v1.0.0",
+                            "created_at": "2024-01-01T00:00:00Z",
+                            "html_url": "",
                         },
                     ],
                 ),
@@ -3891,10 +3930,15 @@ def test_pkg_prune_nothing_to_delete(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "pkg", "prune", "myimage",
-                "--owner", "myorg",
-                "--type", "container",
-                "--keep", "5",  # Keep more than exist
+                "pkg",
+                "prune",
+                "myimage",
+                "--owner",
+                "myorg",
+                "--type",
+                "container",
+                "--keep",
+                "5",  # Keep more than exist
             ],
         )
 
@@ -4392,9 +4436,13 @@ def test_workflow_dispatch_command(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "workflow", "dispatch", "ci.yml",
-                "--repo", "owner/repo",
-                "--ref", "main",
+                "workflow",
+                "dispatch",
+                "ci.yml",
+                "--repo",
+                "owner/repo",
+                "--ref",
+                "main",
             ],
         )
 
@@ -4423,11 +4471,17 @@ def test_workflow_dispatch_with_inputs(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "workflow", "dispatch", "deploy.yml",
-                "--repo", "owner/repo",
-                "--ref", "v1.0.0",
-                "-i", "version=1.0.0",
-                "-i", "env=production",
+                "workflow",
+                "dispatch",
+                "deploy.yml",
+                "--repo",
+                "owner/repo",
+                "--ref",
+                "v1.0.0",
+                "-i",
+                "version=1.0.0",
+                "-i",
+                "env=production",
             ],
         )
 
@@ -4446,9 +4500,13 @@ def test_workflow_dispatch_empty_ref_rejected(runner: CliRunner):
     result = runner.invoke(
         main,
         [
-            "workflow", "dispatch", "ci.yml",
-            "--repo", "owner/repo",
-            "--ref", "   ",  # Whitespace-only ref
+            "workflow",
+            "dispatch",
+            "ci.yml",
+            "--repo",
+            "owner/repo",
+            "--ref",
+            "   ",  # Whitespace-only ref
         ],
     )
 
@@ -4543,11 +4601,17 @@ def test_workflow_dispatch_json_output(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "-o", "json",
-                "workflow", "dispatch", "ci.yml",
-                "--repo", "owner/repo",
-                "--ref", "main",
-                "-i", "key=value",
+                "-o",
+                "json",
+                "workflow",
+                "dispatch",
+                "ci.yml",
+                "--repo",
+                "owner/repo",
+                "--ref",
+                "main",
+                "-i",
+                "key=value",
             ],
         )
 
@@ -4576,11 +4640,17 @@ def test_workflow_dispatch_json_sanitizes_escape_sequences(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "-o", "json",
-                "workflow", "dispatch", "ci.yml",
-                "--repo", "owner/repo",
-                "--ref", "main",
-                "-i", "evil\x1b[31mkey=malicious\x1b[0mvalue",
+                "-o",
+                "json",
+                "workflow",
+                "dispatch",
+                "ci.yml",
+                "--repo",
+                "owner/repo",
+                "--ref",
+                "main",
+                "-i",
+                "evil\x1b[31mkey=malicious\x1b[0mvalue",
             ],
         )
 
@@ -5119,11 +5189,18 @@ def test_runs_list_with_filters(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "runs", "list", "--repo", "owner/repo",
-                "--workflow", "ci.yml",
-                "--branch", "main",
-                "--status", "failure",
-                "--limit", "5",
+                "runs",
+                "list",
+                "--repo",
+                "owner/repo",
+                "--workflow",
+                "ci.yml",
+                "--branch",
+                "main",
+                "--status",
+                "failure",
+                "--limit",
+                "5",
             ],
         )
 
@@ -5514,12 +5591,22 @@ def test_runs_rerun_command(runner: CliRunner):
                 json={
                     "jobs": [
                         {
-                            "id": 123, "run_id": 42, "name": "build",
-                            "status": "completed", "conclusion": "failure",
-                            "started_at": "", "completed_at": "", "created_at": "",
-                            "head_sha": "", "head_branch": "",
-                            "runner_id": None, "runner_name": None, "labels": [],
-                            "steps": [], "html_url": "", "run_url": "",
+                            "id": 123,
+                            "run_id": 42,
+                            "name": "build",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "started_at": "",
+                            "completed_at": "",
+                            "created_at": "",
+                            "head_sha": "",
+                            "head_branch": "",
+                            "runner_id": None,
+                            "runner_name": None,
+                            "labels": [],
+                            "steps": [],
+                            "html_url": "",
+                            "run_url": "",
                         },
                     ]
                 },
@@ -5527,21 +5614,27 @@ def test_runs_rerun_command(runner: CliRunner):
         )
 
         # Mock list_runs (get_run fetches from here after jobs endpoint)
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
                     "workflow_runs": [
                         {
-                            "id": 42, "run_number": 15, "run_attempt": 1,
-                            "status": "completed", "conclusion": "failure",
-                            "head_sha": "abc12345", "head_branch": "main",
-                            "event": "push", "display_title": "CI",
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
                             "path": ".gitea/workflows/ci.yml",
-                            "started_at": "", "completed_at": "",
-                            "html_url": "", "url": "", "repository_id": 1,
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
                         },
                     ]
                 },
@@ -5601,9 +5694,9 @@ def test_runs_list_error_handling(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(return_value=httpx.Response(404, json={"message": "Not found"}))
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
+            return_value=httpx.Response(404, json={"message": "Not found"})
+        )
 
         result = runner.invoke(main, ["runs", "list", "--repo", "owner/repo"])
 
@@ -5630,10 +5723,15 @@ def test_pkg_link_command(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "pkg", "link", "myimage",
-                "--owner", "homelab",
-                "--type", "container",
-                "--repo", "myproject",
+                "pkg",
+                "link",
+                "myimage",
+                "--owner",
+                "homelab",
+                "--type",
+                "container",
+                "--repo",
+                "myproject",
             ],
         )
 
@@ -5658,9 +5756,13 @@ def test_pkg_unlink_command(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "pkg", "unlink", "myimage",
-                "--owner", "homelab",
-                "--type", "container",
+                "pkg",
+                "unlink",
+                "myimage",
+                "--owner",
+                "homelab",
+                "--type",
+                "container",
             ],
         )
 
@@ -5698,9 +5800,13 @@ def test_pkg_latest_command(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "pkg", "latest", "teax",
-                "--owner", "homelab",
-                "--type", "pypi",
+                "pkg",
+                "latest",
+                "teax",
+                "--owner",
+                "homelab",
+                "--type",
+                "pypi",
             ],
         )
 
@@ -5723,10 +5829,15 @@ def test_pkg_link_error_handling(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "pkg", "link", "myimage",
-                "--owner", "homelab",
-                "--type", "container",
-                "--repo", "myproject",
+                "pkg",
+                "link",
+                "myimage",
+                "--owner",
+                "homelab",
+                "--type",
+                "container",
+                "--repo",
+                "myproject",
             ],
         )
 

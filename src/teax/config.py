@@ -33,8 +33,7 @@ def load_tea_config(config_path: Path | None = None) -> TeaConfig:
             raw_config = yaml.safe_load(f)
     except FileNotFoundError:
         raise FileNotFoundError(
-            f"tea config not found at {path}. "
-            "Please configure tea first: tea login add"
+            f"tea config not found at {path}. Please configure tea first: tea login add"
         ) from None
     except yaml.YAMLError:
         # Don't include raw error - may contain secrets from config file
@@ -73,9 +72,7 @@ def get_default_login(config: TeaConfig | None = None) -> TeaLogin:
         config = load_tea_config()
 
     if not config.logins:
-        raise ValueError(
-            "No tea logins configured. Please add one: tea login add"
-        )
+        raise ValueError("No tea logins configured. Please add one: tea login add")
 
     # Find default login
     for login in config.logins:
@@ -107,6 +104,4 @@ def get_login_by_name(name: str, config: TeaConfig | None = None) -> TeaLogin:
             return login
 
     available = [login.name for login in config.logins]
-    raise ValueError(
-        f"Login '{name}' not found. Available: {', '.join(available)}"
-    )
+    raise ValueError(f"Login '{name}' not found. Available: {', '.join(available)}")

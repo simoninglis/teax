@@ -896,7 +896,9 @@ def test_label_cache_avoids_redundant_calls(client: GiteaClient):
 @respx.mock
 def test_label_cache_per_repo(client: GiteaClient):
     """Test that label cache is per-repo."""
-    label_route_1 = respx.get("https://test.example.com/api/v1/repos/owner/repo1/labels")
+    label_route_1 = respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo1/labels"
+    )
     label_route_1.mock(
         side_effect=[
             httpx.Response(
@@ -905,7 +907,9 @@ def test_label_cache_per_repo(client: GiteaClient):
             ),
         ]
     )
-    label_route_2 = respx.get("https://test.example.com/api/v1/repos/owner/repo2/labels")
+    label_route_2 = respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo2/labels"
+    )
     label_route_2.mock(
         side_effect=[
             httpx.Response(
@@ -1306,9 +1310,7 @@ def test_actions_base_path_encodes_special_chars(client: GiteaClient):
 @respx.mock
 def test_list_runners_repo_scope(client: GiteaClient):
     """Test listing runners with repo scope."""
-    respx.get(
-        "https://test.example.com/api/v1/repos/owner/repo/actions/runners"
-    ).mock(
+    respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runners").mock(
         return_value=httpx.Response(
             200,
             json=[
@@ -1399,9 +1401,7 @@ def test_list_runners_global_scope(client: GiteaClient):
 @respx.mock
 def test_list_runners_with_dict_labels(client: GiteaClient):
     """Test listing runners handles labels as list of dicts."""
-    respx.get(
-        "https://test.example.com/api/v1/repos/owner/repo/actions/runners"
-    ).mock(
+    respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runners").mock(
         return_value=httpx.Response(
             200,
             json=[
@@ -1429,9 +1429,7 @@ def test_list_runners_with_dict_labels(client: GiteaClient):
 @respx.mock
 def test_list_runners_wrapped_response(client: GiteaClient):
     """Test listing runners handles wrapped response format."""
-    respx.get(
-        "https://test.example.com/api/v1/repos/owner/repo/actions/runners"
-    ).mock(
+    respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runners").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -1755,9 +1753,7 @@ def test_list_packages_truncation_warning(client: GiteaClient):
 @respx.mock
 def test_list_package_versions(client: GiteaClient):
     """Test listing package versions."""
-    respx.get(
-        "https://test.example.com/api/packages/homelab-teams/pypi/teax"
-    ).mock(
+    respx.get("https://test.example.com/api/packages/homelab-teams/pypi/teax").mock(
         return_value=httpx.Response(
             200,
             json=[
@@ -1794,9 +1790,9 @@ def test_list_package_versions(client: GiteaClient):
 @respx.mock
 def test_list_package_versions_empty(client: GiteaClient):
     """Test listing package versions when none exist."""
-    respx.get(
-        "https://test.example.com/api/packages/homelab-teams/pypi/teax"
-    ).mock(return_value=httpx.Response(200, json=[]))
+    respx.get("https://test.example.com/api/packages/homelab-teams/pypi/teax").mock(
+        return_value=httpx.Response(200, json=[])
+    )
 
     versions = client.list_package_versions("homelab-teams", "pypi", "teax")
 
@@ -1807,9 +1803,7 @@ def test_list_package_versions_empty(client: GiteaClient):
 def test_list_package_versions_sorts_by_created_at(client: GiteaClient):
     """Test list_package_versions sorts versions by created_at descending."""
     # Return versions in unsorted order (API doesn't guarantee order)
-    respx.get(
-        "https://test.example.com/api/packages/homelab-teams/pypi/teax"
-    ).mock(
+    respx.get("https://test.example.com/api/packages/homelab-teams/pypi/teax").mock(
         return_value=httpx.Response(
             200,
             json=[
@@ -1847,9 +1841,7 @@ def test_list_package_versions_sorts_by_created_at(client: GiteaClient):
 @respx.mock
 def test_get_package(client: GiteaClient):
     """Test getting package details."""
-    respx.get(
-        "https://test.example.com/api/packages/homelab-teams/pypi/teax"
-    ).mock(
+    respx.get("https://test.example.com/api/packages/homelab-teams/pypi/teax").mock(
         return_value=httpx.Response(
             200,
             json=[
@@ -2166,9 +2158,7 @@ def test_disable_workflow(client: GiteaClient):
 def test_workflow_id_path_encoding(client: GiteaClient):
     """Test that workflow_id with special characters is properly encoded."""
     # Use url__regex to match the encoded URL since respx URL comparison can be tricky
-    route = respx.get(
-        url__regex=r".*/actions/workflows/\.\.%2Fetc%2Fpasswd$"
-    )
+    route = respx.get(url__regex=r".*/actions/workflows/\.\.%2Fetc%2Fpasswd$")
     route.mock(return_value=httpx.Response(404, json={"message": "Not found"}))
 
     with pytest.raises(httpx.HTTPStatusError):
@@ -2184,25 +2174,30 @@ def test_workflow_id_path_encoding(client: GiteaClient):
 def test_list_runs(client: GiteaClient):
     """Test listing workflow runs."""
     route = respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs")
-    route.mock(return_value=httpx.Response(200, json={
-        "workflow_runs": [
-            {
-                "id": 1,
-                "run_number": 42,
-                "run_attempt": 1,
-                "status": "completed",
-                "conclusion": "success",
-                "head_sha": "abc123",
-                "head_branch": "main",
-                "event": "push",
-                "display_title": "Test commit",
-                "path": ".github/workflows/ci.yml",
-                "started_at": "2024-01-01T00:00:00Z",
-                "completed_at": "2024-01-01T00:05:00Z",
-                "html_url": "https://example.com/runs/1",
-            }
-        ]
-    }))
+    route.mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "workflow_runs": [
+                    {
+                        "id": 1,
+                        "run_number": 42,
+                        "run_attempt": 1,
+                        "status": "completed",
+                        "conclusion": "success",
+                        "head_sha": "abc123",
+                        "head_branch": "main",
+                        "event": "push",
+                        "display_title": "Test commit",
+                        "path": ".github/workflows/ci.yml",
+                        "started_at": "2024-01-01T00:00:00Z",
+                        "completed_at": "2024-01-01T00:05:00Z",
+                        "html_url": "https://example.com/runs/1",
+                    }
+                ]
+            },
+        )
+    )
 
     runs = client.list_runs("owner", "repo")
 
@@ -2217,16 +2212,35 @@ def test_list_runs(client: GiteaClient):
 def test_list_runs_with_workflow_filter(client: GiteaClient):
     """Test listing runs with workflow filter."""
     route = respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs")
-    route.mock(return_value=httpx.Response(200, json={
-        "workflow_runs": [
-            {"id": 1, "run_number": 1, "status": "completed", "conclusion": "success",
-             "head_sha": "abc", "head_branch": "main", "event": "push",
-             "path": ".github/workflows/ci.yml"},
-            {"id": 2, "run_number": 2, "status": "completed", "conclusion": "success",
-             "head_sha": "def", "head_branch": "main", "event": "push",
-             "path": ".github/workflows/deploy.yml"},
-        ]
-    }))
+    route.mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "workflow_runs": [
+                    {
+                        "id": 1,
+                        "run_number": 1,
+                        "status": "completed",
+                        "conclusion": "success",
+                        "head_sha": "abc",
+                        "head_branch": "main",
+                        "event": "push",
+                        "path": ".github/workflows/ci.yml",
+                    },
+                    {
+                        "id": 2,
+                        "run_number": 2,
+                        "status": "completed",
+                        "conclusion": "success",
+                        "head_sha": "def",
+                        "head_branch": "main",
+                        "event": "push",
+                        "path": ".github/workflows/deploy.yml",
+                    },
+                ]
+            },
+        )
+    )
 
     runs = client.list_runs("owner", "repo", workflow="ci.yml")
 
@@ -2249,30 +2263,41 @@ def test_list_runs_empty(client: GiteaClient):
 @respx.mock
 def test_list_run_jobs(client: GiteaClient):
     """Test listing jobs for a run."""
-    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs")
-    route.mock(return_value=httpx.Response(200, json={
-        "jobs": [
-            {
-                "id": 100,
-                "run_id": 42,
-                "name": "build",
-                "status": "completed",
-                "conclusion": "success",
-                "started_at": "2024-01-01T00:00:00Z",
-                "completed_at": "2024-01-01T00:02:00Z",
-                "steps": [
+    route = respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+    )
+    route.mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "jobs": [
                     {
-                        "number": 1, "name": "Checkout",
-                        "status": "completed", "conclusion": "success"
-                    },
-                    {
-                        "number": 2, "name": "Build",
-                        "status": "completed", "conclusion": "success"
-                    },
-                ],
-            }
-        ]
-    }))
+                        "id": 100,
+                        "run_id": 42,
+                        "name": "build",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "started_at": "2024-01-01T00:00:00Z",
+                        "completed_at": "2024-01-01T00:02:00Z",
+                        "steps": [
+                            {
+                                "number": 1,
+                                "name": "Checkout",
+                                "status": "completed",
+                                "conclusion": "success",
+                            },
+                            {
+                                "number": 2,
+                                "name": "Build",
+                                "status": "completed",
+                                "conclusion": "success",
+                            },
+                        ],
+                    }
+                ]
+            },
+        )
+    )
 
     jobs = client.list_run_jobs("owner", "repo", 42)
 
@@ -2285,20 +2310,29 @@ def test_list_run_jobs(client: GiteaClient):
 @respx.mock
 def test_get_job(client: GiteaClient):
     """Test getting a single job."""
-    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/jobs/100")
-    route.mock(return_value=httpx.Response(200, json={
-        "id": 100,
-        "run_id": 42,
-        "name": "test",
-        "status": "completed",
-        "conclusion": "failure",
-        "steps": [
-            {
-                "number": 1, "name": "Run tests",
-                "status": "completed", "conclusion": "failure"
+    route = respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/jobs/100"
+    )
+    route.mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 100,
+                "run_id": 42,
+                "name": "test",
+                "status": "completed",
+                "conclusion": "failure",
+                "steps": [
+                    {
+                        "number": 1,
+                        "name": "Run tests",
+                        "status": "completed",
+                        "conclusion": "failure",
+                    },
+                ],
             },
-        ],
-    }))
+        )
+    )
 
     job = client.get_job("owner", "repo", 100)
 
@@ -2323,7 +2357,9 @@ def test_get_job_logs(client: GiteaClient):
 @respx.mock
 def test_delete_run(client: GiteaClient):
     """Test deleting a run."""
-    route = respx.delete("https://test.example.com/api/v1/repos/owner/repo/actions/runs/42")
+    route = respx.delete(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42"
+    )
     route.mock(return_value=httpx.Response(204))
 
     client.delete_run("owner", "repo", 42)
@@ -2363,17 +2399,20 @@ def test_unlink_package(client: GiteaClient):
 @respx.mock
 def test_get_latest_package_version(client: GiteaClient):
     """Test getting the latest package version."""
-    route = respx.get(
-        url__regex=r".*/api/packages/homelab/pypi/teax/-/latest$"
+    route = respx.get(url__regex=r".*/api/packages/homelab/pypi/teax/-/latest$")
+    route.mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 1,
+                "owner": {"id": 1, "login": "homelab"},
+                "name": "teax",
+                "type": "pypi",
+                "version": "1.0.0",
+                "created_at": "2024-01-01T00:00:00Z",
+            },
+        )
     )
-    route.mock(return_value=httpx.Response(200, json={
-        "id": 1,
-        "owner": {"id": 1, "login": "homelab"},
-        "name": "teax",
-        "type": "pypi",
-        "version": "1.0.0",
-        "created_at": "2024-01-01T00:00:00Z",
-    }))
 
     pkg = client.get_latest_package_version("homelab", "pypi", "teax")
 

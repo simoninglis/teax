@@ -711,9 +711,7 @@ class GiteaClient:
 
         # Populate milestone cache for subsequent resolve_milestone calls
         cache_key = f"{owner}/{repo}"
-        self._milestone_cache[cache_key] = {
-            ms.title: ms.id for ms in all_milestones
-        }
+        self._milestone_cache[cache_key] = {ms.title: ms.id for ms in all_milestones}
         self._milestone_cache_state[cache_key] = state
 
         return all_milestones
@@ -796,11 +794,13 @@ class GiteaClient:
         Raises:
             ValueError: If scope is ambiguous or missing
         """
-        scope_count = sum([
-            bool(owner and repo),
-            bool(org),
-            global_scope,
-        ])
+        scope_count = sum(
+            [
+                bool(owner and repo),
+                bool(org),
+                global_scope,
+            ]
+        )
 
         if scope_count == 0:
             raise ValueError("Must specify --repo, --org, or --global scope")
