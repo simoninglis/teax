@@ -799,7 +799,7 @@ class OutputFormat:
                 conclusion = r.conclusion or r.status
                 sha = r.head_sha[:8] if r.head_sha else ""
                 click.echo(
-                    f"#{r.run_number} {terminal_safe(conclusion)} "
+                    f"{r.id} {terminal_safe(conclusion)} "
                     f"{terminal_safe(sha)} {terminal_safe(r.head_branch)}"
                 )
 
@@ -839,7 +839,7 @@ class OutputFormat:
                 return
 
             table = Table(title="Workflow Runs")
-            table.add_column("#", style="cyan")
+            table.add_column("ID", style="cyan")
             table.add_column("Status")
             table.add_column("SHA", style="dim")
             table.add_column("Branch")
@@ -861,7 +861,7 @@ class OutputFormat:
                 workflow_name = r.path.split("/")[-1] if r.path else ""
 
                 table.add_row(
-                    str(r.run_number),
+                    str(r.id),
                     status_str,
                     safe_rich(r.head_sha[:8] if r.head_sha else ""),
                     safe_rich(r.head_branch),

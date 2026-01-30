@@ -4935,7 +4935,7 @@ def test_output_format_runs_simple(capsys):
     )
     formatter.print_runs([mock_run])
     captured = capsys.readouterr()
-    assert "#15" in captured.out
+    assert "42" in captured.out  # ID, not run_number
     assert "success" in captured.out
     assert "abc12345" in captured.out
     assert "main" in captured.out
