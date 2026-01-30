@@ -5471,10 +5471,10 @@ def test_runs_status_tmux_sanitization(runner: CliRunner):
         assert result.exit_code == 0
         # Should NOT contain escape sequences
         assert "\x1b" not in result.output
-        # First workflow: ANSI stripped, 'E' from 'evil' used
+        # First workflow: ANSI stripped, 'E' from 'evil' used (fallback first char)
         assert "E:✓" in result.output
-        # Second workflow: starts with '_' (non-alphanumeric), so use '?'
-        assert "?:✓" in result.output
+        # Second workflow: contains 'test' pattern, so use 'T'
+        assert "T:✓" in result.output
 
 
 @pytest.mark.usefixtures("mock_client")
@@ -6432,6 +6432,43 @@ def test_abbreviate_job_name_fallback():
     assert abbreviate_job_name("AB") == "ab"
     assert abbreviate_job_name("") == "job"
     assert abbreviate_job_name("!@#$%") == "job"  # No alphanumeric chars
+
+
+def test_abbreviate_workflow_name_patterns():
+    """Test abbreviate_workflow_name pattern matching."""
+    from teax.cli import abbreviate_workflow_name
+
+    # Standard patterns
+    assert abbreviate_workflow_name("ci.yml") == "C"
+    assert abbreviate_workflow_name("build.yml") == "B"
+    assert abbreviate_workflow_name("test.yml") == "T"
+    assert abbreviate_workflow_name("lint.yml") == "L"
+    assert abbreviate_workflow_name("deploy.yml") == "D"
+    assert abbreviate_workflow_name("verify.yml") == "V"
+    assert abbreviate_workflow_name("publish.yml") == "P"
+
+    # Hyphenated names - should match the key part
+    assert abbreviate_workflow_name("staging-deploy.yml") == "D"
+    assert abbreviate_workflow_name("staging-verify.yml") == "V"
+    assert abbreviate_workflow_name("prod-deploy.yml") == "D"
+
+    # Case insensitive
+    assert abbreviate_workflow_name("CI.yml") == "C"
+    assert abbreviate_workflow_name("BUILD.yaml") == "B"
+
+
+def test_abbreviate_workflow_name_fallback():
+    """Test abbreviate_workflow_name fallback to first char."""
+    from teax.cli import abbreviate_workflow_name
+
+    # No pattern match - use first letter
+    assert abbreviate_workflow_name("custom.yml") == "C"
+    assert abbreviate_workflow_name("my-workflow.yml") == "M"
+    assert abbreviate_workflow_name("foo-bar.yml") == "F"
+
+    # Edge cases
+    assert abbreviate_workflow_name("") == "?"
+    assert abbreviate_workflow_name("!@#.yml") == "?"
 
 
 @pytest.mark.usefixtures("mock_client")

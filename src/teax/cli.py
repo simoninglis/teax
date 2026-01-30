@@ -103,6 +103,53 @@ def parse_repo(repo: str) -> tuple[str, str]:
 # Maximum number of issues allowed in a single bulk operation
 MAX_BULK_ISSUES = 10000
 
+# Workflow name abbreviation mappings for compact output (e.g., tmux status bars)
+# Maps single-char abbreviation to patterns that match workflow filenames
+WORKFLOW_ABBREVIATIONS: dict[str, list[str]] = {
+    "C": ["ci", "check"],
+    "B": ["build", "package"],
+    "T": ["test"],
+    "L": ["lint"],
+    "D": ["deploy", "release"],
+    "V": ["verify", "validate"],
+    "P": ["publish"],
+    "S": ["scan", "security"],
+    "M": ["merge", "main"],
+}
+
+
+def abbreviate_workflow_name(workflow: str) -> str:
+    """Get single-char abbreviation for workflow name.
+
+    Matches workflow names against known patterns (case-insensitive).
+    Falls back to first alphanumeric character if no pattern matches.
+
+    Args:
+        workflow: Workflow filename (e.g., "ci.yml", "staging-deploy.yml")
+
+    Returns:
+        Single uppercase character abbreviation
+    """
+    # Sanitize and remove .yml/.yaml extension, then lowercase
+    base = terminal_safe(workflow).lower()
+    for ext in [".yml", ".yaml"]:
+        if base.endswith(ext):
+            base = base[: -len(ext)]
+            break
+
+    # Check each abbreviation pattern
+    for abbrev, patterns in WORKFLOW_ABBREVIATIONS.items():
+        for pattern in patterns:
+            if pattern in base:
+                return abbrev
+
+    # Fallback: first alphanumeric char, uppercase
+    for c in base:
+        if c.isalnum():
+            return c.upper()
+    return "?"
+
+
 # Job name abbreviation mappings for compact output (e.g., tmux status bars)
 JOB_ABBREVIATIONS: dict[str, list[str]] = {
     "lint": ["lint", "type check", "linting"],
@@ -998,10 +1045,8 @@ class OutputFormat:
 
             parts = []
             for wf, r in sorted(workflow_runs.items()):
-                # Get abbreviation: first letter uppercase, sanitized for safety
-                # Only use alphanumeric chars to prevent tmux/terminal injection
-                safe_wf = terminal_safe(wf)
-                abbrev = safe_wf[0].upper() if safe_wf and safe_wf[0].isalnum() else "?"
+                # Get abbreviation using pattern matching for better disambiguation
+                abbrev = abbreviate_workflow_name(wf)
                 conclusion = r.conclusion or r.status
                 if conclusion == "success":
                     parts.append(f"{abbrev}:✓")
