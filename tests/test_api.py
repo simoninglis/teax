@@ -2423,6 +2423,32 @@ def test_get_job_with_null_steps(client: GiteaClient):
 
 
 @respx.mock
+def test_get_job_with_missing_steps_key(client: GiteaClient):
+    """Test that job with missing steps key defaults to empty list."""
+    route = respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/jobs/100"
+    )
+    route.mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 100,
+                "run_id": 42,
+                "name": "test",
+                "status": "queued",
+                "conclusion": None,
+                # Note: "steps" key is completely missing
+            },
+        )
+    )
+
+    job = client.get_job("owner", "repo", 100)
+
+    assert job.id == 100
+    assert job.steps == []  # Default to empty list when key missing
+
+
+@respx.mock
 def test_get_job_logs(client: GiteaClient):
     """Test getting job logs."""
     url = "https://test.example.com/api/v1/repos/owner/repo/actions/jobs/100/logs"

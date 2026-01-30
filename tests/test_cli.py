@@ -6471,6 +6471,33 @@ def test_abbreviate_workflow_name_fallback():
     assert abbreviate_workflow_name("!@#.yml") == "?"
 
 
+def test_extract_workflow_name():
+    """Test extract_workflow_name handles various path formats."""
+    from teax.cli import extract_workflow_name
+
+    # Standard paths
+    assert extract_workflow_name(".gitea/workflows/ci.yml") == "ci.yml"
+    assert extract_workflow_name(".github/workflows/build.yml") == "build.yml"
+
+    # Paths with @refs suffix (Gitea API format)
+    assert (
+        extract_workflow_name(".gitea/workflows/staging-deploy.yml@refs/heads/main")
+        == "staging-deploy.yml"
+    )
+    assert (
+        extract_workflow_name(".gitea/workflows/staging-verify.yml@refs/heads/feature")
+        == "staging-verify.yml"
+    )
+    assert (
+        extract_workflow_name("ci.yml@refs/tags/v1.0.0")
+        == "ci.yml"
+    )
+
+    # Edge cases
+    assert extract_workflow_name("") == "unknown"
+    assert extract_workflow_name(None) == "unknown"  # type: ignore[arg-type]
+
+
 @pytest.mark.usefixtures("mock_client")
 def test_resolve_run_id_by_run_number(runner: CliRunner):
     """Test resolve_run_id resolves run_number to run_id."""

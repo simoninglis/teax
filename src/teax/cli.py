@@ -118,6 +118,28 @@ WORKFLOW_ABBREVIATIONS: dict[str, list[str]] = {
 }
 
 
+def extract_workflow_name(path: str) -> str:
+    """Extract workflow filename from API path field.
+
+    API returns paths like:
+    - ".gitea/workflows/ci.yml"
+    - ".gitea/workflows/staging-deploy.yml@refs/heads/main"
+
+    Args:
+        path: Workflow path from API (may include @refs/... suffix)
+
+    Returns:
+        Workflow filename (e.g., "ci.yml", "staging-deploy.yml")
+    """
+    if not path:
+        return "unknown"
+    # Strip @refs/... suffix first (before splitting by /)
+    if "@" in path:
+        path = path.split("@")[0]
+    # Get last path component
+    return path.split("/")[-1] or "unknown"
+
+
 def abbreviate_workflow_name(workflow: str) -> str:
     """Get single-char abbreviation for workflow name.
 
@@ -938,7 +960,7 @@ class OutputFormat:
                     status_str = f"[blue]● {safe_rich(r.status)}[/blue]"
 
                 # Extract workflow name from path
-                workflow_name = r.path.split("/")[-1] if r.path else ""
+                workflow_name = extract_workflow_name(r.path)
 
                 table.add_row(
                     str(r.id),
@@ -973,7 +995,7 @@ class OutputFormat:
         # Group runs by workflow (keep latest per workflow)
         workflow_runs: dict[str, Any] = {}
         for r in runs:
-            workflow_name = r.path.split("/")[-1] if r.path else "unknown"
+            workflow_name = extract_workflow_name(r.path)
             if workflow_name not in workflow_runs:
                 workflow_runs[workflow_name] = r
 
@@ -3463,7 +3485,7 @@ def runs_status(
                 # Group runs by workflow, keep latest per workflow
                 seen_workflows: set[str] = set()
                 for r in runs_list:
-                    wf_name = r.path.split("/")[-1] if r.path else "unknown"
+                    wf_name = extract_workflow_name(r.path)
                     if wf_name not in seen_workflows:
                         seen_workflows.add(wf_name)
                         # Fetch jobs only for failed workflows
@@ -3563,7 +3585,7 @@ def runs_failed(
                     "run_id": failed_run.id,
                     "run_number": failed_run.run_number,
                     "workflow": terminal_safe(
-                        failed_run.path.split("/")[-1] if failed_run.path else ""
+                        extract_workflow_name(failed_run.path)
                     ),
                     "head_sha": terminal_safe(failed_run.head_sha),
                     "head_branch": terminal_safe(failed_run.head_branch or ""),
@@ -3599,7 +3621,7 @@ def runs_failed(
 
             elif output.format_type == "simple":
                 wf_name = (
-                    failed_run.path.split("/")[-1] if failed_run.path else "unknown"
+                    extract_workflow_name(failed_run.path)
                 )
                 click.echo(
                     f"{terminal_safe(wf_name)} #{failed_run.run_number} "
@@ -3631,7 +3653,7 @@ def runs_failed(
                     ]
                 )
                 wf_name = (
-                    failed_run.path.split("/")[-1] if failed_run.path else "unknown"
+                    extract_workflow_name(failed_run.path)
                 )
                 for j in failed_jobs:
                     writer.writerow(
@@ -3649,7 +3671,7 @@ def runs_failed(
 
             else:  # table (default)
                 wf_name = (
-                    failed_run.path.split("/")[-1] if failed_run.path else "unknown"
+                    extract_workflow_name(failed_run.path)
                 )
                 console.print(
                     f"[bold red]Failed:[/bold red] {safe_rich(wf_name)} "
@@ -3978,7 +4000,7 @@ def runs_rerun(
             )
             # Get run info first to show what we're rerunning
             run = client.get_run(owner, repo_name, run_id)
-            workflow_name = run.path.split("/")[-1] if run.path else "unknown"
+            workflow_name = extract_workflow_name(run.path)
 
             client.rerun_workflow(owner, repo_name, run_id)
 
@@ -4036,7 +4058,7 @@ def runs_delete(
 
             # Confirm with details after resolution
             if not yes:
-                wf_name = run.path.split("/")[-1] if run.path else "unknown"
+                wf_name = extract_workflow_name(run.path)
                 sha = run.head_sha[:8] if run.head_sha else "unknown"
                 confirm_msg = (
                     f"Delete run #{run.run_number} "

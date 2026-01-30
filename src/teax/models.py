@@ -220,14 +220,14 @@ class WorkflowJob(BaseModel):
     runner_id: int | None = None
     runner_name: str | None = None
     labels: list[str] = Field(default_factory=list)
-    steps: list[WorkflowStep] | None = None
+    steps: list[WorkflowStep] = Field(default_factory=list)
     html_url: str = ""
     run_url: str = ""
 
     @field_validator("steps", mode="before")
     @classmethod
     def normalize_steps(cls, v: list[WorkflowStep] | None) -> list[WorkflowStep]:
-        """Convert null steps to empty list."""
+        """Convert null or missing steps to empty list."""
         return v if v is not None else []
 
     @field_validator("started_at", "completed_at", "created_at", mode="before")
