@@ -2397,6 +2397,32 @@ def test_get_job(client: GiteaClient):
 
 
 @respx.mock
+def test_get_job_with_null_steps(client: GiteaClient):
+    """Test that job with null steps is handled (API sometimes returns null)."""
+    route = respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/actions/jobs/100"
+    )
+    route.mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 100,
+                "run_id": 42,
+                "name": "test",
+                "status": "in_progress",
+                "conclusion": None,
+                "steps": None,  # API returns null for running jobs
+            },
+        )
+    )
+
+    job = client.get_job("owner", "repo", 100)
+
+    assert job.id == 100
+    assert job.steps == []  # Normalized to empty list
+
+
+@respx.mock
 def test_get_job_logs(client: GiteaClient):
     """Test getting job logs."""
     url = "https://test.example.com/api/v1/repos/owner/repo/actions/jobs/100/logs"
