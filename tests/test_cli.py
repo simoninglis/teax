@@ -6495,7 +6495,7 @@ def test_extract_workflow_name():
 
     # Edge cases
     assert extract_workflow_name("") == "unknown"
-    assert extract_workflow_name(None) == "unknown"  # type: ignore[arg-type]
+    assert extract_workflow_name(None) == "unknown"
 
 
 @pytest.mark.usefixtures("mock_client")
@@ -7169,6 +7169,57 @@ def test_runs_failed_no_failures(runner: CliRunner):
 
         assert result.exit_code == 0
         assert "No failed runs found" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_failed_no_failures_json_output(runner: CliRunner):
+    """Test runs failed -o json returns valid JSON when no failures."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock runs list with no failures
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",  # Not a failure
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "json", "runs", "failed", "--repo", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        # Should be valid JSON
+        data = json.loads(result.output)
+        assert data["error"] is None
+        assert data["message"] == "No failed runs found"
+        assert data["run"] is None
 
 
 @pytest.mark.usefixtures("mock_client")

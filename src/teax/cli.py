@@ -118,7 +118,7 @@ WORKFLOW_ABBREVIATIONS: dict[str, list[str]] = {
 }
 
 
-def extract_workflow_name(path: str) -> str:
+def extract_workflow_name(path: str | None) -> str:
     """Extract workflow filename from API path field.
 
     API returns paths like:
@@ -3568,7 +3568,14 @@ def runs_failed(
                     break
 
             if not failed_run:
-                if sha:
+                if output.format_type == "json":
+                    empty_result = {
+                        "error": None,
+                        "message": "No failed runs found",
+                        "run": None,
+                    }
+                    click.echo(json.dumps(empty_result))
+                elif sha:
                     console.print(
                         f"[dim]No failed runs found for commit {safe_rich(sha)}[/dim]"
                     )

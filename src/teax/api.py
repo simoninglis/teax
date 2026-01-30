@@ -1604,8 +1604,11 @@ class GiteaClient:
             for item in items:
                 run = WorkflowRun.model_validate(item)
                 # Client-side workflow filter (Gitea API doesn't support it)
-                if workflow and not run.path.endswith(workflow):
-                    continue
+                # Strip @refs/... suffix before matching (Gitea may include it)
+                if workflow:
+                    path_for_match = run.path.split("@")[0] if "@" in run.path else run.path  # noqa: E501
+                    if not path_for_match.endswith(workflow):
+                        continue
                 # Client-side SHA filter (prefix match)
                 if head_sha and not run.head_sha.startswith(head_sha):
                     continue

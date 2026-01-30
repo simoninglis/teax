@@ -2250,6 +2250,48 @@ def test_list_runs_with_workflow_filter(client: GiteaClient):
 
 
 @respx.mock
+def test_list_runs_with_workflow_filter_refs_suffix(client: GiteaClient):
+    """Test listing runs with workflow filter when path has @refs suffix."""
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs")
+    route.mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "workflow_runs": [
+                    {
+                        "id": 1,
+                        "run_number": 1,
+                        "status": "completed",
+                        "conclusion": "success",
+                        "head_sha": "abc",
+                        "head_branch": "main",
+                        "event": "push",
+                        # Gitea sometimes returns path with @refs/... suffix
+                        "path": ".gitea/workflows/staging-deploy.yml@refs/heads/main",
+                    },
+                    {
+                        "id": 2,
+                        "run_number": 2,
+                        "status": "completed",
+                        "conclusion": "success",
+                        "head_sha": "def",
+                        "head_branch": "main",
+                        "event": "push",
+                        "path": ".gitea/workflows/staging-verify.yml@refs/heads/main",
+                    },
+                ]
+            },
+        )
+    )
+
+    # Filter should match even with @refs suffix
+    runs = client.list_runs("owner", "repo", workflow="staging-deploy.yml")
+
+    assert len(runs) == 1
+    assert "staging-deploy.yml" in runs[0].path
+
+
+@respx.mock
 def test_list_runs_empty(client: GiteaClient):
     """Test listing runs when none exist."""
     route = respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs")
