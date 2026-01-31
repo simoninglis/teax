@@ -65,6 +65,10 @@ bump LEVEL:
     sed -i "s/^version = \"${current}\"/version = \"${new}\"/" pyproject.toml
     echo "Bumped ${current} → ${new}"
 
+# Publish to Gitea PyPI
+publish: build
+    poetry publish -r gitea
+
 # Release workflow: check → bump → commit → tag → publish
 release LEVEL: check
     #!/usr/bin/env bash
