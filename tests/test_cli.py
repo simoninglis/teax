@@ -5258,6 +5258,54 @@ def test_runs_status_tmux_format(runner: CliRunner):
 
 
 @pytest.mark.usefixtures("mock_client")
+def test_runs_status_tmux_spinner_for_running(runner: CliRunner):
+    """Test runs status tmux shows animated spinner for in-progress workflows."""
+    import httpx
+    import respx
+
+    from teax.cli import SPINNER_FRAMES
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "in_progress",  # Running workflow
+                            "conclusion": None,
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "tmux", "runs", "status", "--repo", "owner/repo"]
+        )
+
+        # Exit code 2 for running
+        assert result.exit_code == 2
+        # Should contain one of the spinner frames
+        assert any(frame in result.output for frame in SPINNER_FRAMES)
+
+
+@pytest.mark.usefixtures("mock_client")
 def test_runs_status_exit_code_failure(runner: CliRunner):
     """Test runs status returns exit code 1 on failure."""
     import httpx

@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sys
+import time
 from typing import Any
 
 import click
@@ -102,6 +103,10 @@ def parse_repo(repo: str) -> tuple[str, str]:
 
 # Maximum number of issues allowed in a single bulk operation
 MAX_BULK_ISSUES = 10000
+
+# Spinner frames for animated "running" indicator in tmux (time-based animation)
+# Each tmux refresh shows next frame based on current second
+SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 # Workflow name abbreviation mappings for compact output (e.g., tmux status bars)
 # Maps single-char abbreviation to patterns that match workflow filenames
@@ -1087,7 +1092,9 @@ class OutputFormat:
                     else:
                         parts.append(f"{abbrev}:✗")
                 elif r.status in ("queued", "in_progress", "waiting"):
-                    parts.append(f"{abbrev}:⋯")
+                    # Animated spinner - frame based on current second
+                    spinner = SPINNER_FRAMES[int(time.time()) % len(SPINNER_FRAMES)]
+                    parts.append(f"{abbrev}:{spinner}")
                 elif conclusion in ("cancelled", "skipped"):
                     parts.append(f"{abbrev}:○")
                 else:
