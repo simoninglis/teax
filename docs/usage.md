@@ -848,6 +848,58 @@ Inspect and debug CI/CD workflow runs. Designed for LLM agent workflows with tok
 teax runs status -r owner/repo
 
 # Output: ci.yml: ✓ success (#42) | deploy.yml: ✗ failure (#38)
+
+# Tmux-friendly compact output (auto-abbreviated)
+teax runs status -r owner/repo -o tmux
+# Output: C:✓ D:✗
+
+# Explicit workflow list with custom abbreviations (--show)
+teax runs status -r owner/repo --show "C:ci.yml,B:build.yml,D:deploy.yml" -o tmux
+# Output: C:✓ B:✓ D:-   (D:- means deploy.yml was not triggered)
+
+# Filter to specific commit
+teax runs status -r owner/repo --sha HEAD
+teax runs status -r owner/repo --sha abc123
+
+# Show failed job details
+teax runs status -r owner/repo --verbose
+```
+
+**Exit codes:**
+| Code | Meaning |
+|------|---------|
+| 0 | All triggered workflows passed (not-triggered workflows are neutral) |
+| 1 | Any workflow failed |
+| 2 | Workflows running (none failed yet) |
+| 3 | No workflows found/triggered |
+| 4 | Error (API, git resolution, invalid `--show` format) |
+
+**The `--show` flag:**
+
+Explicitly specify which workflows to display with custom single-character abbreviations. Useful when:
+- Auto-generated abbreviations conflict (e.g., `ci.yml` and `ci-lint.yml`)
+- You only care about specific workflows
+- You want consistent abbreviations across different repos
+
+Format: `"A:workflow.yml,B:other.yaml"` (comma-separated, single ASCII alphanumeric abbreviation + colon + workflow filename)
+
+**Note:** Use the workflow *filename* (e.g., `ci.yml`), not the full path (e.g., `.gitea/workflows/ci.yml`). The tool matches against the basename extracted from workflow paths.
+
+Workflows not in the API response (not triggered for this commit) show `-` status. Not-triggered workflows are treated as neutral: if `ci.yml` passes and `deploy.yml` wasn't triggered, exit code is 0.
+
+**Output format changes with `--show`:**
+- **JSON**: `workflows` becomes an array (not dict) with `abbrev`, `workflow`, and `triggered` fields
+- **CSV**: Adds `abbrev` and `triggered` columns
+
+Example JSON with `--show`:
+```json
+{
+  "workflows": [
+    {"abbrev": "C", "workflow": "ci.yml", "triggered": true, "conclusion": "success", ...},
+    {"abbrev": "D", "workflow": "deploy.yml", "triggered": false, "status": null, ...}
+  ],
+  "overall_status": "success"
+}
 ```
 
 ### List Workflow Runs

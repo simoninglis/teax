@@ -280,6 +280,77 @@ def parse_issue_spec(spec: str) -> list[int]:
     return sorted(result)
 
 
+def parse_show_spec(show: str) -> list[tuple[str, str]]:
+    """Parse --show specification into (abbreviation, workflow_name) tuples.
+
+    Format: "A:ci.yml,B:build.yml,D:deploy.yml"
+
+    Args:
+        show: Show specification string
+
+    Returns:
+        List of (abbreviation, workflow_name) tuples preserving order
+
+    Raises:
+        click.BadParameter: If spec is invalid
+    """
+    if not show.strip():
+        raise click.BadParameter("Empty --show specification")
+
+    result: list[tuple[str, str]] = []
+    seen_abbrevs: set[str] = set()
+    seen_workflows: set[str] = set()
+
+    for part in show.split(","):
+        part = part.strip()
+        if not part:
+            continue
+
+        # Split on first colon only (workflow names could contain colons)
+        if ":" not in part:
+            safe_part = terminal_safe(part)
+            raise click.BadParameter(
+                f"Invalid format, expected 'A:workflow.yml': {safe_part}"
+            )
+
+        colon_idx = part.index(":")
+        abbrev = part[:colon_idx].strip()
+        workflow = part[colon_idx + 1 :].strip()
+
+        # Validate abbreviation: single ASCII alphanumeric character
+        # (Unicode chars like ß can expand when uppercased, breaking invariants)
+        if len(abbrev) != 1 or not abbrev.isascii() or not abbrev.isalnum():
+            safe_abbrev = terminal_safe(abbrev)
+            raise click.BadParameter(
+                f"Abbreviation must be single ASCII alphanumeric: {safe_abbrev}"
+            )
+
+        # Validate workflow name: must end in .yml or .yaml
+        if not (workflow.endswith(".yml") or workflow.endswith(".yaml")):
+            safe_wf = terminal_safe(workflow)
+            raise click.BadParameter(
+                f"Workflow must end in .yml or .yaml: {safe_wf}"
+            )
+
+        # Check for duplicates
+        abbrev_upper = abbrev.upper()
+        if abbrev_upper in seen_abbrevs:
+            raise click.BadParameter(f"Duplicate abbreviation: {terminal_safe(abbrev)}")
+        if workflow in seen_workflows:
+            raise click.BadParameter(
+                f"Duplicate workflow: {terminal_safe(workflow)}"
+            )
+
+        seen_abbrevs.add(abbrev_upper)
+        seen_workflows.add(workflow)
+        result.append((abbrev.upper(), workflow))
+
+    if not result:
+        raise click.BadParameter("No valid workflow specifications")
+
+    return result
+
+
 class OutputFormat:
     """Output formatting helpers."""
 
@@ -983,6 +1054,7 @@ class OutputFormat:
         commit_sha: str | None = None,
         verbose: bool = False,
         workflow_jobs: dict[int, list[Any]] | None = None,
+        show_map: list[tuple[str, str]] | None = None,
     ) -> str:
         """Print workflow health status (latest run per workflow).
 
@@ -991,9 +1063,11 @@ class OutputFormat:
             commit_sha: Optional commit SHA being queried (for display)
             verbose: If True, show failed job details
             workflow_jobs: Pre-fetched jobs for failed workflows {run_id: [jobs]}
+            show_map: Optional list of (abbreviation, workflow_name) tuples
+                      for explicit workflow ordering and custom abbreviations
 
         Returns:
-            Overall status: "success", "failure", "running", or "no_runs"
+            Overall status: "success", "failure", "running", "no_runs", or "pending"
         """
         workflow_jobs = workflow_jobs or {}
 
@@ -1004,79 +1078,162 @@ class OutputFormat:
             if workflow_name not in workflow_runs:
                 workflow_runs[workflow_name] = r
 
-        # Calculate overall status
-        if not workflow_runs:
-            overall_status = "no_runs"
-        elif any(r.conclusion == "failure" for r in workflow_runs.values()):
-            overall_status = "failure"
-        elif any(
-            r.status in ("queued", "in_progress", "waiting")
-            for r in workflow_runs.values()
-        ):
-            overall_status = "running"
-        elif all(r.conclusion == "success" for r in workflow_runs.values()):
-            overall_status = "success"
+        # When show_map is provided, filter to only specified workflows
+        if show_map:
+            # Build ordered list of (abbrev, workflow, run_or_none)
+            show_workflows = [
+                (abbrev, wf, workflow_runs.get(wf))
+                for abbrev, wf in show_map
+            ]
+            active_runs = [r for _, _, r in show_workflows if r is not None]
+
+            # Calculate overall status based on specified workflows only
+            if not active_runs:
+                overall_status = "pending"  # None triggered
+            elif any(r.conclusion == "failure" for r in active_runs):
+                overall_status = "failure"
+            elif any(
+                r.status in ("queued", "in_progress", "waiting")
+                for r in active_runs
+            ):
+                overall_status = "running"
+            elif all(r.conclusion == "success" for r in active_runs):
+                overall_status = "success"
+            else:
+                # Mixed state (cancelled, skipped, etc.) - success if no failures
+                overall_status = "success"
         else:
-            # Mixed state (cancelled, skipped, etc.) - treat as success if no failures
-            overall_status = "success"
+            show_workflows = None  # Not using show_map mode
+
+            # Calculate overall status
+            if not workflow_runs:
+                overall_status = "no_runs"
+            elif any(r.conclusion == "failure" for r in workflow_runs.values()):
+                overall_status = "failure"
+            elif any(
+                r.status in ("queued", "in_progress", "waiting")
+                for r in workflow_runs.values()
+            ):
+                overall_status = "running"
+            elif all(r.conclusion == "success" for r in workflow_runs.values()):
+                overall_status = "success"
+            else:
+                # Mixed state (cancelled, skipped, etc.) - success if no failures
+                overall_status = "success"
 
         if self.format_type == "json":
             output_data: dict[str, Any] = {
                 "commit": terminal_safe(commit_sha[:8]) if commit_sha else None,
                 "commit_full": terminal_safe(commit_sha) if commit_sha else None,
                 "overall_status": overall_status,
-                "workflows": {},
             }
-            for wf, r in workflow_runs.items():
-                wf_data: dict[str, Any] = {
-                    "run_id": r.id,
-                    "run_number": r.run_number,
-                    "status": terminal_safe(r.status),
-                    "conclusion": (
-                        terminal_safe(r.conclusion) if r.conclusion else None
-                    ),
-                    "head_sha": terminal_safe(r.head_sha[:8]),
-                    "head_branch": terminal_safe(r.head_branch or ""),
-                    "started_at": (
-                        terminal_safe(r.started_at) if r.started_at else None
-                    ),
-                }
-                # Add jobs data if verbose and available
-                if verbose and r.id in workflow_jobs:
-                    jobs = workflow_jobs[r.id]
-                    wf_data["jobs"] = [
-                        {
-                            "id": j.id,
-                            "name": terminal_safe(j.name),
-                            "status": terminal_safe(j.status),
+
+            if show_workflows is not None:
+                # Array format with explicit abbreviations
+                workflows_list: list[dict[str, Any]] = []
+                for abbrev, wf, r in show_workflows:
+                    if r is None:
+                        # Workflow not triggered
+                        workflows_list.append({
+                            "abbrev": terminal_safe(abbrev),
+                            "workflow": terminal_safe(wf),
+                            "triggered": False,
+                            "status": None,
+                            "conclusion": None,
+                        })
+                    else:
+                        wf_data: dict[str, Any] = {
+                            "abbrev": terminal_safe(abbrev),
+                            "workflow": terminal_safe(wf),
+                            "triggered": True,
+                            "run_id": r.id,
+                            "run_number": r.run_number,
+                            "status": terminal_safe(r.status),
                             "conclusion": (
-                                terminal_safe(j.conclusion) if j.conclusion else None
+                                terminal_safe(r.conclusion) if r.conclusion else None
+                            ),
+                            "head_sha": terminal_safe(r.head_sha[:8]),
+                            "head_branch": terminal_safe(r.head_branch or ""),
+                            "started_at": (
+                                terminal_safe(r.started_at) if r.started_at else None
                             ),
                         }
-                        for j in jobs
-                    ]
-                    wf_data["failed_jobs"] = [
-                        terminal_safe(j.name)
-                        for j in jobs
-                        if j.conclusion == "failure"
-                    ]
-                output_data["workflows"][wf] = wf_data
+                        # Add jobs data if verbose and available
+                        if verbose and r.id in workflow_jobs:
+                            jobs = workflow_jobs[r.id]
+                            wf_data["jobs"] = [
+                                {
+                                    "id": j.id,
+                                    "name": terminal_safe(j.name),
+                                    "status": terminal_safe(j.status),
+                                    "conclusion": (
+                                        terminal_safe(j.conclusion)
+                                        if j.conclusion
+                                        else None
+                                    ),
+                                }
+                                for j in jobs
+                            ]
+                            wf_data["failed_jobs"] = [
+                                terminal_safe(j.name)
+                                for j in jobs
+                                if j.conclusion == "failure"
+                            ]
+                        workflows_list.append(wf_data)
+                output_data["workflows"] = workflows_list
+            else:
+                # Dict format (original behavior)
+                workflows_dict: dict[str, Any] = {}
+                for wf, r in workflow_runs.items():
+                    wf_data = {
+                        "run_id": r.id,
+                        "run_number": r.run_number,
+                        "status": terminal_safe(r.status),
+                        "conclusion": (
+                            terminal_safe(r.conclusion) if r.conclusion else None
+                        ),
+                        "head_sha": terminal_safe(r.head_sha[:8]),
+                        "head_branch": terminal_safe(r.head_branch or ""),
+                        "started_at": (
+                            terminal_safe(r.started_at) if r.started_at else None
+                        ),
+                    }
+                    # Add jobs data if verbose and available
+                    if verbose and r.id in workflow_jobs:
+                        jobs = workflow_jobs[r.id]
+                        wf_data["jobs"] = [
+                            {
+                                "id": j.id,
+                                "name": terminal_safe(j.name),
+                                "status": terminal_safe(j.status),
+                                "conclusion": (
+                                    terminal_safe(j.conclusion)
+                                    if j.conclusion
+                                    else None
+                                ),
+                            }
+                            for j in jobs
+                        ]
+                        wf_data["failed_jobs"] = [
+                            terminal_safe(j.name)
+                            for j in jobs
+                            if j.conclusion == "failure"
+                        ]
+                    workflows_dict[wf] = wf_data
+                output_data["workflows"] = workflows_dict
             click.echo(json.dumps(output_data, indent=2))
 
         elif self.format_type == "tmux":
             # Compact format for tmux status bars: C:✓ B:✓ D:✓
             # For failures with jobs, show hints: M:✗[lint] or M:✗[3]
-            if not workflow_runs:
-                click.echo("CI:?")
-                return overall_status
 
-            parts = []
-            for wf, r in sorted(workflow_runs.items()):
-                # Get abbreviation using pattern matching for better disambiguation
-                abbrev = abbreviate_workflow_name(wf)
+            def _tmux_status(abbrev: str, r: Any | None) -> str:
+                """Format a single workflow status for tmux."""
+                if r is None:
+                    return f"{terminal_safe(abbrev)}:-"
                 conclusion = r.conclusion or r.status
                 if conclusion == "success":
-                    parts.append(f"{abbrev}:✓")
+                    return f"{terminal_safe(abbrev)}:✓"
                 elif conclusion == "failure":
                     # Check if we have job info for failure hints
                     if r.id in workflow_jobs:
@@ -1084,81 +1241,170 @@ class OutputFormat:
                         failed = [j for j in jobs if j.conclusion == "failure"]
                         if len(failed) == 1:
                             hint = abbreviate_job_name(failed[0].name)
-                            parts.append(f"{abbrev}:✗[{terminal_safe(hint)}]")
+                            return f"{terminal_safe(abbrev)}:✗[{terminal_safe(hint)}]"
                         elif len(failed) > 1:
-                            parts.append(f"{abbrev}:✗[{len(failed)}]")
-                        else:
-                            parts.append(f"{abbrev}:✗")
-                    else:
-                        parts.append(f"{abbrev}:✗")
+                            return f"{terminal_safe(abbrev)}:✗[{len(failed)}]"
+                    return f"{terminal_safe(abbrev)}:✗"
                 elif r.status in ("queued", "in_progress", "waiting"):
                     # Animated spinner - frame based on current second
                     spinner = SPINNER_FRAMES[int(time.time()) % len(SPINNER_FRAMES)]
-                    parts.append(f"{abbrev}:{spinner}")
+                    return f"{terminal_safe(abbrev)}:{spinner}"
                 elif conclusion in ("cancelled", "skipped"):
-                    parts.append(f"{abbrev}:○")
+                    return f"{terminal_safe(abbrev)}:○"
                 else:
-                    parts.append(f"{abbrev}:-")
+                    return f"{terminal_safe(abbrev)}:-"
+
+            if show_workflows is not None:
+                # Use explicit abbreviations from show_map
+                parts = [_tmux_status(abbrev, r) for abbrev, _, r in show_workflows]
+            elif not workflow_runs:
+                click.echo("CI:?")
+                return overall_status
+            else:
+                # Auto-generate abbreviations (original behavior)
+                parts = []
+                for wf, r in sorted(workflow_runs.items()):
+                    abbrev = abbreviate_workflow_name(wf)
+                    parts.append(_tmux_status(abbrev, r))
             click.echo(" ".join(parts))
 
         elif self.format_type == "simple":
-            for wf, r in workflow_runs.items():
-                conclusion = r.conclusion or r.status
-                symbol = "✓" if conclusion == "success" else "✗"
-                click.echo(
-                    f"{terminal_safe(wf)}: {symbol} {terminal_safe(conclusion)} "
-                    f"(#{r.run_number})"
-                )
-                # Show failed jobs if verbose
-                if verbose and r.id in workflow_jobs:
-                    failed = [
-                        j for j in workflow_jobs[r.id] if j.conclusion == "failure"
-                    ]
-                    for j in failed:
-                        click.echo(f"  ✗ {terminal_safe(j.name)}")
+            def _simple_symbol(conclusion: str) -> str:
+                """Get symbol for simple format (matches tmux/table consistency)."""
+                if conclusion == "success":
+                    return "✓"
+                elif conclusion == "failure":
+                    return "✗"
+                elif conclusion in ("cancelled", "skipped"):
+                    return "○"
+                else:
+                    return "●"  # Running or other states
+
+            if show_workflows is not None:
+                for _abbrev, wf, r in show_workflows:
+                    if r is None:
+                        click.echo(f"{terminal_safe(wf)}: - not triggered")
+                    else:
+                        conclusion = r.conclusion or r.status
+                        symbol = _simple_symbol(conclusion)
+                        click.echo(
+                            f"{terminal_safe(wf)}: {symbol} "
+                            f"{terminal_safe(conclusion)} (#{r.run_number})"
+                        )
+                        # Show failed jobs if verbose
+                        if verbose and r.id in workflow_jobs:
+                            failed = [
+                                j
+                                for j in workflow_jobs[r.id]
+                                if j.conclusion == "failure"
+                            ]
+                            for j in failed:
+                                click.echo(f"  ✗ {terminal_safe(j.name)}")
+            else:
+                for wf, r in workflow_runs.items():
+                    conclusion = r.conclusion or r.status
+                    symbol = _simple_symbol(conclusion)
+                    click.echo(
+                        f"{terminal_safe(wf)}: {symbol} {terminal_safe(conclusion)} "
+                        f"(#{r.run_number})"
+                    )
+                    # Show failed jobs if verbose
+                    if verbose and r.id in workflow_jobs:
+                        failed = [
+                            j for j in workflow_jobs[r.id] if j.conclusion == "failure"
+                        ]
+                        for j in failed:
+                            click.echo(f"  ✗ {terminal_safe(j.name)}")
 
         elif self.format_type == "csv":
             output = io.StringIO()
             writer = csv.writer(output)
-            if verbose:
-                writer.writerow(
-                    [
-                        "workflow",
-                        "status",
-                        "conclusion",
-                        "run_number",
-                        "head_sha",
-                        "failed_jobs",
-                    ]
-                )
-            else:
-                writer.writerow(
-                    ["workflow", "status", "conclusion", "run_number", "head_sha"]
-                )
-            for wf, r in workflow_runs.items():
-                row = [
-                    csv_safe(wf),
-                    csv_safe(r.status),
-                    csv_safe(r.conclusion or ""),
-                    r.run_number,
-                    csv_safe(r.head_sha[:8] if r.head_sha else ""),
+
+            if show_workflows is not None:
+                # Include abbrev column when using --show
+                base_cols = [
+                    "abbrev", "workflow", "triggered", "status", "conclusion"
                 ]
                 if verbose:
-                    if r.id in workflow_jobs:
-                        failed = [
-                            j for j in workflow_jobs[r.id] if j.conclusion == "failure"
+                    writer.writerow(
+                        base_cols + ["run_number", "head_sha", "failed_jobs"]
+                    )
+                else:
+                    writer.writerow(base_cols + ["run_number", "head_sha"])
+
+                for abbrev, wf, r in show_workflows:
+                    if r is None:
+                        row: list[Any] = [
+                            csv_safe(abbrev),
+                            csv_safe(wf),
+                            "false",
+                            "",
+                            "",
+                            "",
+                            "",
                         ]
-                        row.append(csv_safe(";".join(j.name for j in failed)))
+                        if verbose:
+                            row.append("")
                     else:
-                        row.append("")
-                writer.writerow(row)
+                        row = [
+                            csv_safe(abbrev),
+                            csv_safe(wf),
+                            "true",
+                            csv_safe(r.status),
+                            csv_safe(r.conclusion or ""),
+                            r.run_number,
+                            csv_safe(r.head_sha[:8] if r.head_sha else ""),
+                        ]
+                        if verbose:
+                            if r.id in workflow_jobs:
+                                failed = [
+                                    j
+                                    for j in workflow_jobs[r.id]
+                                    if j.conclusion == "failure"
+                                ]
+                                row.append(csv_safe(";".join(j.name for j in failed)))
+                            else:
+                                row.append("")
+                    writer.writerow(row)
+            else:
+                # Original format without abbrev column
+                if verbose:
+                    writer.writerow(
+                        [
+                            "workflow",
+                            "status",
+                            "conclusion",
+                            "run_number",
+                            "head_sha",
+                            "failed_jobs",
+                        ]
+                    )
+                else:
+                    writer.writerow(
+                        ["workflow", "status", "conclusion", "run_number", "head_sha"]
+                    )
+                for wf, r in workflow_runs.items():
+                    row = [
+                        csv_safe(wf),
+                        csv_safe(r.status),
+                        csv_safe(r.conclusion or ""),
+                        r.run_number,
+                        csv_safe(r.head_sha[:8] if r.head_sha else ""),
+                    ]
+                    if verbose:
+                        if r.id in workflow_jobs:
+                            failed = [
+                                j
+                                for j in workflow_jobs[r.id]
+                                if j.conclusion == "failure"
+                            ]
+                            row.append(csv_safe(";".join(j.name for j in failed)))
+                        else:
+                            row.append("")
+                    writer.writerow(row)
             click.echo(output.getvalue().rstrip())
 
         else:  # table (default)
-            if not workflow_runs:
-                console.print("[dim]No workflow runs found[/dim]")
-                return overall_status
-
             # Show commit SHA if filtering
             if commit_sha:
                 console.print(f"[dim]Commit: {safe_rich(commit_sha[:8])}[/dim]")
@@ -1170,32 +1416,74 @@ class OutputFormat:
                 console.print("[red]Pipeline Status: ❌ Failed[/red]")
             elif overall_status == "running":
                 console.print("[blue]Pipeline Status: ⏳ Running[/blue]")
+            elif overall_status == "pending":
+                console.print("[dim]Pipeline Status: ⊘ No workflows triggered[/dim]")
+            elif overall_status == "no_runs":
+                console.print("[dim]No workflow runs found[/dim]")
+                return overall_status
             console.print()
 
-            for wf, r in workflow_runs.items():
-                conclusion = r.conclusion or r.status
-                if conclusion == "success":
-                    status_str = "[green]✓ success[/green]"
-                elif conclusion == "failure":
-                    status_str = "[red]✗ failure[/red]"
-                elif conclusion in ("cancelled", "skipped"):
-                    status_str = f"[yellow]○ {safe_rich(conclusion)}[/yellow]"
-                else:
-                    status_str = f"[blue]● {safe_rich(r.status)}[/blue]"
+            if show_workflows is not None:
+                for _abbrev, wf, r in show_workflows:
+                    if r is None:
+                        console.print(
+                            f"[bold]{safe_rich(wf)}[/bold]: "
+                            "[dim]- not triggered[/dim]"
+                        )
+                    else:
+                        conclusion = r.conclusion or r.status
+                        if conclusion == "success":
+                            status_str = "[green]✓ success[/green]"
+                        elif conclusion == "failure":
+                            status_str = "[red]✗ failure[/red]"
+                        elif conclusion in ("cancelled", "skipped"):
+                            status_str = f"[yellow]○ {safe_rich(conclusion)}[/yellow]"
+                        else:
+                            status_str = f"[blue]● {safe_rich(r.status)}[/blue]"
 
-                sha = r.head_sha[:8] if r.head_sha else ""
-                console.print(
-                    f"[bold]{safe_rich(wf)}[/bold]: {status_str} "
-                    f"(#{r.run_number}, {safe_rich(sha)})"
-                )
+                        sha = r.head_sha[:8] if r.head_sha else ""
+                        console.print(
+                            f"[bold]{safe_rich(wf)}[/bold]: {status_str} "
+                            f"(#{r.run_number}, {safe_rich(sha)})"
+                        )
 
-                # Show failed jobs if verbose
-                if verbose and r.id in workflow_jobs:
-                    failed = [
-                        j for j in workflow_jobs[r.id] if j.conclusion == "failure"
-                    ]
-                    for j in failed:
-                        console.print(f"  [red]✗ {safe_rich(j.name)}[/red]")
+                        # Show failed jobs if verbose
+                        if verbose and r.id in workflow_jobs:
+                            failed = [
+                                j
+                                for j in workflow_jobs[r.id]
+                                if j.conclusion == "failure"
+                            ]
+                            for j in failed:
+                                console.print(f"  [red]✗ {safe_rich(j.name)}[/red]")
+            else:
+                if not workflow_runs:
+                    return overall_status
+
+                for wf, r in workflow_runs.items():
+                    conclusion = r.conclusion or r.status
+                    if conclusion == "success":
+                        status_str = "[green]✓ success[/green]"
+                    elif conclusion == "failure":
+                        status_str = "[red]✗ failure[/red]"
+                    elif conclusion in ("cancelled", "skipped"):
+                        status_str = f"[yellow]○ {safe_rich(conclusion)}[/yellow]"
+                    else:
+                        status_str = f"[blue]● {safe_rich(r.status)}[/blue]"
+
+                    sha = r.head_sha[:8] if r.head_sha else ""
+                    console.print(
+                        f"[bold]{safe_rich(wf)}[/bold]: {status_str} "
+                        f"(#{r.run_number}, {safe_rich(sha)})"
+                    )
+
+                    # Show failed jobs if verbose
+                    if verbose and r.id in workflow_jobs:
+                        failed = [
+                            j for j in workflow_jobs[r.id] if j.conclusion == "failure"
+                        ]
+                        for j in failed:
+                            console.print(f"  [red]✗ {safe_rich(j.name)}[/red]")
 
         return overall_status
 
@@ -3435,20 +3723,28 @@ def runs() -> None:
     is_flag=True,
     help="Show failed job details (fetches jobs for failed workflows)",
 )
+@click.option(
+    "--show",
+    help=(
+        "Explicit workflow list with custom abbreviations. "
+        "Format: 'A:ci.yml,B:build.yml,D:deploy.yml'. "
+        "Workflows not triggered show '-' status."
+    ),
+)
 @click.pass_context
 def runs_status(
-    ctx: click.Context, repo: str, sha: str | None, verbose: bool
+    ctx: click.Context, repo: str, sha: str | None, verbose: bool, show: str | None
 ) -> None:
     """Show workflow health status (latest run per workflow).
 
     Quick overview of CI/CD health for all workflows.
 
     Exit codes:
-      0 = All workflows succeeded
+      0 = All triggered workflows succeeded (not-triggered are neutral)
       1 = Any workflow failed
       2 = Workflows still running (none failed)
-      3 = No workflows found for commit
-      4 = Error (git HEAD resolution failed, API error)
+      3 = No workflows found/triggered for commit
+      4 = Error (git HEAD, API error, invalid --show format)
 
     Examples:
         teax runs status -r owner/repo
@@ -3457,11 +3753,21 @@ def runs_status(
         teax runs status -r owner/repo --sha abc123
         teax runs status -r owner/repo -o tmux  # For status bars
         teax runs status -r owner/repo --verbose  # Show failed job details
+        teax runs status -r owner/repo --show "C:ci.yml,B:build.yml"
     """
     import subprocess
 
     owner, repo_name = parse_repo(repo)
     output: OutputFormat = ctx.obj["output"]
+
+    # Parse --show specification if provided
+    show_map: list[tuple[str, str]] | None = None
+    if show is not None:
+        try:
+            show_map = parse_show_spec(show)
+        except click.BadParameter as e:
+            err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+            sys.exit(4)
 
     # Resolve HEAD to actual SHA if requested
     head_sha = sha
@@ -3490,26 +3796,37 @@ def runs_status(
             workflow_jobs: dict[int, list[Any]] = {}
             if verbose:
                 # Group runs by workflow, keep latest per workflow
-                seen_workflows: set[str] = set()
+                workflow_runs_map: dict[str, Any] = {}
                 for r in runs_list:
                     wf_name = extract_workflow_name(r.path)
-                    if wf_name not in seen_workflows:
-                        seen_workflows.add(wf_name)
-                        # Fetch jobs only for failed workflows
-                        if r.conclusion == "failure":
-                            try:
-                                workflow_jobs[r.id] = client.list_run_jobs(
-                                    owner, repo_name, r.id
-                                )
-                            except CLI_ERRORS:
-                                # Degrade gracefully - skip job details for this run
-                                pass
+                    if wf_name not in workflow_runs_map:
+                        workflow_runs_map[wf_name] = r
+
+                # Determine which workflows to fetch jobs for
+                if show_map:
+                    # Only fetch for workflows specified in show_map
+                    target_workflows = {wf for _, wf in show_map}
+                else:
+                    # Fetch for all workflows
+                    target_workflows = set(workflow_runs_map.keys())
+
+                for wf_name in target_workflows:
+                    run = workflow_runs_map.get(wf_name)
+                    if run and run.conclusion == "failure":
+                        try:
+                            workflow_jobs[run.id] = client.list_run_jobs(
+                                owner, repo_name, run.id
+                            )
+                        except CLI_ERRORS:
+                            # Degrade gracefully - skip job details for this run
+                            pass
 
             overall_status = output.print_run_status(
                 runs_list,
                 commit_sha=head_sha,
                 verbose=verbose,
                 workflow_jobs=workflow_jobs,
+                show_map=show_map,
             )
 
             # Exit codes based on overall status
@@ -3519,7 +3836,7 @@ def runs_status(
                 sys.exit(1)
             elif overall_status == "running":
                 sys.exit(2)
-            else:  # no_runs
+            else:  # no_runs or pending
                 sys.exit(3)
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")

@@ -491,6 +491,183 @@ def test_parse_issue_spec_empty():
         parse_issue_spec("")
 
 
+# --- parse_show_spec Tests ---
+
+
+def test_parse_show_spec_basic():
+    """Test basic parsing of --show specification."""
+    from teax.cli import parse_show_spec
+
+    result = parse_show_spec("C:ci.yml,B:build.yml")
+    assert result == [("C", "ci.yml"), ("B", "build.yml")]
+
+
+def test_parse_show_spec_single_workflow():
+    """Test parsing single workflow."""
+    from teax.cli import parse_show_spec
+
+    result = parse_show_spec("C:ci.yml")
+    assert result == [("C", "ci.yml")]
+
+
+def test_parse_show_spec_lowercase_abbreviation():
+    """Test that lowercase abbreviations are uppercased."""
+    from teax.cli import parse_show_spec
+
+    result = parse_show_spec("c:ci.yml,b:build.yml")
+    assert result == [("C", "ci.yml"), ("B", "build.yml")]
+
+
+def test_parse_show_spec_numeric_abbreviation():
+    """Test numeric abbreviation."""
+    from teax.cli import parse_show_spec
+
+    result = parse_show_spec("1:ci.yml,2:build.yml")
+    assert result == [("1", "ci.yml"), ("2", "build.yml")]
+
+
+def test_parse_show_spec_yaml_extension():
+    """Test .yaml extension is accepted."""
+    from teax.cli import parse_show_spec
+
+    result = parse_show_spec("C:ci.yaml")
+    assert result == [("C", "ci.yaml")]
+
+
+def test_parse_show_spec_with_spaces():
+    """Test whitespace is handled."""
+    from teax.cli import parse_show_spec
+
+    result = parse_show_spec("C: ci.yml , B: build.yml")
+    assert result == [("C", "ci.yml"), ("B", "build.yml")]
+
+
+def test_parse_show_spec_colon_in_workflow():
+    """Test colon in workflow name (split on first colon only)."""
+    from teax.cli import parse_show_spec
+
+    result = parse_show_spec("C:path:to:workflow.yml")
+    assert result == [("C", "path:to:workflow.yml")]
+
+
+def test_parse_show_spec_preserves_order():
+    """Test that order is preserved."""
+    from teax.cli import parse_show_spec
+
+    result = parse_show_spec("D:deploy.yml,C:ci.yml,B:build.yml")
+    assert result == [("D", "deploy.yml"), ("C", "ci.yml"), ("B", "build.yml")]
+
+
+def test_parse_show_spec_empty():
+    """Test error on empty spec."""
+    from click import BadParameter
+
+    from teax.cli import parse_show_spec
+
+    with pytest.raises(BadParameter, match="Empty --show specification"):
+        parse_show_spec("")
+
+
+def test_parse_show_spec_trailing_comma():
+    """Test trailing comma is handled."""
+    from teax.cli import parse_show_spec
+
+    result = parse_show_spec("C:ci.yml,")
+    assert result == [("C", "ci.yml")]
+
+
+def test_parse_show_spec_multi_char_abbreviation():
+    """Test error on multi-character abbreviation."""
+    from click import BadParameter
+
+    from teax.cli import parse_show_spec
+
+    with pytest.raises(BadParameter, match="single ASCII alphanumeric"):
+        parse_show_spec("CI:ci.yml")
+
+
+def test_parse_show_spec_missing_colon():
+    """Test error on missing colon."""
+    from click import BadParameter
+
+    from teax.cli import parse_show_spec
+
+    with pytest.raises(BadParameter, match="expected 'A:workflow.yml'"):
+        parse_show_spec("ci.yml")
+
+
+def test_parse_show_spec_wrong_extension():
+    """Test error on wrong file extension."""
+    from click import BadParameter
+
+    from teax.cli import parse_show_spec
+
+    with pytest.raises(BadParameter, match="must end in .yml or .yaml"):
+        parse_show_spec("C:ci.txt")
+
+
+def test_parse_show_spec_duplicate_abbreviation():
+    """Test error on duplicate abbreviation."""
+    from click import BadParameter
+
+    from teax.cli import parse_show_spec
+
+    with pytest.raises(BadParameter, match="Duplicate abbreviation"):
+        parse_show_spec("C:ci.yml,C:build.yml")
+
+
+def test_parse_show_spec_duplicate_workflow():
+    """Test error on duplicate workflow."""
+    from click import BadParameter
+
+    from teax.cli import parse_show_spec
+
+    with pytest.raises(BadParameter, match="Duplicate workflow"):
+        parse_show_spec("C:ci.yml,B:ci.yml")
+
+
+def test_parse_show_spec_special_char_abbreviation():
+    """Test error on non-alphanumeric abbreviation."""
+    from click import BadParameter
+
+    from teax.cli import parse_show_spec
+
+    with pytest.raises(BadParameter, match="single ASCII alphanumeric"):
+        parse_show_spec("!:ci.yml")
+
+
+def test_parse_show_spec_unicode_abbreviation():
+    """Test error on Unicode abbreviation (would expand on uppercase)."""
+    from click import BadParameter
+
+    from teax.cli import parse_show_spec
+
+    # ß uppercases to "SS" which would break single-char invariant
+    with pytest.raises(BadParameter, match="single ASCII alphanumeric"):
+        parse_show_spec("ß:ci.yml")
+
+
+def test_parse_show_spec_case_insensitive_duplicate():
+    """Test error on case-insensitive duplicate abbreviation."""
+    from click import BadParameter
+
+    from teax.cli import parse_show_spec
+
+    # c and C should be treated as duplicates
+    with pytest.raises(BadParameter, match="Duplicate abbreviation"):
+        parse_show_spec("c:ci.yml,C:build.yml")
+
+
+def test_parse_show_spec_whitespace_only():
+    """Test error on whitespace-only spec."""
+    from click import BadParameter
+
+    from teax.cli import parse_show_spec
+
+    with pytest.raises(BadParameter, match="Empty --show specification"):
+        parse_show_spec("   ")
+
+
 # --- Epic Command Tests ---
 
 
@@ -7531,3 +7708,659 @@ def test_runs_status_verbose_degrades_gracefully(runner: CliRunner):
         # The run shows up but without job details
         assert result.exit_code == 1  # failure exit code from run conclusion
         assert "ci.yml" in result.output or "CI" in result.output
+
+
+# --- runs status --show Integration Tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_show_matching_workflow(runner: CliRunner):
+    """Test --show with a workflow that exists in the API response."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["-o", "tmux", "runs", "status", "-r", "owner/repo", "--show", "C:ci.yml"],
+        )
+
+        assert result.exit_code == 0
+        assert "C:✓" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_show_workflow_not_triggered(runner: CliRunner):
+    """Test --show with a workflow not in the API response (not triggered)."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Request deploy.yml which doesn't exist in the response
+        result = runner.invoke(
+            main,
+            [
+                "-o", "tmux", "runs", "status",
+                "-r", "owner/repo", "--show", "D:deploy.yml",
+            ],
+        )
+
+        # Should exit with code 3 (pending/no_runs for specified workflows)
+        assert result.exit_code == 3
+        assert "D:-" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_show_mixed_status(runner: CliRunner):
+    """Test --show with one existing and one missing workflow."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "-o", "tmux", "runs", "status", "-r", "owner/repo",
+                "--show", "C:ci.yml,D:deploy.yml"
+            ],
+        )
+
+        # Should succeed because ci.yml passed
+        # (deploy.yml not triggered doesn't count as failure)
+        assert result.exit_code == 0
+        assert "C:✓" in result.output
+        assert "D:-" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_show_failure_overrides_not_triggered(runner: CliRunner):
+    """Test --show with a failure and a not-triggered workflow."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "-o", "tmux", "runs", "status", "-r", "owner/repo",
+                "--show", "C:ci.yml,D:deploy.yml"
+            ],
+        )
+
+        # Should fail (exit code 1) because ci.yml failed
+        assert result.exit_code == 1
+        assert "C:✗" in result.output
+        assert "D:-" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_show_running_workflow(runner: CliRunner):
+    """Test --show with a running workflow."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "in_progress",
+                            "conclusion": None,
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["-o", "tmux", "runs", "status", "-r", "owner/repo", "--show", "C:ci.yml"],
+        )
+
+        # Should return exit code 2 for running
+        assert result.exit_code == 2
+        # Spinner character will vary, just check C: prefix is there
+        assert "C:" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_show_json_array_format(runner: CliRunner):
+    """Test --show with JSON output produces array format."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "2024-01-01T10:00:00Z",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "-o", "json", "runs", "status", "-r", "owner/repo",
+                "--show", "C:ci.yml,D:deploy.yml"
+            ],
+        )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+
+        # With --show, workflows should be an array
+        assert isinstance(data["workflows"], list)
+        assert len(data["workflows"]) == 2
+
+        # Check first workflow (triggered)
+        ci_wf = data["workflows"][0]
+        assert ci_wf["abbrev"] == "C"
+        assert ci_wf["workflow"] == "ci.yml"
+        assert ci_wf["triggered"] is True
+        assert ci_wf["conclusion"] == "success"
+
+        # Check second workflow (not triggered)
+        deploy_wf = data["workflows"][1]
+        assert deploy_wf["abbrev"] == "D"
+        assert deploy_wf["workflow"] == "deploy.yml"
+        assert deploy_wf["triggered"] is False
+        assert deploy_wf["status"] is None
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_show_preserves_order(runner: CliRunner):
+    """Test --show preserves the order specified in the flag."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 41,
+                            "run_number": 14,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "Build",
+                            "path": ".gitea/workflows/build.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Request in order: ci, build (opposite of API order)
+        result = runner.invoke(
+            main,
+            [
+                "-o", "json", "runs", "status", "-r", "owner/repo",
+                "--show", "C:ci.yml,B:build.yml"
+            ],
+        )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+
+        # Order should match --show specification, not API response
+        assert data["workflows"][0]["workflow"] == "ci.yml"
+        assert data["workflows"][1]["workflow"] == "build.yml"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_show_invalid_format(runner: CliRunner):
+    """Test --show with invalid format shows error."""
+    result = runner.invoke(
+        main,
+        ["runs", "status", "-r", "owner/repo", "--show", "invalid"],
+    )
+
+    assert result.exit_code == 4
+    assert "expected 'A:workflow.yml'" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_show_csv_includes_abbrev(runner: CliRunner):
+    """Test --show with CSV output includes abbrev column."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "-o", "csv", "runs", "status", "-r", "owner/repo",
+                "--show", "C:ci.yml,D:deploy.yml"
+            ],
+        )
+
+        assert result.exit_code == 0
+        lines = result.output.strip().split("\n")
+
+        # Check header includes abbrev and triggered
+        assert "abbrev" in lines[0]
+        assert "triggered" in lines[0]
+
+        # Check data rows
+        assert lines[1].startswith("C,ci.yml,true")
+        assert lines[2].startswith("D,deploy.yml,false")
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_show_empty_string_errors(runner: CliRunner):
+    """Test --show '' should error, not silently behave like no --show."""
+    result = runner.invoke(
+        main,
+        ["runs", "status", "-r", "owner/repo", "--show", ""],
+    )
+
+    assert result.exit_code == 4
+    assert "Empty --show specification" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_show_with_verbose(runner: CliRunner):
+    """Test --show with --verbose filters job fetching correctly."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                        {
+                            "id": 43,
+                            "run_number": 16,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "Build",
+                            "path": ".gitea/workflows/build.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        # Mock jobs endpoint for ci.yml only (build.yml not in show_map)
+        jobs_route = respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs/42/jobs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "jobs": [
+                        {
+                            "id": 101,
+                            "name": "lint",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "run_id": 42,
+                            "started_at": "",
+                            "completed_at": "",
+                            "runner_id": 1,
+                            "runner_name": "runner",
+                            "steps": [],
+                        }
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "-o", "tmux", "runs", "status", "-r", "owner/repo",
+                "--show", "C:ci.yml", "--verbose",
+            ],
+        )
+
+        assert result.exit_code == 1
+        # Should show failure with job hint
+        assert "C:✗" in result.output
+        assert jobs_route.called
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_show_table_format(runner: CliRunner):
+    """Test --show with default table format."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["runs", "status", "-r", "owner/repo", "--show", "C:ci.yml,D:deploy.yml"],
+        )
+
+        assert result.exit_code == 0
+        # Table format shows workflow names and "not triggered"
+        assert "ci.yml" in result.output
+        assert "deploy.yml" in result.output
+        assert "not triggered" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_runs_status_show_simple_format(runner: CliRunner):
+    """Test --show with simple output format."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "workflow_runs": [
+                        {
+                            "id": 42,
+                            "run_number": 15,
+                            "run_attempt": 1,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "head_sha": "abc12345",
+                            "head_branch": "main",
+                            "event": "push",
+                            "display_title": "CI",
+                            "path": ".gitea/workflows/ci.yml",
+                            "started_at": "",
+                            "completed_at": "",
+                            "html_url": "",
+                            "url": "",
+                            "repository_id": 1,
+                        },
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "-o", "simple", "runs", "status", "-r", "owner/repo",
+                "--show", "C:ci.yml,D:deploy.yml",
+            ],
+        )
+
+        assert result.exit_code == 0
+        # Simple format shows workflow status
+        assert "ci.yml: ✓ success" in result.output
+        assert "deploy.yml: - not triggered" in result.output
