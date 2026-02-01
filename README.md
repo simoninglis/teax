@@ -322,6 +322,10 @@ just run deps list 25 --repo owner/repo
 
 ¹ tea's issue view breaks with `--fields` or `--comments` flags, returning a list instead of issue details.
 
+## See Also
+
+- [Blog: Why I built teax](https://simoninglis.com/posts/teax)
+
 ## License
 
 MIT - see [LICENSE](LICENSE) for details.
