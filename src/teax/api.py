@@ -213,6 +213,73 @@ class GiteaClient:
         response.raise_for_status()
         return Issue.model_validate(response.json())
 
+    def list_issues(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        state: str = "open",
+        labels: list[str] | None = None,
+        milestone: str | None = None,
+        assignee: str | None = None,
+        max_pages: int = 100,
+    ) -> list[Issue]:
+        """List issues in a repository.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            state: Filter by state: 'open', 'closed', or 'all' (default: 'open')
+            labels: Filter by labels (comma-separated in API, list here)
+            milestone: Filter by milestone name
+            assignee: Filter by assignee username
+            max_pages: Maximum pages to fetch (default 100, prevents DoS)
+
+        Returns:
+            List of issues
+        """
+        issues: list[Issue] = []
+        page = 1
+        limit = 50
+        truncated = False
+
+        while page <= max_pages:
+            params: dict[str, Any] = {"page": page, "limit": limit, "state": state}
+            if labels:
+                params["labels"] = ",".join(labels)
+            if milestone:
+                params["milestone"] = milestone
+            if assignee:
+                params["assignee"] = assignee
+
+            response = self._client.get(
+                f"repos/{_seg(owner)}/{_seg(repo)}/issues",
+                params=params,
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if not data:
+                break
+
+            issues.extend(Issue.model_validate(item) for item in data)
+
+            if len(data) < limit:
+                break
+            page += 1
+        else:
+            truncated = True
+
+        if truncated:
+            warnings.warn(
+                f"Issues list truncated at {max_pages} pages "
+                f"({len(issues)} items). Results may be incomplete.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        return issues
+
     def list_comments(
         self, owner: str, repo: str, index: int, *, max_pages: int = 100
     ) -> list[Comment]:
@@ -584,6 +651,57 @@ class GiteaClient:
         if cache_key in self._label_cache:
             self._label_cache[cache_key][label.name] = label.id
         return label
+
+    def ensure_label(
+        self,
+        owner: str,
+        repo: str,
+        name: str,
+        color: str = "1d76db",
+        description: str = "",
+    ) -> tuple[Label, bool]:
+        """Ensure a label exists (idempotent create).
+
+        Creates the label if it doesn't exist, returns existing label if it does.
+        Handles race conditions (409 Conflict) gracefully.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            name: Label name
+            color: Hex color code without # (default: blue)
+            description: Label description (optional)
+
+        Returns:
+            Tuple of (Label, was_created) where was_created is True if label
+            was created, False if it already existed
+        """
+        cache_key = f"{owner}/{repo}"
+
+        # Check cache first
+        if cache_key in self._label_cache:
+            if name in self._label_cache[cache_key]:
+                # Label exists in cache - fetch full details
+                labels = self.list_repo_labels(owner, repo)
+                for label in labels:
+                    if label.name == name:
+                        return (label, False)
+
+        # Try to create - may fail with 409 if already exists
+        try:
+            label = self.create_label(owner, repo, name, color, description)
+            return (label, True)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 409:
+                # Label already exists (race condition or not in cache)
+                # Refresh cache and return existing label
+                labels = self.list_repo_labels(owner, repo)
+                for label in labels:
+                    if label.name == name:
+                        return (label, False)
+                # Should not happen - 409 means it exists
+                raise ValueError(f"Label '{name}' conflict but not found") from None
+            raise
 
     def list_repo_labels(
         self, owner: str, repo: str, *, max_pages: int = 100

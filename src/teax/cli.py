@@ -1,6 +1,7 @@
 """teax CLI - Gitea companion for tea feature gaps."""
 
 import csv
+import fnmatch
 import io
 import json
 import os
@@ -351,6 +352,104 @@ def parse_show_spec(show: str) -> list[tuple[str, str]]:
     return result
 
 
+def compute_issue_fields(issue: Any) -> dict[str, Any]:
+    """Derive computed fields from issue labels for sprint management.
+
+    Extracts:
+    - sprint_number: int | None from "sprint/N" label
+    - is_ready: bool from "ready" label presence
+    - is_bug: bool from "type/bug" or "bug" label presence
+    - effort: str | None from "effort/XS", "effort/S", etc.
+    - priority: str | None from "prio/p0", "prio/p1", etc. or "priority/..."
+
+    Args:
+        issue: Issue object with labels attribute
+
+    Returns:
+        Dict with computed fields
+    """
+    labels = [lb.name.lower() for lb in (issue.labels or [])]
+    original_labels = [lb.name for lb in (issue.labels or [])]
+
+    result: dict[str, Any] = {
+        "sprint_number": None,
+        "is_ready": False,
+        "is_bug": False,
+        "effort": None,
+        "priority": None,
+    }
+
+    for label in labels:
+        # Sprint detection: sprint/1, sprint/28, etc. (only valid sprint numbers >= 1)
+        if label.startswith("sprint/"):
+            try:
+                sprint_num = int(label.split("/")[1])
+                if sprint_num >= 1:
+                    result["sprint_number"] = sprint_num
+            except (ValueError, IndexError):
+                pass
+
+        # Ready detection
+        if label == "ready":
+            result["is_ready"] = True
+
+        # Bug detection: type/bug or bug
+        if label in ("type/bug", "bug"):
+            result["is_bug"] = True
+
+        # Effort detection: effort/XS, effort/S, effort/M, etc.
+        if label.startswith("effort/"):
+            # Preserve original case
+            for orig in original_labels:
+                if orig.lower() == label:
+                    result["effort"] = orig.split("/")[1]
+                    break
+
+        # Priority detection: prio/p0, prio/p1, priority/high, etc.
+        if label.startswith(("prio/", "priority/")):
+            for orig in original_labels:
+                if orig.lower() == label:
+                    result["priority"] = orig.split("/")[1]
+                    break
+
+    return result
+
+
+def filter_issues_by_no_labels(
+    issues: list[Any], patterns: list[str]
+) -> list[Any]:
+    """Exclude issues where any label matches any glob pattern.
+
+    Uses case-insensitive matching for consistent behavior across platforms.
+
+    Args:
+        issues: List of Issue objects
+        patterns: List of fnmatch glob patterns (e.g., "sprint/*", "epic/*")
+
+    Returns:
+        Filtered list excluding issues with matching labels
+    """
+    if not patterns:
+        return issues
+
+    # Normalize patterns to lowercase for case-insensitive matching
+    lower_patterns = [p.lower() for p in patterns]
+
+    result = []
+    for issue in issues:
+        labels = [lb.name.lower() for lb in (issue.labels or [])]
+        # Check if any label matches any exclusion pattern
+        # Use fnmatchcase for platform-independent behavior
+        has_excluded_label = any(
+            fnmatch.fnmatchcase(label, pattern)
+            for label in labels
+            for pattern in lower_patterns
+        )
+        if not has_excluded_label:
+            result.append(issue)
+    return result
+
+
 class OutputFormat:
     """Output formatting helpers."""
 
@@ -451,7 +550,7 @@ class OutputFormat:
                     {
                         "number": issue.number,
                         "title": terminal_safe(issue.title),
-                        "state": issue.state,
+                        "state": terminal_safe(issue.state),
                         "labels": [
                             terminal_safe(lb.name) for lb in (issue.labels or [])
                         ],
@@ -554,6 +653,143 @@ class OutputFormat:
                     str(num), f"[red]ERROR: {safe_rich(msg)}[/red]", "", "", "", "", ""
                 )
 
+            console.print(table)
+
+    def print_issue_list(
+        self,
+        issues: list[Any],
+        *,
+        include_computed: bool = False,
+    ) -> None:
+        """Print issue list for `issue list` command.
+
+        Args:
+            issues: List of Issue objects to display
+            include_computed: If True, include computed fields (sprint_number, etc.)
+        """
+        if self.format_type == "json":
+            output_data = []
+            for issue in issues:
+                item: dict[str, Any] = {
+                    "number": issue.number,
+                    "title": terminal_safe(issue.title),
+                    "state": terminal_safe(issue.state),
+                    "labels": [
+                        terminal_safe(lb.name) for lb in (issue.labels or [])
+                    ],
+                    "assignees": [
+                        terminal_safe(a.login) for a in (issue.assignees or [])
+                    ],
+                    "milestone": (
+                        terminal_safe(issue.milestone.title)
+                        if issue.milestone
+                        else None
+                    ),
+                }
+                if include_computed:
+                    computed = compute_issue_fields(issue)
+                    # Sanitize string fields to prevent terminal injection
+                    item.update({
+                        "sprint_number": computed["sprint_number"],
+                        "is_ready": computed["is_ready"],
+                        "is_bug": computed["is_bug"],
+                        "effort": (
+                            terminal_safe(computed["effort"])
+                            if computed["effort"]
+                            else None
+                        ),
+                        "priority": (
+                            terminal_safe(computed["priority"])
+                            if computed["priority"]
+                            else None
+                        ),
+                    })
+                output_data.append(item)
+            click.echo(json.dumps(output_data, indent=2))
+
+        elif self.format_type == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            headers = ["number", "title", "state", "labels", "assignees", "milestone"]
+            if include_computed:
+                headers.extend(
+                    ["sprint_number", "is_ready", "is_bug", "effort", "priority"]
+                )
+            writer.writerow(headers)
+            for issue in issues:
+                labels_str = ",".join(csv_safe(lb.name) for lb in (issue.labels or []))
+                assignees_str = ",".join(
+                    csv_safe(a.login) for a in (issue.assignees or [])
+                )
+                milestone_str = (
+                    csv_safe(issue.milestone.title) if issue.milestone else ""
+                )
+                row: list[Any] = [
+                    issue.number,
+                    csv_safe(issue.title),
+                    csv_safe(issue.state),
+                    labels_str,
+                    assignees_str,
+                    milestone_str,
+                ]
+                if include_computed:
+                    computed = compute_issue_fields(issue)
+                    row.extend([
+                        computed["sprint_number"] or "",
+                        computed["is_ready"],
+                        computed["is_bug"],
+                        csv_safe(computed["effort"] or ""),
+                        csv_safe(computed["priority"] or ""),
+                    ])
+                writer.writerow(row)
+            click.echo(output.getvalue().rstrip())
+
+        elif self.format_type == "simple":
+            for issue in issues:
+                click.echo(f"#{issue.number} {terminal_safe(issue.title)}")
+
+        else:  # table (default)
+            if not issues:
+                console.print("[dim]No issues found[/dim]")
+                return
+
+            table = Table(title="Issues")
+            table.add_column("#", style="cyan")
+            table.add_column("Title")
+            table.add_column("State")
+            table.add_column("Labels", style="dim")
+            table.add_column("Assignee", style="dim")
+            if include_computed:
+                table.add_column("Sprint", style="cyan")
+                table.add_column("Priority", style="yellow")
+
+            for issue in issues:
+                state_style = "green" if issue.state == "open" else "red"
+                labels_str = ", ".join(
+                    safe_rich(lb.name) for lb in (issue.labels or [])
+                )
+                assignees = issue.assignees or []
+                assignee_str = safe_rich(assignees[0].login) if assignees else ""
+
+                row = [
+                    str(issue.number),
+                    safe_rich(issue.title),
+                    f"[{state_style}]{safe_rich(issue.state)}[/{state_style}]",
+                    labels_str,
+                    assignee_str,
+                ]
+
+                if include_computed:
+                    computed = compute_issue_fields(issue)
+                    sprint_str = (
+                        str(computed["sprint_number"])
+                        if computed["sprint_number"]
+                        else ""
+                    )
+                    priority_str = safe_rich(computed["priority"] or "")
+                    row.extend([sprint_str, priority_str])
+
+                table.add_row(*row)
             console.print(table)
 
     def print_runners(self, runners: list[Any]) -> None:
@@ -2009,6 +2245,77 @@ def issue_labels(ctx: click.Context, issue_num: int, repo: str) -> None:
         sys.exit(1)
 
 
+@issue.command("list")
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option(
+    "--state",
+    default="open",
+    type=click.Choice(["open", "closed", "all"]),
+    help="Filter by state (default: open)",
+)
+@click.option(
+    "--label", "-l", "labels", multiple=True, help="Filter by label (can repeat)"
+)
+@click.option(
+    "--no-label",
+    "no_labels",
+    multiple=True,
+    help="Exclude by glob pattern (e.g., 'sprint/*')",
+)
+@click.option("--assignee", help="Filter by assignee username")
+@click.option("--milestone", help="Filter by milestone name")
+@click.option(
+    "--computed",
+    is_flag=True,
+    help="Include computed fields (table: Sprint/Priority; JSON/CSV: all fields)",
+)
+@click.pass_context
+def issue_list(
+    ctx: click.Context,
+    repo: str,
+    state: str,
+    labels: tuple[str, ...],
+    no_labels: tuple[str, ...],
+    assignee: str | None,
+    milestone: str | None,
+    computed: bool,
+) -> None:
+    """List issues in a repository.
+
+    Supports filtering by state, labels, assignee, and milestone.
+    Use --no-label to exclude issues with matching labels (glob patterns supported).
+
+    Examples:
+        teax issue list --repo owner/repo
+        teax issue list --repo owner/repo --state all
+        teax issue list --repo owner/repo --label ready
+        teax issue list --repo owner/repo --no-label "sprint/*"
+        teax issue list --repo owner/repo --label ready --no-label "sprint/*" -o json
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            issues = client.list_issues(
+                owner,
+                repo_name,
+                state=state,
+                labels=list(labels) if labels else None,
+                milestone=milestone,
+                assignee=assignee,
+            )
+
+            # Apply client-side --no-label filtering
+            if no_labels:
+                issues = filter_issues_by_no_labels(issues, list(no_labels))
+
+            output.print_issue_list(issues, include_computed=computed)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
 @issue.command("bulk")
 @click.argument("issues", type=str)
 @click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
@@ -2018,6 +2325,7 @@ def issue_labels(ctx: click.Context, issue_num: int, repo: str) -> None:
 @click.option("--assignees", help="Set assignees (comma-separated usernames)")
 @click.option("--milestone", help="Set milestone (ID, empty to clear)")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+@click.option("--dry-run", is_flag=True, help="Preview changes without executing")
 @click.pass_context
 def issue_bulk(
     ctx: click.Context,
@@ -2029,6 +2337,7 @@ def issue_bulk(
     assignees: str | None,
     milestone: str | None,
     yes: bool,
+    dry_run: bool,
 ) -> None:
     """Apply changes to multiple issues.
 
@@ -2042,6 +2351,7 @@ def issue_bulk(
         teax issue bulk 17-23 --repo owner/repo --add-labels "epic/foo"
         teax issue bulk "17,18,25-30" --repo owner/repo --assignees "user1"
         teax issue bulk 17-20 --repo owner/repo --milestone 5
+        teax issue bulk 17-20 --repo owner/repo --add-labels "ready" --dry-run
     """
     owner, repo_name = parse_repo(repo)
     issue_nums = parse_issue_spec(issues)
@@ -2078,6 +2388,73 @@ def issue_bulk(
     for change in changes:
         console.print(f"  • {safe_rich(change)}")
     console.print()
+
+    # Dry-run mode: show preview with current vs after state
+    if dry_run:
+        console.print("[yellow]DRY RUN - no changes made[/yellow]\n")
+
+        try:
+            with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+                # Build preview table
+                table = Table(title="Preview: Label Changes")
+                table.add_column("#", style="cyan")
+                table.add_column("Current Labels")
+                table.add_column("After Labels")
+
+                for issue_num in issue_nums:
+                    try:
+                        issue = client.get_issue(owner, repo_name, issue_num)
+                        current_labels = {
+                            lb.name for lb in (issue.labels or [])
+                        }
+
+                        # Calculate expected labels after changes
+                        after_labels = current_labels.copy()
+                        if set_labels is not None:
+                            after_labels = {
+                                s.strip() for s in set_labels.split(",") if s.strip()
+                            }
+                        if add_labels is not None:
+                            after_labels.update(
+                                s.strip() for s in add_labels.split(",") if s.strip()
+                            )
+                        if rm_labels is not None:
+                            after_labels -= {
+                                s.strip() for s in rm_labels.split(",") if s.strip()
+                            }
+
+                        # Show changes
+                        current_str = ", ".join(sorted(current_labels)) or "(none)"
+                        after_str = ", ".join(sorted(after_labels)) or "(none)"
+
+                        # Highlight if changed
+                        if current_labels != after_labels:
+                            table.add_row(
+                                str(issue_num),
+                                safe_rich(current_str),
+                                f"[green]{safe_rich(after_str)}[/green]",
+                            )
+                        else:
+                            table.add_row(
+                                str(issue_num),
+                                safe_rich(current_str),
+                                f"[dim]{safe_rich(after_str)}[/dim] (no change)",
+                            )
+                    except CLI_ERRORS as e:
+                        table.add_row(
+                            str(issue_num),
+                            f"[red]Error: {safe_rich(str(e))}[/red]",
+                            "",
+                        )
+
+                console.print(table)
+                console.print(
+                    "\n[dim]To execute: remove --dry-run and add --yes flag[/dim]"
+                )
+        except CLI_ERRORS as e:
+            err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+            sys.exit(1)
+        return
 
     # Confirm unless --yes
     if not yes:
@@ -2542,6 +2919,356 @@ def epic_add(
             console.print()
             count = len(new_children)
             console.print(f"[bold]Added {count} issues to epic #{epic_issue}[/bold]")
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+# --- Label Group ---
+
+
+@main.group()
+def label() -> None:
+    """Label management commands."""
+    pass
+
+
+@label.command("ensure")
+@click.argument("name")
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--color", default="1d76db", help="Hex color (default: blue)")
+@click.option("--description", default="", help="Label description")
+@click.pass_context
+def label_ensure(
+    ctx: click.Context,
+    name: str,
+    repo: str,
+    color: str,
+    description: str,
+) -> None:
+    """Ensure a label exists (idempotent create).
+
+    Creates the label if it doesn't exist, otherwise does nothing.
+    Useful for sprint setup scripts.
+
+    Examples:
+        teax label ensure sprint/28 --repo owner/repo
+        teax label ensure ready --repo owner/repo --color 00ff00
+        teax label ensure "type/bug" -r owner/repo --description "Bug report"
+    """
+    # Validate hex color format
+    if not re.match(r"^[0-9a-fA-F]{6}$", color):
+        safe_color = terminal_safe(color)
+        raise click.BadParameter(
+            f"Color must be a 6-character hex code (e.g., 'ff0000'), got: {safe_color}"
+        )
+
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            label_obj, was_created = client.ensure_label(
+                owner, repo_name, name, color, description
+            )
+
+            if was_created:
+                output.print_mutation("created", name)
+            else:
+                output.print_mutation("exists", name)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+# --- Sprint Group ---
+
+
+@main.group()
+def sprint() -> None:
+    """Sprint management commands."""
+    pass
+
+
+@sprint.command("status")
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.pass_context
+def sprint_status(ctx: click.Context, repo: str) -> None:
+    """Show sprint overview.
+
+    Displays the current sprint (highest sprint/N with open issues),
+    counts of open/closed issues, ready queue size, and backlog size.
+
+    Examples:
+        teax sprint status --repo owner/repo
+    """
+    owner, repo_name = parse_repo(repo)
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            # Fetch all issues (both open and closed for counting)
+            all_issues = client.list_issues(owner, repo_name, state="all")
+
+            # Group issues by sprint number
+            sprint_issues: dict[int, list[Any]] = {}
+            ready_queue: list[Any] = []
+            backlog: list[Any] = []
+
+            for issue in all_issues:
+                computed = compute_issue_fields(issue)
+                sprint_num = computed["sprint_number"]
+
+                if sprint_num is not None:
+                    if sprint_num not in sprint_issues:
+                        sprint_issues[sprint_num] = []
+                    sprint_issues[sprint_num].append(issue)
+                elif computed["is_ready"] and issue.state == "open":
+                    ready_queue.append(issue)
+                elif issue.state == "open":
+                    backlog.append(issue)
+
+            # Find current sprint (highest sprint with open issues)
+            current_sprint = None
+            for snum in sorted(sprint_issues.keys(), reverse=True):
+                issues_in_sprint = sprint_issues[snum]
+                if any(i.state == "open" for i in issues_in_sprint):
+                    current_sprint = snum
+                    break
+
+            # Display output
+            esc_repo = safe_rich(repo)
+            console.print(f"\n[bold]Sprint Status: {esc_repo}[/bold]")
+            console.print("━" * 30)
+
+            if current_sprint is not None:
+                issues_in_current = sprint_issues[current_sprint]
+                open_count = sum(1 for i in issues_in_current if i.state == "open")
+                closed_count = sum(1 for i in issues_in_current if i.state == "closed")
+                console.print(f"\nCurrent Sprint: [cyan]{current_sprint}[/cyan]")
+                console.print(
+                    f"  Open: [yellow]{open_count}[/yellow] | "
+                    f"Closed: [green]{closed_count}[/green]"
+                )
+            else:
+                console.print("\n[dim]No active sprint found[/dim]")
+
+            console.print(f"\nReady Queue: [cyan]{len(ready_queue)}[/cyan] issues")
+            console.print(f"Backlog: [dim]{len(backlog)}[/dim] issues")
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@sprint.command("ready")
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.pass_context
+def sprint_ready(ctx: click.Context, repo: str) -> None:
+    """List issues in the ready queue.
+
+    Shows open issues with the 'ready' label that are not yet assigned
+    to a sprint (no sprint/* label).
+
+    Examples:
+        teax sprint ready --repo owner/repo
+        teax sprint ready --repo owner/repo -o json
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            # Fetch issues with ready label
+            issues = client.list_issues(
+                owner, repo_name, state="open", labels=["ready"]
+            )
+
+            # Filter out issues already in a sprint
+            ready_issues = filter_issues_by_no_labels(issues, ["sprint/*"])
+
+            output.print_issue_list(ready_issues, include_computed=True)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@sprint.command("issues")
+@click.argument("sprint_num", type=int)
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option(
+    "--state",
+    default="all",
+    type=click.Choice(["open", "closed", "all"]),
+    help="Filter by state (default: all)",
+)
+@click.pass_context
+def sprint_issues(
+    ctx: click.Context, sprint_num: int, repo: str, state: str
+) -> None:
+    """List issues in a specific sprint.
+
+    Shows all issues with the sprint/N label.
+
+    Examples:
+        teax sprint issues 28 --repo owner/repo
+        teax sprint issues 28 --repo owner/repo --state open
+    """
+    if sprint_num < 1:
+        raise click.BadParameter(
+            f"Sprint number must be >= 1, got: {sprint_num}"
+        )
+
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            issues = client.list_issues(
+                owner, repo_name, state=state, labels=[f"sprint/{sprint_num}"]
+            )
+
+            output.print_issue_list(issues, include_computed=True)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@sprint.command("plan")
+@click.argument("sprint_num", type=int)
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option(
+    "--issues",
+    "issue_spec",
+    help="Issue numbers to add (e.g., 17-23,25). Defaults to ready queue.",
+)
+@click.option("--confirm", is_flag=True, help="Execute (default: dry-run preview)")
+@click.option(
+    "--create-label", is_flag=True, help="Create sprint label if it doesn't exist"
+)
+@click.pass_context
+def sprint_plan(
+    ctx: click.Context,
+    sprint_num: int,
+    repo: str,
+    issue_spec: str | None,
+    confirm: bool,
+    create_label: bool,
+) -> None:
+    """Plan a sprint by adding issues to it.
+
+    By default, shows a preview of what would happen (dry-run).
+    Use --confirm to execute the changes.
+
+    If --issues is not specified, uses the ready queue (issues with 'ready'
+    label but no sprint/* label).
+
+    Examples:
+        teax sprint plan 29 --repo owner/repo
+        teax sprint plan 29 --repo owner/repo --issues 17-23,25
+        teax sprint plan 29 --repo owner/repo --confirm
+        teax sprint plan 29 --repo owner/repo --create-label --confirm
+    """
+    if sprint_num < 1:
+        raise click.BadParameter(
+            f"Sprint number must be >= 1, got: {sprint_num}"
+        )
+
+    owner, repo_name = parse_repo(repo)
+    sprint_label = f"sprint/{sprint_num}"
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            # Get issues to add
+            if issue_spec:
+                issue_nums = parse_issue_spec(issue_spec)
+                issues_to_add = []
+                for num in issue_nums:
+                    try:
+                        issue = client.get_issue(owner, repo_name, num)
+                        issues_to_add.append(issue)
+                    except httpx.HTTPStatusError as e:
+                        if e.response.status_code == 404:
+                            console.print(
+                                f"[yellow]Warning:[/yellow] Issue #{num} not found"
+                            )
+                        else:
+                            raise
+            else:
+                # Default to ready queue
+                issues = client.list_issues(
+                    owner, repo_name, state="open", labels=["ready"]
+                )
+                issues_to_add = filter_issues_by_no_labels(issues, ["sprint/*"])
+
+            if not issues_to_add:
+                console.print("[dim]No issues to add to sprint[/dim]")
+                return
+
+            # Show preview
+            esc_label = safe_rich(sprint_label)
+            console.print(f"\n[bold]Sprint Plan: {esc_label}[/bold]")
+            console.print(f"Issues to add: {len(issues_to_add)}\n")
+
+            table = Table()
+            table.add_column("#", style="cyan")
+            table.add_column("Title")
+            table.add_column("Current Labels", style="dim")
+
+            for issue in issues_to_add:
+                labels_str = ", ".join(
+                    safe_rich(lb.name) for lb in (issue.labels or [])
+                )
+                table.add_row(
+                    str(issue.number), safe_rich(issue.title), labels_str
+                )
+
+            console.print(table)
+
+            if not confirm:
+                console.print(
+                    "\n[yellow]DRY RUN[/yellow] - no changes made. "
+                    "Add --confirm to execute."
+                )
+                return
+
+            # Execute: ensure label exists if requested
+            if create_label:
+                _, was_created = client.ensure_label(
+                    owner, repo_name, sprint_label, color="1d76db"
+                )
+                if was_created:
+                    console.print(
+                        f"\n[green]✓[/green] Created label "
+                        f"[cyan]{esc_label}[/cyan]"
+                    )
+
+            # Add sprint label to each issue
+            console.print(f"\nAdding [cyan]{esc_label}[/cyan] to issues...")
+            success_count = 0
+            error_count = 0
+
+            for issue in issues_to_add:
+                try:
+                    client.add_issue_labels(
+                        owner, repo_name, issue.number, [sprint_label]
+                    )
+                    console.print(f"  [green]✓[/green] #{issue.number}")
+                    success_count += 1
+                except CLI_ERRORS as e:
+                    console.print(
+                        f"  [red]✗[/red] #{issue.number}: {safe_rich(str(e))}"
+                    )
+                    error_count += 1
+
+            # Summary
+            console.print()
+            console.print(
+                f"[bold]Summary:[/bold] {success_count} added, {error_count} failed"
+            )
+
+            if error_count > 0:
+                sys.exit(1)
 
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")

@@ -2568,3 +2568,226 @@ def test_get_latest_package_version(client: GiteaClient):
 
     assert pkg.name == "teax"
     assert pkg.version == "1.0.0"
+
+
+# --- list_issues Tests ---
+
+
+@respx.mock
+def test_list_issues_basic(client: GiteaClient):
+    """Test basic issue listing."""
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/issues")
+    route.mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": 1,
+                    "number": 1,
+                    "title": "First issue",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+                {
+                    "id": 2,
+                    "number": 2,
+                    "title": "Second issue",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            ],
+        )
+    )
+
+    issues = client.list_issues("owner", "repo")
+
+    assert len(issues) == 2
+    assert issues[0].number == 1
+    assert issues[1].number == 2
+
+
+@respx.mock
+def test_list_issues_with_filters(client: GiteaClient):
+    """Test issue listing with filter parameters."""
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/issues")
+    route.mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": 1,
+                    "number": 1,
+                    "title": "Ready issue",
+                    "state": "open",
+                    "labels": [{"id": 1, "name": "ready", "color": "00ff00"}],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            ],
+        )
+    )
+
+    issues = client.list_issues(
+        "owner", "repo",
+        state="open",
+        labels=["ready"],
+        assignee="testuser",
+    )
+
+    assert len(issues) == 1
+    assert issues[0].title == "Ready issue"
+    # Verify params were passed
+    request = route.calls[0].request
+    assert "state=open" in str(request.url)
+    assert "labels=ready" in str(request.url)
+    assert "assignee=testuser" in str(request.url)
+
+
+@respx.mock
+def test_list_issues_pagination(client: GiteaClient):
+    """Test issue listing with pagination."""
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/issues")
+    # Page 1: 50 issues
+    page1 = [
+        {
+            "id": i,
+            "number": i,
+            "title": f"Issue {i}",
+            "state": "open",
+            "labels": [],
+            "assignees": [],
+            "milestone": None,
+        }
+        for i in range(1, 51)
+    ]
+    # Page 2: 10 issues (less than limit, signals end)
+    page2 = [
+        {
+            "id": i,
+            "number": i,
+            "title": f"Issue {i}",
+            "state": "open",
+            "labels": [],
+            "assignees": [],
+            "milestone": None,
+        }
+        for i in range(51, 61)
+    ]
+    route.side_effect = [
+        httpx.Response(200, json=page1),
+        httpx.Response(200, json=page2),
+    ]
+
+    issues = client.list_issues("owner", "repo")
+
+    assert len(issues) == 60
+    assert route.call_count == 2
+
+
+@respx.mock
+def test_list_issues_pagination_truncation(client: GiteaClient):
+    """Test that list_issues emits warning when truncated."""
+    import warnings
+
+    route = respx.get("https://test.example.com/api/v1/repos/owner/repo/issues")
+    # Always return full page (50 items)
+    full_page = [
+        {
+            "id": i,
+            "number": i,
+            "title": f"Issue {i}",
+            "state": "open",
+            "labels": [],
+            "assignees": [],
+            "milestone": None,
+        }
+        for i in range(1, 51)
+    ]
+    route.side_effect = [httpx.Response(200, json=full_page)] * 3
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        issues = client.list_issues("owner", "repo", max_pages=2)
+
+        assert len(issues) == 100  # 50 * 2 pages
+        assert len(w) == 1
+        assert "truncated" in str(w[0].message).lower()
+
+
+# --- ensure_label Tests ---
+
+
+@respx.mock
+def test_ensure_label_creates_new(client: GiteaClient):
+    """Test ensure_label creates label when it doesn't exist."""
+    # First call: create succeeds
+    create_route = respx.post(
+        "https://test.example.com/api/v1/repos/owner/repo/labels"
+    )
+    create_route.mock(
+        return_value=httpx.Response(
+            201,
+            json={"id": 42, "name": "sprint/28", "color": "1d76db"},
+        )
+    )
+
+    label, was_created = client.ensure_label("owner", "repo", "sprint/28")
+
+    assert label.name == "sprint/28"
+    assert was_created is True
+
+
+@respx.mock
+def test_ensure_label_already_exists(client: GiteaClient):
+    """Test ensure_label returns existing label on 409 conflict."""
+    # Create fails with 409
+    create_route = respx.post(
+        "https://test.example.com/api/v1/repos/owner/repo/labels"
+    )
+    create_route.mock(return_value=httpx.Response(409))
+
+    # List labels returns existing label
+    list_route = respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/labels"
+    )
+    list_route.mock(
+        return_value=httpx.Response(
+            200,
+            json=[{"id": 42, "name": "sprint/28", "color": "1d76db"}],
+        )
+    )
+
+    label, was_created = client.ensure_label("owner", "repo", "sprint/28")
+
+    assert label.name == "sprint/28"
+    assert was_created is False
+
+
+@respx.mock
+def test_ensure_label_from_cache(client: GiteaClient):
+    """Test ensure_label uses cache when label already known."""
+    # Populate cache by listing labels
+    list_route = respx.get(
+        "https://test.example.com/api/v1/repos/owner/repo/labels"
+    )
+    list_route.mock(
+        return_value=httpx.Response(
+            200,
+            json=[{"id": 42, "name": "sprint/28", "color": "1d76db"}],
+        )
+    )
+
+    # First call populates cache
+    client.list_repo_labels("owner", "repo")
+
+    # ensure_label should find it in cache
+    label, was_created = client.ensure_label("owner", "repo", "sprint/28")
+
+    assert label.name == "sprint/28"
+    assert was_created is False
+    # Should have called list twice (once for initial, once for ensure_label)
+    assert list_route.call_count == 2

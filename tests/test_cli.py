@@ -8364,3 +8364,208 @@ def test_runs_status_show_simple_format(runner: CliRunner):
         # Simple format shows workflow status
         assert "ci.yml: ✓ success" in result.output
         assert "deploy.yml: - not triggered" in result.output
+
+
+# --- Helper Function Tests for Sprint Management ---
+
+
+def test_compute_issue_fields_sprint_number():
+    """Test compute_issue_fields extracts sprint number correctly."""
+    from teax.cli import compute_issue_fields
+
+    # Create mock issue with sprint label
+    issue = SimpleNamespace(
+        labels=[
+            SimpleNamespace(name="sprint/28"),
+            SimpleNamespace(name="ready"),
+        ]
+    )
+    fields = compute_issue_fields(issue)
+    assert fields["sprint_number"] == 28
+    assert fields["is_ready"] is True
+
+
+def test_compute_issue_fields_no_labels():
+    """Test compute_issue_fields handles no labels."""
+    from teax.cli import compute_issue_fields
+
+    issue = SimpleNamespace(labels=None)
+    fields = compute_issue_fields(issue)
+    assert fields["sprint_number"] is None
+    assert fields["is_ready"] is False
+    assert fields["is_bug"] is False
+    assert fields["effort"] is None
+    assert fields["priority"] is None
+
+
+def test_compute_issue_fields_bug_detection():
+    """Test compute_issue_fields detects bug labels."""
+    from teax.cli import compute_issue_fields
+
+    issue1 = SimpleNamespace(labels=[SimpleNamespace(name="type/bug")])
+    assert compute_issue_fields(issue1)["is_bug"] is True
+
+    issue2 = SimpleNamespace(labels=[SimpleNamespace(name="bug")])
+    assert compute_issue_fields(issue2)["is_bug"] is True
+
+
+def test_compute_issue_fields_effort_priority():
+    """Test compute_issue_fields extracts effort and priority."""
+    from teax.cli import compute_issue_fields
+
+    issue = SimpleNamespace(
+        labels=[
+            SimpleNamespace(name="effort/M"),
+            SimpleNamespace(name="prio/p1"),
+        ]
+    )
+    fields = compute_issue_fields(issue)
+    assert fields["effort"] == "M"
+    assert fields["priority"] == "p1"
+
+
+def test_filter_issues_by_no_labels():
+    """Test filter_issues_by_no_labels with glob patterns."""
+    from teax.cli import filter_issues_by_no_labels
+
+    issues = [
+        SimpleNamespace(labels=[SimpleNamespace(name="sprint/28")]),
+        SimpleNamespace(labels=[SimpleNamespace(name="ready")]),
+        SimpleNamespace(
+            labels=[SimpleNamespace(name="ready"), SimpleNamespace(name="sprint/29")]
+        ),
+        SimpleNamespace(labels=[]),
+    ]
+
+    # Filter out sprint/* labels
+    filtered = filter_issues_by_no_labels(issues, ["sprint/*"])
+    assert len(filtered) == 2
+    # Should include 'ready' only and empty labels
+    label_sets = [
+        [lb.name for lb in i.labels] for i in filtered
+    ]
+    assert ["ready"] in label_sets
+    assert [] in label_sets
+
+
+def test_filter_issues_by_no_labels_empty_patterns():
+    """Test filter_issues_by_no_labels returns all when no patterns."""
+    from teax.cli import filter_issues_by_no_labels
+
+    issues = [
+        SimpleNamespace(labels=[SimpleNamespace(name="sprint/28")]),
+        SimpleNamespace(labels=[SimpleNamespace(name="ready")]),
+    ]
+
+    filtered = filter_issues_by_no_labels(issues, [])
+    assert len(filtered) == 2
+
+
+def test_compute_issue_fields_ignores_invalid_sprint_numbers():
+    """Test compute_issue_fields ignores sprint/0 and negative sprint numbers."""
+    from teax.cli import compute_issue_fields
+
+    # Sprint number 0 should be ignored
+    issue_zero = SimpleNamespace(labels=[SimpleNamespace(name="sprint/0")])
+    assert compute_issue_fields(issue_zero)["sprint_number"] is None
+
+    # Negative sprint number should be ignored
+    issue_negative = SimpleNamespace(labels=[SimpleNamespace(name="sprint/-1")])
+    assert compute_issue_fields(issue_negative)["sprint_number"] is None
+
+    # Valid sprint number should work
+    issue_valid = SimpleNamespace(labels=[SimpleNamespace(name="sprint/1")])
+    assert compute_issue_fields(issue_valid)["sprint_number"] == 1
+
+
+def test_print_issue_list_json_sanitizes_computed_fields():
+    """Test that JSON output sanitizes computed effort/priority fields."""
+    import json
+    import sys
+    from io import StringIO
+
+    from teax.cli import OutputFormat
+
+    # Create a mock issue with malicious escape sequences in labels
+    issue = SimpleNamespace(
+        number=1,
+        title="Test Issue",
+        state="open",
+        labels=[
+            SimpleNamespace(name="prio/\x1b[31mp0"),  # ANSI escape in priority
+            SimpleNamespace(name="effort/\x1b[32mM"),  # ANSI escape in effort
+        ],
+        assignees=[],
+        milestone=None,
+    )
+
+    output = OutputFormat("json")
+
+    # Capture output
+    old_stdout = sys.stdout
+    sys.stdout = captured = StringIO()
+    try:
+        output.print_issue_list([issue], include_computed=True)
+    finally:
+        sys.stdout = old_stdout
+
+    result = captured.getvalue()
+    data = json.loads(result)
+
+    # Verify escape sequences are stripped from computed fields
+    assert data[0]["priority"] == "p0"  # Not \x1b[31mp0
+    assert data[0]["effort"] == "M"  # Not \x1b[32mM
+    assert "\x1b" not in result  # No escape sequences anywhere
+
+
+def test_filter_issues_by_no_labels_case_insensitive():
+    """Test that filter_issues_by_no_labels is case-insensitive."""
+    from teax.cli import filter_issues_by_no_labels
+
+    issues = [
+        SimpleNamespace(labels=[SimpleNamespace(name="Sprint/28")]),  # Uppercase
+        SimpleNamespace(labels=[SimpleNamespace(name="sprint/29")]),  # Lowercase
+        SimpleNamespace(labels=[SimpleNamespace(name="ready")]),
+    ]
+
+    # Pattern in lowercase should match both uppercase and lowercase labels
+    filtered = filter_issues_by_no_labels(issues, ["sprint/*"])
+    assert len(filtered) == 1
+    assert filtered[0].labels[0].name == "ready"
+
+
+def test_print_issues_json_sanitizes_state_field():
+    """Test that print_issues() JSON output sanitizes the state field."""
+    import json
+    import sys
+    from io import StringIO
+
+    from teax.cli import OutputFormat
+
+    # Create a mock issue with malicious escape sequence in state
+    issue = SimpleNamespace(
+        number=1,
+        title="Test Issue",
+        state="\x1b[31mopen\x1b[0m",  # ANSI escape in state
+        labels=[],
+        assignees=[],
+        milestone=None,
+        body="Test body",
+    )
+
+    output = OutputFormat("json")
+
+    # Capture output
+    old_stdout = sys.stdout
+    sys.stdout = captured = StringIO()
+    try:
+        output.print_issues([issue])
+    finally:
+        sys.stdout = old_stdout
+
+    result = captured.getvalue()
+    data = json.loads(result)
+
+    # Verify escape sequences are stripped from state field
+    assert data["issues"][0]["state"] == "open"  # Not \x1b[31mopen\x1b[0m
+    assert "\x1b" not in result  # No escape sequences anywhere
