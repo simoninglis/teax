@@ -1370,6 +1370,73 @@ def test_list_milestones_truncation_warning(client: GiteaClient):
         client.list_milestones("owner", "repo", max_pages=2)
 
 
+# --- Comment CRUD Tests ---
+
+
+@respx.mock
+def test_create_comment(client: GiteaClient):
+    """Test creating a comment on an issue."""
+    route = respx.post(
+        "https://test.example.com/api/v1/repos/owner/repo/issues/42/comments"
+    ).mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "id": 12345,
+                "body": "Test comment",
+                "user": {"id": 1, "login": "testuser", "full_name": "Test User"},
+                "created_at": "2024-01-15T10:00:00Z",
+                "updated_at": "2024-01-15T10:00:00Z",
+            },
+        )
+    )
+
+    comment = client.create_comment("owner", "repo", 42, "Test comment")
+
+    assert route.called
+    assert comment.id == 12345
+    assert comment.body == "Test comment"
+    assert comment.user.login == "testuser"
+
+
+@respx.mock
+def test_edit_comment(client: GiteaClient):
+    """Test editing an existing comment."""
+    route = respx.patch(
+        "https://test.example.com/api/v1/repos/owner/repo/issues/comments/12345"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 12345,
+                "body": "Updated comment",
+                "user": {"id": 1, "login": "testuser", "full_name": "Test User"},
+                "created_at": "2024-01-15T10:00:00Z",
+                "updated_at": "2024-01-15T11:00:00Z",
+            },
+        )
+    )
+
+    comment = client.edit_comment("owner", "repo", 12345, "Updated comment")
+
+    assert route.called
+    assert comment.id == 12345
+    assert comment.body == "Updated comment"
+
+
+@respx.mock
+def test_delete_comment(client: GiteaClient):
+    """Test deleting a comment."""
+    route = respx.delete(
+        "https://test.example.com/api/v1/repos/owner/repo/issues/comments/12345"
+    ).mock(return_value=httpx.Response(204))
+
+    # Should not raise
+    client.delete_comment("owner", "repo", 12345)
+
+    assert route.called
+
+
 # --- Actions/Runner Operations Tests ---
 
 

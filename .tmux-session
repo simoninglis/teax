@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
-# Use normalized session name from workon, or derive from directory name
-SESSION="${TMUX_SESSION_NAME:-teax}"
+# tmux session setup for teax development
+#
+# Windows:
+# 0: nvim - Editor
+# 1: claude - Claude Code sessions
+# 2: shell - General shell/testing
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SESSION="${TMUX_SESSION_NAME:-teax}"
 
 unset ANTHROPIC_API_KEY
 
@@ -9,9 +15,14 @@ if ! tmux has-session -t "=$SESSION" 2>/dev/null; then
     tmux new-session -d -s $SESSION -c "$SCRIPT_DIR" -n nvim
     tmux new-window -t $SESSION:1 -n claude -c "$SCRIPT_DIR"
     tmux new-window -t $SESSION:2 -n shell -c "$SCRIPT_DIR"
-    tmux new-window -t $SESSION:3 -n server -c "$SCRIPT_DIR"
 
     tmux send-keys -t $SESSION:0 'nvim .' C-m
+
+    # Status bar: Claude usage and CI status
+    # CI status: C=ci.yml, P=publish.yml
+    # Shows "+N" when local is ahead of remote (unpushed commits)
+    tmux set-option -t $SESSION status-right-length 80
+    tmux set-option -t $SESSION status-right '#(~/.local/bin/claude-usage) | #($SCRIPT_DIR/scripts/ci-status.sh) | %H:%M %d-%b'
 fi
 
 # Smart attach/switch using centralized helper (prevents nested tmux)

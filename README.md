@@ -12,7 +12,7 @@ Gitea CLI companion for tea feature gaps.
 
 `teax` complements the official [tea CLI](https://gitea.com/gitea/tea) by providing commands that tea doesn't support:
 
-- **Issue lifecycle**: Create, view, close, and reopen issues
+- **Issue lifecycle**: Create, view, close, reopen, and comment on issues
 - **Issue editing**: Modify labels, assignees, milestones on existing issues
 - **Dependency management**: Set and manage issue blockers/blocked-by relationships
 - **Bulk operations**: Apply changes to multiple issues at once
@@ -98,6 +98,16 @@ teax issue close 42,43,44 -r owner/repo -y  # Multiple with confirmation skip
 
 # Reopen issues
 teax issue reopen 42 -r owner/repo
+
+# Add a comment
+teax issue comment 42 -r owner/repo -m "This is my comment"
+
+# Edit a comment (ID shown in view --comments)
+teax issue comment-edit 12345 -r owner/repo -m "Updated text"
+
+# Delete a comment
+teax issue comment-delete 12345 -r owner/repo
+teax issue comment-delete 12345 -r owner/repo -y  # Skip confirmation
 ```
 
 ### Issue Editing
@@ -346,6 +356,7 @@ just run deps list 25 --repo owner/repo
 | Issue list | Supported | **Implemented** (with filtering) |
 | Issue view | Buggy¹ | **Implemented** |
 | Issue close/reopen | Supported | **Implemented** (semantic clarity) |
+| Issue comments | Missing | **Implemented** |
 | Issue edit | Missing | **Implemented** |
 | Issue dependencies | Missing | **Implemented** |
 | Issue bulk ops | Missing | **Implemented** |

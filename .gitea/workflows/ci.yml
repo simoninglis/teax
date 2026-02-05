@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.claude/**'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.claude/**'
+
+# Limit token permissions (defense in depth)
+permissions:
+  contents: read
+
+# Note: This workflow assumes runner has pre-baked dependencies:
+#   - Python 3.12, Poetry
+#   - Internal CA certificates (kellgari-root-ca, kellgari-intermediate-ca)
+# See: ci-infra/ansible/playbooks/gitea-runner.yml
+
+jobs:
+  check:
+    name: Lint, Type Check & Test
+    runs-on: [ubuntu-latest, internal-network]
+    # Only run for same-repo PRs (prevent untrusted code on self-hosted runner)
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Run quality checks
+        run: |
+          poetry run ruff check .
+          poetry run ruff format --check .
+          poetry run mypy src/
+          poetry run pytest -v --tb=short

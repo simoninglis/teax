@@ -2711,6 +2711,159 @@ def test_issue_create_label_not_found(runner: CliRunner):
         assert "Label not found" in result.output
 
 
+# --- issue comment tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_comment_create(runner: CliRunner):
+    """Test creating a comment on an issue."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/42/comments"
+        ).mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 12345,
+                    "body": "Test comment",
+                    "user": {"id": 1, "login": "testuser", "full_name": "Test User"},
+                    "created_at": "2024-01-15T10:00:00Z",
+                    "updated_at": "2024-01-15T10:00:00Z",
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "comment", "42", "-r", "owner/repo", "-m", "Test comment"],
+        )
+
+        assert result.exit_code == 0
+        assert "Added comment #12345" in result.output
+        assert "issue #42" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_comment_edit(runner: CliRunner):
+    """Test editing a comment."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.patch(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/comments/12345"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 12345,
+                    "body": "Updated comment",
+                    "user": {"id": 1, "login": "testuser", "full_name": "Test User"},
+                    "created_at": "2024-01-15T10:00:00Z",
+                    "updated_at": "2024-01-15T11:00:00Z",
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "issue",
+                "comment-edit",
+                "12345",
+                "-r",
+                "owner/repo",
+                "-m",
+                "Updated comment",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Updated comment #12345" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_comment_delete(runner: CliRunner):
+    """Test deleting a comment."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.delete(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/comments/12345"
+        ).mock(return_value=httpx.Response(204))
+
+        result = runner.invoke(
+            main,
+            ["issue", "comment-delete", "12345", "-r", "owner/repo", "-y"],
+        )
+
+        assert result.exit_code == 0
+        assert "Deleted comment #12345" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_comment_delete_cancelled(runner: CliRunner):
+    """Test deleting a comment with cancelled confirmation."""
+    result = runner.invoke(
+        main,
+        ["issue", "comment-delete", "12345", "-r", "owner/repo"],
+        input="n\n",
+    )
+
+    assert result.exit_code == 0
+    assert "Cancelled" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_view_shows_comment_id(runner: CliRunner):
+    """Test issue view shows comment IDs."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/issues/42").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 42,
+                    "number": 42,
+                    "title": "Test Issue",
+                    "state": "open",
+                    "body": "Test body",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/issues/42/comments"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 99999,
+                        "body": "A comment",
+                        "user": {"id": 1, "login": "user1", "full_name": "User One"},
+                        "created_at": "2024-01-15T10:00:00Z",
+                    }
+                ],
+            )
+        )
+
+        result = runner.invoke(
+            main, ["issue", "view", "42", "--repo", "owner/repo", "--comments"]
+        )
+
+        assert result.exit_code == 0
+        assert "#99999" in result.output  # Comment ID shown
+
+
 # --- epic create tests ---
 
 

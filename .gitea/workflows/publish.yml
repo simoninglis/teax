@@ -1,0 +1,117 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_level:
+        description: 'Version bump level'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+# Limit token permissions (defense in depth)
+permissions:
+  contents: write
+
+# Note: This workflow assumes runner has pre-baked dependencies:
+#   - Python 3.12, Poetry
+#   - Internal CA certificates
+# See: ci-infra/ansible/playbooks/gitea-runner.yml
+
+env:
+  GITEA_PYPI_URL: https://prod-vm-gitea.internal.kellgari.com.au/api/packages/homelab-teams/pypi
+
+jobs:
+  publish:
+    name: Bump, Build & Publish
+    runs-on: [ubuntu-latest, internal-network]
+    # Only run from main branch
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Configure git
+        env:
+          CI_GITEA_TOKEN: ${{ secrets.CI_GITEA_TOKEN }}
+        run: |
+          git config user.name "CI Bot"
+          git config user.email "ci@kellgari.com.au"
+          # Configure remote with token for push
+          git remote set-url origin "https://ci:${CI_GITEA_TOKEN}@prod-vm-gitea.internal.kellgari.com.au/homelab-teams/teax.git"
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Run quality checks
+        run: |
+          poetry run ruff check .
+          poetry run ruff format --check .
+          poetry run mypy src/
+          poetry run pytest -v --tb=short
+
+      - name: Bump version
+        id: bump
+        run: |
+          # Get current version
+          current=$(grep '^version' pyproject.toml | head -1 | cut -d'"' -f2)
+          IFS='.' read -r major minor patch <<< "$current"
+
+          # Bump based on input
+          case "${{ github.event.inputs.version_level }}" in
+            patch) patch=$((patch + 1)) ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+          esac
+
+          new="${major}.${minor}.${patch}"
+          sed -i "s/^version = \"${current}\"/version = \"${new}\"/" pyproject.toml
+
+          echo "old_version=${current}" >> $GITHUB_OUTPUT
+          echo "new_version=${new}" >> $GITHUB_OUTPUT
+          echo "Bumped ${current} → ${new}"
+
+      - name: Commit version bump
+        run: |
+          git add pyproject.toml
+          git commit -m "chore: release v${{ steps.bump.outputs.new_version }}"
+
+      - name: Create tag
+        run: |
+          git tag -a "v${{ steps.bump.outputs.new_version }}" -m "Release v${{ steps.bump.outputs.new_version }}"
+
+      - name: Build package
+        run: poetry build
+
+      - name: Configure Poetry for Gitea PyPI
+        env:
+          CI_GITEA_TOKEN: ${{ secrets.CI_GITEA_TOKEN }}
+        run: |
+          poetry config repositories.gitea "${{ env.GITEA_PYPI_URL }}"
+          poetry config http-basic.gitea "__token__" "${CI_GITEA_TOKEN}"
+
+      - name: Publish to Gitea PyPI
+        run: poetry publish -r gitea --no-interaction
+
+      - name: Push commit and tag
+        run: |
+          git push origin main
+          git push origin "v${{ steps.bump.outputs.new_version }}"
+
+      - name: Summary
+        run: |
+          echo "## Release v${{ steps.bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: ${{ steps.bump.outputs.old_version }} → ${{ steps.bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Package: https://prod-vm-gitea.internal.kellgari.com.au/homelab-teams/-/packages/pypi/teax" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Install" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "pipx upgrade teax --pip-args=\"--index-url ${{ env.GITEA_PYPI_URL }}/simple/\"" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

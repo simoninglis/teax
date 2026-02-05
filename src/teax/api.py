@@ -332,6 +332,61 @@ class GiteaClient:
             )
         return comments
 
+    def create_comment(
+        self, owner: str, repo: str, index: int, body: str
+    ) -> Comment:
+        """Create a comment on an issue.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            index: Issue number
+            body: Comment body text
+
+        Returns:
+            The created comment
+        """
+        response = self._client.post(
+            f"repos/{_seg(owner)}/{_seg(repo)}/issues/{index}/comments",
+            json={"body": body},
+        )
+        response.raise_for_status()
+        return Comment.model_validate(response.json())
+
+    def edit_comment(
+        self, owner: str, repo: str, comment_id: int, body: str
+    ) -> Comment:
+        """Edit an existing comment.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            comment_id: Comment ID
+            body: New comment body text
+
+        Returns:
+            The updated comment
+        """
+        response = self._client.patch(
+            f"repos/{_seg(owner)}/{_seg(repo)}/issues/comments/{comment_id}",
+            json={"body": body},
+        )
+        response.raise_for_status()
+        return Comment.model_validate(response.json())
+
+    def delete_comment(self, owner: str, repo: str, comment_id: int) -> None:
+        """Delete a comment.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            comment_id: Comment ID
+        """
+        response = self._client.delete(
+            f"repos/{_seg(owner)}/{_seg(repo)}/issues/comments/{comment_id}",
+        )
+        response.raise_for_status()
+
     def edit_issue(
         self,
         owner: str,

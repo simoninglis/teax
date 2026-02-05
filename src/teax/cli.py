@@ -2060,7 +2060,7 @@ def issue_view(ctx: click.Context, issue_num: int, repo: str, comments: bool) ->
                         # Sanitize all server-provided fields
                         date_display = safe_rich(comment.created_at[:10])
                         console.print(
-                            f"[dim]{safe_rich(comment.user.login)} "
+                            f"[dim]#{comment.id} - {safe_rich(comment.user.login)} "
                             f"({date_display}):[/dim]"
                         )
                         # Use markup=False to prevent Rich markup injection
@@ -2810,6 +2810,98 @@ def issue_create(
                 click.echo(json.dumps(output_data, indent=2))
             else:  # table, csv, or tmux - use table output
                 output.print_issues([created])
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+# --- Comment Commands ---
+
+
+@issue.command("comment")
+@click.argument("issue_num", type=int)
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--message", "-m", "body", required=True, help="Comment body")
+@click.pass_context
+def issue_comment(ctx: click.Context, issue_num: int, repo: str, body: str) -> None:
+    """Add a comment to an issue.
+
+    Examples:
+        teax issue comment 42 -r owner/repo -m "This is my comment"
+        teax issue comment 42 -r owner/repo --message "Fixed in commit abc123"
+    """
+    login_name = ctx.obj.get("login_name")
+    owner, repo_name = parse_repo(repo)
+
+    try:
+        with GiteaClient(login_name=login_name) as client:
+            comment = client.create_comment(owner, repo_name, issue_num, body)
+            console.print(
+                f"[green]✓[/green] Added comment #{comment.id} to issue #{issue_num}"
+            )
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@issue.command("comment-edit")
+@click.argument("comment_id", type=int)
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--message", "-m", "body", required=True, help="New comment body")
+@click.pass_context
+def issue_comment_edit(
+    ctx: click.Context, comment_id: int, repo: str, body: str
+) -> None:
+    """Edit an existing comment.
+
+    COMMENT_ID can be found using 'teax issue view <num> --comments'.
+
+    Examples:
+        teax issue comment-edit 12345 -r owner/repo -m "Updated comment text"
+    """
+    login_name = ctx.obj.get("login_name")
+    owner, repo_name = parse_repo(repo)
+
+    try:
+        with GiteaClient(login_name=login_name) as client:
+            comment = client.edit_comment(owner, repo_name, comment_id, body)
+            console.print(f"[green]✓[/green] Updated comment #{comment.id}")
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@issue.command("comment-delete")
+@click.argument("comment_id", type=int)
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+@click.pass_context
+def issue_comment_delete(
+    ctx: click.Context, comment_id: int, repo: str, yes: bool
+) -> None:
+    """Delete a comment.
+
+    COMMENT_ID can be found using 'teax issue view <num> --comments'.
+
+    Examples:
+        teax issue comment-delete 12345 -r owner/repo
+        teax issue comment-delete 12345 -r owner/repo -y
+    """
+    login_name = ctx.obj.get("login_name")
+    owner, repo_name = parse_repo(repo)
+
+    if not yes:
+        if not click.confirm(f"Delete comment #{comment_id}?"):
+            console.print("[yellow]Cancelled[/yellow]")
+            return
+
+    try:
+        with GiteaClient(login_name=login_name) as client:
+            client.delete_comment(owner, repo_name, comment_id)
+            console.print(f"[green]✓[/green] Deleted comment #{comment_id}")
 
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
