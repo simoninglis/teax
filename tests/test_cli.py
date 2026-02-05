@@ -2380,7 +2380,7 @@ def test_issue_close_single(runner: CliRunner):
 
         result = runner.invoke(
             main,
-            ["issue", "close", "42", "-r", "owner/repo"],
+            ["-o", "simple", "issue", "close", "42", "-r", "owner/repo"],
         )
 
         assert result.exit_code == 0
@@ -2425,7 +2425,7 @@ def test_issue_close_multiple_with_yes(runner: CliRunner):
 
         result = runner.invoke(
             main,
-            ["issue", "close", "42,43", "-r", "owner/repo", "-y"],
+            ["-o", "simple", "issue", "close", "42,43", "-r", "owner/repo", "-y"],
         )
 
         assert result.exit_code == 0
@@ -2461,7 +2461,7 @@ def test_issue_close_range(runner: CliRunner):
 
         result = runner.invoke(
             main,
-            ["issue", "close", "10-12", "-r", "owner/repo", "-y"],
+            ["-o", "simple", "issue", "close", "10-12", "-r", "owner/repo", "-y"],
         )
 
         assert result.exit_code == 0
@@ -2492,7 +2492,7 @@ def test_issue_reopen_single(runner: CliRunner):
 
         result = runner.invoke(
             main,
-            ["issue", "reopen", "42", "-r", "owner/repo"],
+            ["-o", "simple", "issue", "reopen", "42", "-r", "owner/repo"],
         )
 
         assert result.exit_code == 0
@@ -2537,7 +2537,7 @@ def test_issue_reopen_multiple_with_yes(runner: CliRunner):
 
         result = runner.invoke(
             main,
-            ["issue", "reopen", "42,43", "-r", "owner/repo", "-y"],
+            ["-o", "simple", "issue", "reopen", "42,43", "-r", "owner/repo", "-y"],
         )
 
         assert result.exit_code == 0
@@ -2587,7 +2587,7 @@ def test_issue_create_basic(runner: CliRunner):
 
         result = runner.invoke(
             main,
-            ["issue", "create", "-r", "owner/repo", "--title", "New Issue"],
+            ["-o", "simple", "issue", "create", "-r", "owner/repo", "-t", "New Issue"],
         )
 
         assert result.exit_code == 0
@@ -2619,7 +2619,7 @@ def test_issue_create_with_labels(runner: CliRunner):
                 json={
                     "id": 301,
                     "number": 51,
-                    "title": "Bug Report",
+                    "title": "Bug",
                     "state": "open",
                     "labels": [{"id": 1, "name": "bug", "color": "ff0000"}],
                     "assignees": [],
@@ -2631,7 +2631,10 @@ def test_issue_create_with_labels(runner: CliRunner):
 
         result = runner.invoke(
             main,
-            ["issue", "create", "-r", "owner/repo", "-t", "Bug Report", "-l", "bug"],
+            [
+                "-o", "simple", "issue", "create", "-r", "owner/repo",
+                "-t", "Bug", "-l", "bug",
+            ],
         )
 
         assert result.exit_code == 0
@@ -2666,7 +2669,7 @@ def test_issue_create_json_output(runner: CliRunner):
 
         result = runner.invoke(
             main,
-            ["issue", "create", "-r", "owner/repo", "-t", "JSON Test", "-o", "json"],
+            ["-o", "json", "issue", "create", "-r", "owner/repo", "-t", "JSON Test"],
         )
 
         assert result.exit_code == 0

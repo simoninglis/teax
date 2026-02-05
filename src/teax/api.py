@@ -369,6 +369,10 @@ class GiteaClient:
         if milestone is not None:
             data["milestone"] = milestone if milestone > 0 else None
         if state is not None:
+            if state not in ("open", "closed"):
+                raise ValueError(
+                    f"Invalid state: {state!r} (must be 'open' or 'closed')"
+                )
             data["state"] = state
 
         response = self._client.patch(
@@ -708,9 +712,11 @@ class GiteaClient:
             if e.response.status_code == 409:
                 # Label already exists (race condition or not in cache)
                 # Refresh cache and return existing label
+                # Use case-insensitive match for servers that treat labels as such
                 labels = self.list_repo_labels(owner, repo)
+                name_lower = name.lower()
                 for label in labels:
-                    if label.name == name:
+                    if label.name.lower() == name_lower:
                         return (label, False)
                 # Should not happen - 409 means it exists
                 raise ValueError(f"Label '{name}' conflict but not found") from None

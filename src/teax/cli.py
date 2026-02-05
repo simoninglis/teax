@@ -2551,21 +2551,12 @@ def issue_bulk(
 @click.argument("issues")
 @click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation for multiple issues")
-@click.option(
-    "--output",
-    "-o",
-    "output_format",
-    type=click.Choice(["table", "simple", "json", "csv"]),
-    default="simple",
-    help="Output format",
-)
 @click.pass_context
 def issue_close(
     ctx: click.Context,
     issues: str,
     repo: str,
     yes: bool,
-    output_format: str,
 ) -> None:
     """Close one or more issues.
 
@@ -2580,6 +2571,7 @@ def issue_close(
       teax issue close 42,43,44 -r owner/repo
       teax issue close 42-50 -r owner/repo -y
     """
+    output: OutputFormat = ctx.obj["output"]
     try:
         owner, repo_name = parse_repo(repo)
         issue_nums = parse_issue_spec(issues)
@@ -2598,6 +2590,7 @@ def issue_close(
         success_count = 0
         error_count = 0
         closed_issues: list[Any] = []
+        errors: dict[int, str] = {}
 
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
             for issue_num in sorted(issue_nums):
@@ -2606,24 +2599,27 @@ def issue_close(
                         owner, repo_name, issue_num, state="closed"
                     )
                     closed_issues.append(updated)
-                    if output_format == "simple":
+                    if output.format_type == "simple":
                         console.print(f"[green]✓[/green] Closed #{issue_num}")
                     success_count += 1
                 except CLI_ERRORS as e:
-                    if output_format == "simple":
+                    errors[issue_num] = str(e)
+                    if output.format_type == "simple":
                         console.print(
                             f"[red]✗[/red] #{issue_num}: {safe_rich(str(e))}"
                         )
                     error_count += 1
 
         # Output for non-simple formats
-        if output_format != "simple" and closed_issues:
-            output = OutputFormat(output_format)
-            output.print_issues(closed_issues)
+        if output.format_type != "simple":
+            output.print_issues(closed_issues, errors=errors if errors else None)
 
-        # Summary for multiple issues
+        # Summary for multiple issues (stderr for JSON/CSV to preserve output)
         if len(issue_nums) > 1:
-            console.print(
+            summary_console = (
+                err_console if output.format_type in ("json", "csv") else console
+            )
+            summary_console.print(
                 f"\n[bold]Summary:[/bold] {success_count} closed, {error_count} failed"
             )
 
@@ -2639,21 +2635,12 @@ def issue_close(
 @click.argument("issues")
 @click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation for multiple issues")
-@click.option(
-    "--output",
-    "-o",
-    "output_format",
-    type=click.Choice(["table", "simple", "json", "csv"]),
-    default="simple",
-    help="Output format",
-)
 @click.pass_context
 def issue_reopen(
     ctx: click.Context,
     issues: str,
     repo: str,
     yes: bool,
-    output_format: str,
 ) -> None:
     """Reopen one or more closed issues.
 
@@ -2668,6 +2655,7 @@ def issue_reopen(
       teax issue reopen 42,43,44 -r owner/repo
       teax issue reopen 42-50 -r owner/repo -y
     """
+    output: OutputFormat = ctx.obj["output"]
     try:
         owner, repo_name = parse_repo(repo)
         issue_nums = parse_issue_spec(issues)
@@ -2686,6 +2674,7 @@ def issue_reopen(
         success_count = 0
         error_count = 0
         reopened_issues: list[Any] = []
+        errors: dict[int, str] = {}
 
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
             for issue_num in sorted(issue_nums):
@@ -2694,24 +2683,27 @@ def issue_reopen(
                         owner, repo_name, issue_num, state="open"
                     )
                     reopened_issues.append(updated)
-                    if output_format == "simple":
+                    if output.format_type == "simple":
                         console.print(f"[green]✓[/green] Reopened #{issue_num}")
                     success_count += 1
                 except CLI_ERRORS as e:
-                    if output_format == "simple":
+                    errors[issue_num] = str(e)
+                    if output.format_type == "simple":
                         console.print(
                             f"[red]✗[/red] #{issue_num}: {safe_rich(str(e))}"
                         )
                     error_count += 1
 
         # Output for non-simple formats
-        if output_format != "simple" and reopened_issues:
-            output = OutputFormat(output_format)
-            output.print_issues(reopened_issues)
+        if output.format_type != "simple":
+            output.print_issues(reopened_issues, errors=errors if errors else None)
 
-        # Summary for multiple issues
+        # Summary for multiple issues (stderr for JSON/CSV to preserve output)
         if len(issue_nums) > 1:
-            console.print(
+            summary_console = (
+                err_console if output.format_type in ("json", "csv") else console
+            )
+            summary_console.print(
                 f"\n[bold]Summary:[/bold] "
                 f"{success_count} reopened, {error_count} failed"
             )
@@ -2731,14 +2723,6 @@ def issue_reopen(
 @click.option("--labels", "-l", help="Labels (comma-separated names)")
 @click.option("--assignees", "-a", help="Assignees (comma-separated usernames)")
 @click.option("--milestone", "-m", help="Milestone (ID or name)")
-@click.option(
-    "--output",
-    "-o",
-    "output_format",
-    type=click.Choice(["table", "simple", "json"]),
-    default="simple",
-    help="Output format",
-)
 @click.pass_context
 def issue_create(
     ctx: click.Context,
@@ -2748,7 +2732,6 @@ def issue_create(
     labels: str | None,
     assignees: str | None,
     milestone: str | None,
-    output_format: str,
 ) -> None:
     """Create a new issue.
 
@@ -2756,22 +2739,23 @@ def issue_create(
       teax issue create -r owner/repo --title "Fix login bug"
       teax issue create -r owner/repo -t "feat: Add dark mode" -b "Description here"
       teax issue create -r owner/repo -t "Bug" --labels "bug,urgent" --assignees "user1"
-      teax issue create -r owner/repo -t "Feature" --milestone "v1.0" -o json
+      teax -o json issue create -r owner/repo -t "Feature" --milestone "v1.0"
     """
+    output: OutputFormat = ctx.obj["output"]
     try:
         owner, repo_name = parse_repo(repo)
 
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
-            # Resolve label names to IDs
+            # Resolve label names to IDs (exact match for consistency with API)
             label_ids: list[int] | None = None
             if labels:
                 label_names = [lb.strip() for lb in labels.split(",") if lb.strip()]
                 if label_names:
                     existing_labels = client.list_repo_labels(owner, repo_name)
-                    name_to_id = {lb.name.lower(): lb.id for lb in existing_labels}
+                    name_to_id = {lb.name: lb.id for lb in existing_labels}
                     label_ids = []
                     for name in label_names:
-                        label_id = name_to_id.get(name.lower())
+                        label_id = name_to_id.get(name)
                         if label_id is None:
                             raise ValueError(f"Label not found: {name}")
                         label_ids.append(label_id)
@@ -2798,19 +2782,19 @@ def issue_create(
             )
 
             # Output
-            if output_format == "simple":
+            if output.format_type == "simple":
                 console.print(
                     f"[green]✓[/green] Created #{created.number}: "
                     f"{safe_rich(created.title)}"
                 )
-            elif output_format == "json":
+            elif output.format_type == "json":
                 import json
 
                 output_data = {
                     "number": created.number,
                     "title": terminal_safe(created.title),
                     "state": terminal_safe(created.state),
-                    "url": created.html_url,
+                    "url": terminal_safe(created.html_url),
                     "labels": [
                         terminal_safe(lb.name) for lb in (created.labels or [])
                     ],
@@ -2824,8 +2808,7 @@ def issue_create(
                     ),
                 }
                 click.echo(json.dumps(output_data, indent=2))
-            else:  # table
-                output = OutputFormat("table")
+            else:  # table, csv, or tmux - use table output
                 output.print_issues([created])
 
     except CLI_ERRORS as e:
