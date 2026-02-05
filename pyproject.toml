@@ -1,6 +1,6 @@
 [project]
 name = "teax"
-version = "0.4.1"
+version = "0.5.0"
 description = "Gitea CLI companion for tea feature gaps"
 authors = [
     {name = "Simon Inglis", email = "simon@inglis.id.au"}
