@@ -170,8 +170,11 @@ class GiteaClient:
         owner: str,
         repo: str,
         title: str,
+        *,
         body: str = "",
         labels: list[int] | None = None,
+        assignees: list[str] | None = None,
+        milestone: int | None = None,
     ) -> Issue:
         """Create a new issue.
 
@@ -179,8 +182,10 @@ class GiteaClient:
             owner: Repository owner
             repo: Repository name
             title: Issue title
-            body: Issue body (optional)
+            body: Issue body/description (optional)
             labels: Label IDs to apply (optional)
+            assignees: Assignee usernames (optional)
+            milestone: Milestone ID (optional)
 
         Returns:
             Created issue
@@ -190,6 +195,10 @@ class GiteaClient:
             data["body"] = body
         if labels:
             data["labels"] = labels
+        if assignees:
+            data["assignees"] = assignees
+        if milestone is not None:
+            data["milestone"] = milestone
 
         response = self._client.post(
             f"repos/{_seg(owner)}/{_seg(repo)}/issues",
@@ -333,6 +342,7 @@ class GiteaClient:
         body: str | None = None,
         assignees: list[str] | None = None,
         milestone: int | None = None,
+        state: str | None = None,
     ) -> Issue:
         """Edit an existing issue.
 
@@ -344,6 +354,7 @@ class GiteaClient:
             body: New body (optional)
             assignees: New assignee list (optional)
             milestone: New milestone ID (optional, 0 to clear)
+            state: New state - "open" or "closed" (optional)
 
         Returns:
             Updated issue
@@ -357,6 +368,8 @@ class GiteaClient:
             data["assignees"] = assignees
         if milestone is not None:
             data["milestone"] = milestone if milestone > 0 else None
+        if state is not None:
+            data["state"] = state
 
         response = self._client.patch(
             f"repos/{_seg(owner)}/{_seg(repo)}/issues/{index}",

@@ -2353,6 +2353,361 @@ def test_issue_bulk_clear_milestone(runner: CliRunner):
         assert result.exit_code == 0
 
 
+# --- issue close/reopen tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_close_single(runner: CliRunner):
+    """Test closing a single issue."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/42").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 200,
+                    "number": 42,
+                    "title": "Test Issue",
+                    "state": "closed",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "close", "42", "-r", "owner/repo"],
+        )
+
+        assert result.exit_code == 0
+        assert "Closed #42" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_close_multiple_with_yes(runner: CliRunner):
+    """Test closing multiple issues with -y flag."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/42").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 200,
+                    "number": 42,
+                    "title": "Test Issue 1",
+                    "state": "closed",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/43").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 201,
+                    "number": 43,
+                    "title": "Test Issue 2",
+                    "state": "closed",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "close", "42,43", "-r", "owner/repo", "-y"],
+        )
+
+        assert result.exit_code == 0
+        assert "Closed #42" in result.output
+        assert "Closed #43" in result.output
+        assert "2 closed" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_close_range(runner: CliRunner):
+    """Test closing a range of issues."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        for num in [10, 11, 12]:
+            respx.patch(
+                f"https://test.example.com/api/v1/repos/owner/repo/issues/{num}"
+            ).mock(
+                return_value=httpx.Response(
+                    200,
+                    json={
+                        "id": 100 + num,
+                        "number": num,
+                        "title": f"Test Issue {num}",
+                        "state": "closed",
+                        "labels": [],
+                        "assignees": [],
+                        "milestone": None,
+                    },
+                )
+            )
+
+        result = runner.invoke(
+            main,
+            ["issue", "close", "10-12", "-r", "owner/repo", "-y"],
+        )
+
+        assert result.exit_code == 0
+        assert "3 closed" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_reopen_single(runner: CliRunner):
+    """Test reopening a single issue."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/42").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 200,
+                    "number": 42,
+                    "title": "Test Issue",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "reopen", "42", "-r", "owner/repo"],
+        )
+
+        assert result.exit_code == 0
+        assert "Reopened #42" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_reopen_multiple_with_yes(runner: CliRunner):
+    """Test reopening multiple issues with -y flag."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/42").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 200,
+                    "number": 42,
+                    "title": "Test Issue 1",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+        respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/43").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 201,
+                    "number": 43,
+                    "title": "Test Issue 2",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "reopen", "42,43", "-r", "owner/repo", "-y"],
+        )
+
+        assert result.exit_code == 0
+        assert "Reopened #42" in result.output
+        assert "Reopened #43" in result.output
+        assert "2 reopened" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_close_confirmation_abort(runner: CliRunner):
+    """Test closing multiple issues aborts on confirmation decline."""
+    result = runner.invoke(
+        main,
+        ["issue", "close", "42,43", "-r", "owner/repo"],
+        input="n\n",
+    )
+
+    assert result.exit_code == 0
+    assert "Cancelled" in result.output
+
+
+# --- issue create tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_create_basic(runner: CliRunner):
+    """Test creating an issue with just title."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 300,
+                    "number": 50,
+                    "title": "New Issue",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                    "body": "",
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "create", "-r", "owner/repo", "--title", "New Issue"],
+        )
+
+        assert result.exit_code == 0
+        assert "Created #50" in result.output
+        assert "New Issue" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_create_with_labels(runner: CliRunner):
+    """Test creating an issue with labels."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock list labels
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {"id": 1, "name": "bug", "color": "ff0000"},
+                    {"id": 2, "name": "urgent", "color": "ff0000"},
+                ],
+            )
+        )
+        # Mock create issue
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 301,
+                    "number": 51,
+                    "title": "Bug Report",
+                    "state": "open",
+                    "labels": [{"id": 1, "name": "bug", "color": "ff0000"}],
+                    "assignees": [],
+                    "milestone": None,
+                    "body": "",
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "create", "-r", "owner/repo", "-t", "Bug Report", "-l", "bug"],
+        )
+
+        assert result.exit_code == 0
+        assert "Created #51" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_create_json_output(runner: CliRunner):
+    """Test creating an issue with JSON output."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/issues").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 302,
+                    "number": 52,
+                    "title": "JSON Test",
+                    "state": "open",
+                    "labels": [],
+                    "assignees": [],
+                    "milestone": None,
+                    "body": "",
+                    "html_url": "https://example.com/issues/52",
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["issue", "create", "-r", "owner/repo", "-t", "JSON Test", "-o", "json"],
+        )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["number"] == 52
+        assert data["title"] == "JSON Test"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_issue_create_label_not_found(runner: CliRunner):
+    """Test creating an issue with non-existent label fails."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Mock list labels (no matching label)
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/labels").mock(
+            return_value=httpx.Response(
+                200,
+                json=[{"id": 1, "name": "bug", "color": "ff0000"}],
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "issue",
+                "create",
+                "-r",
+                "owner/repo",
+                "-t",
+                "Test",
+                "-l",
+                "nonexistent",
+            ],
+        )
+
+        assert result.exit_code == 1
+        assert "Label not found" in result.output
+
+
 # --- epic create tests ---
 
 

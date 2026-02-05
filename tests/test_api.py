@@ -340,7 +340,7 @@ def test_create_issue(client: GiteaClient):
         )
     )
 
-    issue = client.create_issue("owner", "repo", "New Issue", "Issue body")
+    issue = client.create_issue("owner", "repo", "New Issue", body="Issue body")
 
     assert issue.number == 50
     assert issue.title == "New Issue"
@@ -483,6 +483,108 @@ def test_edit_issue_clear_milestone(client: GiteaClient):
 
     request_body = json.loads(route.calls.last.request.content)
     assert request_body == {"milestone": None}
+
+
+@respx.mock
+def test_edit_issue_state_change(client: GiteaClient):
+    """Test changing issue state (close/reopen)."""
+    route = respx.patch("https://test.example.com/api/v1/repos/owner/repo/issues/42")
+    route.mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": 200,
+                "number": 42,
+                "title": "Test Issue",
+                "state": "closed",
+                "labels": [],
+                "assignees": [],
+                "milestone": None,
+            },
+        )
+    )
+
+    result = client.edit_issue("owner", "repo", 42, state="closed")
+
+    import json
+
+    request_body = json.loads(route.calls.last.request.content)
+    assert request_body == {"state": "closed"}
+    assert result.number == 42
+    assert result.state == "closed"
+
+
+@respx.mock
+def test_create_issue_basic(client: GiteaClient):
+    """Test creating an issue with just title."""
+    route = respx.post("https://test.example.com/api/v1/repos/owner/repo/issues")
+    route.mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "id": 300,
+                "number": 50,
+                "title": "New Issue",
+                "state": "open",
+                "labels": [],
+                "assignees": [],
+                "milestone": None,
+                "body": "",
+            },
+        )
+    )
+
+    result = client.create_issue("owner", "repo", "New Issue")
+
+    import json
+
+    request_body = json.loads(route.calls.last.request.content)
+    assert request_body == {"title": "New Issue"}
+    assert result.number == 50
+    assert result.title == "New Issue"
+
+
+@respx.mock
+def test_create_issue_with_all_options(client: GiteaClient):
+    """Test creating an issue with all options."""
+    route = respx.post("https://test.example.com/api/v1/repos/owner/repo/issues")
+    route.mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "id": 301,
+                "number": 51,
+                "title": "Full Issue",
+                "state": "open",
+                "body": "Issue body here",
+                "labels": [{"id": 1, "name": "bug", "color": "ff0000"}],
+                "assignees": [{"id": 1, "login": "user1"}],
+                "milestone": {"id": 5, "title": "v1.0"},
+            },
+        )
+    )
+
+    result = client.create_issue(
+        "owner",
+        "repo",
+        "Full Issue",
+        body="Issue body here",
+        labels=[1],
+        assignees=["user1"],
+        milestone=5,
+    )
+
+    import json
+
+    request_body = json.loads(route.calls.last.request.content)
+    assert request_body == {
+        "title": "Full Issue",
+        "body": "Issue body here",
+        "labels": [1],
+        "assignees": ["user1"],
+        "milestone": 5,
+    }
+    assert result.number == 51
 
 
 # --- Label Operations Tests ---

@@ -38,6 +38,7 @@ class Issue(BaseModel):
     title: str
     state: str
     body: str = ""
+    html_url: str = ""
     labels: list["Label"] | None = Field(default_factory=list)
     assignees: list["User"] | None = Field(default_factory=list)
     milestone: "Milestone | None" = None

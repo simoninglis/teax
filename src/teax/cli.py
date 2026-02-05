@@ -2547,6 +2547,292 @@ def issue_bulk(
         sys.exit(1)
 
 
+@issue.command("close")
+@click.argument("issues")
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation for multiple issues")
+@click.option(
+    "--output",
+    "-o",
+    "output_format",
+    type=click.Choice(["table", "simple", "json", "csv"]),
+    default="simple",
+    help="Output format",
+)
+@click.pass_context
+def issue_close(
+    ctx: click.Context,
+    issues: str,
+    repo: str,
+    yes: bool,
+    output_format: str,
+) -> None:
+    """Close one or more issues.
+
+    ISSUES can be a single number, comma-separated list, or range:
+      42        - Single issue
+      42,43,44  - Multiple issues
+      42-50     - Range of issues
+      42-45,50  - Mixed
+
+    Examples:
+      teax issue close 42 -r owner/repo
+      teax issue close 42,43,44 -r owner/repo
+      teax issue close 42-50 -r owner/repo -y
+    """
+    try:
+        owner, repo_name = parse_repo(repo)
+        issue_nums = parse_issue_spec(issues)
+
+        # Confirm for multiple issues
+        if len(issue_nums) > 1 and not yes:
+            console.print(
+                f"About to close {len(issue_nums)} issues: "
+                f"{', '.join(f'#{n}' for n in sorted(issue_nums)[:5])}"
+                f"{'...' if len(issue_nums) > 5 else ''}"
+            )
+            if not click.confirm("Continue?"):
+                console.print("[yellow]Cancelled[/yellow]")
+                return
+
+        success_count = 0
+        error_count = 0
+        closed_issues: list[Any] = []
+
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            for issue_num in sorted(issue_nums):
+                try:
+                    updated = client.edit_issue(
+                        owner, repo_name, issue_num, state="closed"
+                    )
+                    closed_issues.append(updated)
+                    if output_format == "simple":
+                        console.print(f"[green]✓[/green] Closed #{issue_num}")
+                    success_count += 1
+                except CLI_ERRORS as e:
+                    if output_format == "simple":
+                        console.print(
+                            f"[red]✗[/red] #{issue_num}: {safe_rich(str(e))}"
+                        )
+                    error_count += 1
+
+        # Output for non-simple formats
+        if output_format != "simple" and closed_issues:
+            output = OutputFormat(output_format)
+            output.print_issues(closed_issues)
+
+        # Summary for multiple issues
+        if len(issue_nums) > 1:
+            console.print(
+                f"\n[bold]Summary:[/bold] {success_count} closed, {error_count} failed"
+            )
+
+        if error_count > 0:
+            sys.exit(1)
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@issue.command("reopen")
+@click.argument("issues")
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation for multiple issues")
+@click.option(
+    "--output",
+    "-o",
+    "output_format",
+    type=click.Choice(["table", "simple", "json", "csv"]),
+    default="simple",
+    help="Output format",
+)
+@click.pass_context
+def issue_reopen(
+    ctx: click.Context,
+    issues: str,
+    repo: str,
+    yes: bool,
+    output_format: str,
+) -> None:
+    """Reopen one or more closed issues.
+
+    ISSUES can be a single number, comma-separated list, or range:
+      42        - Single issue
+      42,43,44  - Multiple issues
+      42-50     - Range of issues
+      42-45,50  - Mixed
+
+    Examples:
+      teax issue reopen 42 -r owner/repo
+      teax issue reopen 42,43,44 -r owner/repo
+      teax issue reopen 42-50 -r owner/repo -y
+    """
+    try:
+        owner, repo_name = parse_repo(repo)
+        issue_nums = parse_issue_spec(issues)
+
+        # Confirm for multiple issues
+        if len(issue_nums) > 1 and not yes:
+            console.print(
+                f"About to reopen {len(issue_nums)} issues: "
+                f"{', '.join(f'#{n}' for n in sorted(issue_nums)[:5])}"
+                f"{'...' if len(issue_nums) > 5 else ''}"
+            )
+            if not click.confirm("Continue?"):
+                console.print("[yellow]Cancelled[/yellow]")
+                return
+
+        success_count = 0
+        error_count = 0
+        reopened_issues: list[Any] = []
+
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            for issue_num in sorted(issue_nums):
+                try:
+                    updated = client.edit_issue(
+                        owner, repo_name, issue_num, state="open"
+                    )
+                    reopened_issues.append(updated)
+                    if output_format == "simple":
+                        console.print(f"[green]✓[/green] Reopened #{issue_num}")
+                    success_count += 1
+                except CLI_ERRORS as e:
+                    if output_format == "simple":
+                        console.print(
+                            f"[red]✗[/red] #{issue_num}: {safe_rich(str(e))}"
+                        )
+                    error_count += 1
+
+        # Output for non-simple formats
+        if output_format != "simple" and reopened_issues:
+            output = OutputFormat(output_format)
+            output.print_issues(reopened_issues)
+
+        # Summary for multiple issues
+        if len(issue_nums) > 1:
+            console.print(
+                f"\n[bold]Summary:[/bold] "
+                f"{success_count} reopened, {error_count} failed"
+            )
+
+        if error_count > 0:
+            sys.exit(1)
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@issue.command("create")
+@click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
+@click.option("--title", "-t", required=True, help="Issue title")
+@click.option("--body", "-b", default="", help="Issue body/description")
+@click.option("--labels", "-l", help="Labels (comma-separated names)")
+@click.option("--assignees", "-a", help="Assignees (comma-separated usernames)")
+@click.option("--milestone", "-m", help="Milestone (ID or name)")
+@click.option(
+    "--output",
+    "-o",
+    "output_format",
+    type=click.Choice(["table", "simple", "json"]),
+    default="simple",
+    help="Output format",
+)
+@click.pass_context
+def issue_create(
+    ctx: click.Context,
+    repo: str,
+    title: str,
+    body: str,
+    labels: str | None,
+    assignees: str | None,
+    milestone: str | None,
+    output_format: str,
+) -> None:
+    """Create a new issue.
+
+    Examples:
+      teax issue create -r owner/repo --title "Fix login bug"
+      teax issue create -r owner/repo -t "feat: Add dark mode" -b "Description here"
+      teax issue create -r owner/repo -t "Bug" --labels "bug,urgent" --assignees "user1"
+      teax issue create -r owner/repo -t "Feature" --milestone "v1.0" -o json
+    """
+    try:
+        owner, repo_name = parse_repo(repo)
+
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            # Resolve label names to IDs
+            label_ids: list[int] | None = None
+            if labels:
+                label_names = [lb.strip() for lb in labels.split(",") if lb.strip()]
+                if label_names:
+                    existing_labels = client.list_repo_labels(owner, repo_name)
+                    name_to_id = {lb.name.lower(): lb.id for lb in existing_labels}
+                    label_ids = []
+                    for name in label_names:
+                        label_id = name_to_id.get(name.lower())
+                        if label_id is None:
+                            raise ValueError(f"Label not found: {name}")
+                        label_ids.append(label_id)
+
+            # Resolve milestone name to ID
+            milestone_id: int | None = None
+            if milestone:
+                milestone_id = client.resolve_milestone(owner, repo_name, milestone)
+
+            # Parse assignees
+            assignee_list: list[str] | None = None
+            if assignees:
+                assignee_list = [a.strip() for a in assignees.split(",") if a.strip()]
+
+            # Create the issue
+            created = client.create_issue(
+                owner,
+                repo_name,
+                title,
+                body=body,
+                labels=label_ids,
+                assignees=assignee_list,
+                milestone=milestone_id,
+            )
+
+            # Output
+            if output_format == "simple":
+                console.print(
+                    f"[green]✓[/green] Created #{created.number}: "
+                    f"{safe_rich(created.title)}"
+                )
+            elif output_format == "json":
+                import json
+
+                output_data = {
+                    "number": created.number,
+                    "title": terminal_safe(created.title),
+                    "state": terminal_safe(created.state),
+                    "url": created.html_url,
+                    "labels": [
+                        terminal_safe(lb.name) for lb in (created.labels or [])
+                    ],
+                    "assignees": [
+                        terminal_safe(a.login) for a in (created.assignees or [])
+                    ],
+                    "milestone": (
+                        terminal_safe(created.milestone.title)
+                        if created.milestone
+                        else None
+                    ),
+                }
+                click.echo(json.dumps(output_data, indent=2))
+            else:  # table
+                output = OutputFormat("table")
+                output.print_issues([created])
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
 # --- Epic Group ---
 
 
@@ -2645,7 +2931,7 @@ def epic_create(
             esc_title = safe_rich(epic_title)
             console.print(f"Creating epic issue [cyan]{esc_title}[/cyan]...")
             issue = client.create_issue(
-                owner, repo_name, epic_title, body, labels=issue_labels
+                owner, repo_name, epic_title, body=body, labels=issue_labels
             )
             console.print(f"  [green]✓[/green] Created issue #{issue.number}")
 
