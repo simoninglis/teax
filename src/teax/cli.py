@@ -32,6 +32,7 @@ _ESC_PATTERN = re.compile(
     r"|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]"  # C0 control chars (except tab/LF)
     r"|[\x80-\x9f]"  # C1 control chars
     r"|\r(?!\n)"  # Standalone CR (not CRLF) - prevents line-rewrite spoofing
+    r"|[\u200e\u200f\u202a-\u202e\u2066-\u2069]"  # Unicode bidi control characters
 )
 
 
@@ -523,6 +524,76 @@ class OutputFormat:
                     safe_rich(label.name),
                     f"#{safe_rich(label.color)}",
                     safe_rich(label.description),
+                )
+            console.print(table)
+
+    def print_milestones(self, milestones: list[Any]) -> None:
+        """Print milestone list."""
+        if self.format_type == "json":
+            output_data = []
+            for ms in milestones:
+                item = {
+                    "id": ms.id,
+                    "title": terminal_safe(ms.title),
+                    "state": terminal_safe(ms.state),
+                    "description": terminal_safe(ms.description),
+                    "open_issues": ms.open_issues,
+                    "closed_issues": ms.closed_issues,
+                    "due_on": ms.due_on.isoformat() if ms.due_on else None,
+                    "created_at": ms.created_at.isoformat() if ms.created_at else None,
+                    "updated_at": ms.updated_at.isoformat() if ms.updated_at else None,
+                    "closed_at": ms.closed_at.isoformat() if ms.closed_at else None,
+                }
+                output_data.append(item)
+            click.echo(json.dumps(output_data, indent=2))
+
+        elif self.format_type == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(
+                ["id", "title", "state", "open_issues", "closed_issues", "due_on"]
+            )
+            for ms in milestones:
+                due_str = ms.due_on.strftime("%Y-%m-%d") if ms.due_on else ""
+                writer.writerow(
+                    [
+                        ms.id,
+                        csv_safe(ms.title),
+                        csv_safe(ms.state),
+                        ms.open_issues,
+                        ms.closed_issues,
+                        due_str,
+                    ]
+                )
+            click.echo(output.getvalue().rstrip())
+
+        elif self.format_type == "simple":
+            for ms in milestones:
+                click.echo(terminal_safe(ms.title))
+
+        else:  # table (default)
+            if not milestones:
+                console.print("[dim]No milestones[/dim]")
+                return
+
+            table = Table(title="Milestones")
+            table.add_column("ID", style="cyan")
+            table.add_column("Title")
+            table.add_column("State")
+            table.add_column("Open", justify="right")
+            table.add_column("Closed", justify="right")
+            table.add_column("Due", style="dim")
+
+            for ms in milestones:
+                state_style = "green" if ms.state == "open" else "dim"
+                due_str = ms.due_on.strftime("%Y-%m-%d") if ms.due_on else ""
+                table.add_row(
+                    str(ms.id),
+                    safe_rich(ms.title),
+                    f"[{state_style}]{safe_rich(ms.state)}[/{state_style}]",
+                    str(ms.open_issues),
+                    str(ms.closed_issues),
+                    due_str,
                 )
             console.print(table)
 
@@ -5686,6 +5757,582 @@ def token_create(
         else:
             err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+# --- Milestone Commands ---
+
+
+@main.group()
+def milestone() -> None:
+    """Manage Gitea milestones for sprint tracking."""
+    pass
+
+
+@milestone.command("list")
+@click.option(
+    "-r",
+    "--repo",
+    required=True,
+    help="Repository in owner/repo format",
+)
+@click.option(
+    "--state",
+    type=click.Choice(["open", "closed", "all"]),
+    default="all",
+    help="Filter by state (default: all)",
+)
+@click.pass_context
+def milestone_list(
+    ctx: click.Context,
+    repo: str,
+    state: str,
+) -> None:
+    """List milestones in a repository.
+
+    Examples:
+        teax milestone list -r owner/repo
+        teax milestone list -r owner/repo --state open
+        teax milestone list -r owner/repo --output json
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            milestones = client.list_milestones(owner, repo_name, state=state)
+            output.print_milestones(milestones)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@milestone.command("create")
+@click.argument("title")
+@click.option(
+    "-r",
+    "--repo",
+    required=True,
+    help="Repository in owner/repo format",
+)
+@click.option(
+    "-d",
+    "--description",
+    default="",
+    help="Milestone description",
+)
+@click.option(
+    "--due-date",
+    help="Due date in YYYY-MM-DD format",
+)
+@click.option(
+    "--if-not-exists",
+    is_flag=True,
+    help="Don't error if milestone already exists",
+)
+@click.pass_context
+def milestone_create(
+    ctx: click.Context,
+    title: str,
+    repo: str,
+    description: str,
+    due_date: str | None,
+    if_not_exists: bool,
+) -> None:
+    """Create a new milestone.
+
+    Examples:
+        teax milestone create "Sprint 50" -r owner/repo
+        teax milestone create "Sprint 50" -r owner/repo --due-date 2026-03-01
+        teax milestone create "Sprint 50" -r owner/repo -d "Goals" --if-not-exists
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    # Parse and validate due date
+    due_on: str | None = None
+    if due_date:
+        try:
+            from datetime import datetime
+
+            parsed = datetime.strptime(due_date, "%Y-%m-%d")
+            due_on = parsed.strftime("%Y-%m-%dT00:00:00Z")
+        except ValueError:
+            err_console.print(
+                f"[red]Error:[/red] Invalid date format: {safe_rich(due_date)}. "
+                "Use YYYY-MM-DD."
+            )
+            sys.exit(1)
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            # Check if milestone exists when --if-not-exists is used
+            if if_not_exists:
+                try:
+                    milestone_id = client.resolve_milestone(owner, repo_name, title)
+                    ms = client.get_milestone(owner, repo_name, milestone_id)
+                    if output.format_type == "json":
+                        click.echo(
+                            json.dumps(
+                                {
+                                    "id": ms.id,
+                                    "title": terminal_safe(ms.title),
+                                    "state": terminal_safe(ms.state),
+                                    "created": False,
+                                },
+                                indent=2,
+                            )
+                        )
+                    elif output.format_type == "simple":
+                        click.echo(str(ms.id))
+                    else:
+                        console.print(
+                            f"[dim]Milestone already exists:[/dim] "
+                            f"{safe_rich(ms.title)} (ID: {ms.id})"
+                        )
+                    return
+                except (ValueError, httpx.HTTPStatusError):
+                    pass  # Milestone doesn't exist, proceed to create
+
+            ms = client.create_milestone(
+                owner,
+                repo_name,
+                title,
+                description=description,
+                due_on=due_on,
+            )
+
+            if output.format_type == "json":
+                click.echo(
+                    json.dumps(
+                        {
+                            "id": ms.id,
+                            "title": terminal_safe(ms.title),
+                            "state": terminal_safe(ms.state),
+                            "created": True,
+                        },
+                        indent=2,
+                    )
+                )
+            elif output.format_type == "simple":
+                click.echo(str(ms.id))
+            else:
+                console.print(
+                    f"[green]✓[/green] Created milestone: "
+                    f"{safe_rich(ms.title)} (ID: {ms.id})"
+                )
+
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 409:
+            err_console.print(
+                f"[red]Error:[/red] Milestone '{safe_rich(title)}' already exists. "
+                "Use --if-not-exists to skip."
+            )
+        else:
+            err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@milestone.command("close")
+@click.argument("milestone_ref")
+@click.option(
+    "-r",
+    "--repo",
+    required=True,
+    help="Repository in owner/repo format",
+)
+@click.pass_context
+def milestone_close(
+    ctx: click.Context,
+    milestone_ref: str,
+    repo: str,
+) -> None:
+    """Close a milestone.
+
+    MILESTONE_REF can be an ID or title.
+
+    Examples:
+        teax milestone close "Sprint 50" -r owner/repo
+        teax milestone close 5 -r owner/repo
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            milestone_id = client.resolve_milestone(owner, repo_name, milestone_ref)
+            ms = client.update_milestone(owner, repo_name, milestone_id, state="closed")
+
+            if output.format_type == "json":
+                click.echo(
+                    json.dumps(
+                        {
+                            "id": ms.id,
+                            "title": terminal_safe(ms.title),
+                            "state": terminal_safe(ms.state),
+                        },
+                        indent=2,
+                    )
+                )
+            elif output.format_type == "simple":
+                click.echo(terminal_safe(ms.state))
+            else:
+                console.print(
+                    f"[green]✓[/green] Closed milestone: {safe_rich(ms.title)}"
+                )
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@milestone.command("open")
+@click.argument("milestone_ref")
+@click.option(
+    "-r",
+    "--repo",
+    required=True,
+    help="Repository in owner/repo format",
+)
+@click.pass_context
+def milestone_open(
+    ctx: click.Context,
+    milestone_ref: str,
+    repo: str,
+) -> None:
+    """Reopen a closed milestone.
+
+    MILESTONE_REF can be an ID or title.
+
+    Examples:
+        teax milestone open "Sprint 50" -r owner/repo
+        teax milestone open 5 -r owner/repo
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            milestone_id = client.resolve_milestone(owner, repo_name, milestone_ref)
+            ms = client.update_milestone(owner, repo_name, milestone_id, state="open")
+
+            if output.format_type == "json":
+                click.echo(
+                    json.dumps(
+                        {
+                            "id": ms.id,
+                            "title": terminal_safe(ms.title),
+                            "state": terminal_safe(ms.state),
+                        },
+                        indent=2,
+                    )
+                )
+            elif output.format_type == "simple":
+                click.echo(terminal_safe(ms.state))
+            else:
+                console.print(
+                    f"[green]✓[/green] Reopened milestone: {safe_rich(ms.title)}"
+                )
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+@milestone.command("edit")
+@click.argument("milestone_ref")
+@click.option(
+    "-r",
+    "--repo",
+    required=True,
+    help="Repository in owner/repo format",
+)
+@click.option(
+    "-t",
+    "--title",
+    help="New milestone title",
+)
+@click.option(
+    "-d",
+    "--description",
+    help="New milestone description",
+)
+@click.option(
+    "--due-date",
+    help="New due date (YYYY-MM-DD) or empty string to clear",
+)
+@click.pass_context
+def milestone_edit(
+    ctx: click.Context,
+    milestone_ref: str,
+    repo: str,
+    title: str | None,
+    description: str | None,
+    due_date: str | None,
+) -> None:
+    """Edit a milestone.
+
+    MILESTONE_REF can be an ID or title.
+
+    Examples:
+        teax milestone edit "Sprint 50" -r owner/repo -t "Sprint 50 (Extended)"
+        teax milestone edit 5 -r owner/repo --due-date 2026-03-15
+        teax milestone edit "Sprint 50" -r owner/repo --due-date ""  # Clear due date
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    if title is None and description is None and due_date is None:
+        err_console.print(
+            "[red]Error:[/red] At least one of --title, --description, "
+            "or --due-date is required."
+        )
+        sys.exit(1)
+
+    # Parse and validate due date
+    due_on: str | None = None
+    if due_date is not None:
+        if due_date == "":
+            due_on = ""  # Empty string clears the due date
+        else:
+            try:
+                from datetime import datetime
+
+                parsed = datetime.strptime(due_date, "%Y-%m-%d")
+                due_on = parsed.strftime("%Y-%m-%dT00:00:00Z")
+            except ValueError:
+                err_console.print(
+                    f"[red]Error:[/red] Invalid date format: {safe_rich(due_date)}. "
+                    "Use YYYY-MM-DD or empty string to clear."
+                )
+                sys.exit(1)
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            milestone_id = client.resolve_milestone(owner, repo_name, milestone_ref)
+            ms = client.update_milestone(
+                owner,
+                repo_name,
+                milestone_id,
+                title=title,
+                description=description,
+                due_on=due_on,
+            )
+
+            if output.format_type == "json":
+                click.echo(
+                    json.dumps(
+                        {
+                            "id": ms.id,
+                            "title": terminal_safe(ms.title),
+                            "state": terminal_safe(ms.state),
+                            "description": terminal_safe(ms.description),
+                            "due_on": ms.due_on.isoformat() if ms.due_on else None,
+                        },
+                        indent=2,
+                    )
+                )
+            elif output.format_type == "simple":
+                click.echo(str(ms.id))
+            else:
+                console.print(
+                    f"[green]✓[/green] Updated milestone: {safe_rich(ms.title)}"
+                )
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+def _get_milestone_lifecycle_state(ms: Any) -> str:
+    """Determine lifecycle state of a milestone.
+
+    Returns:
+        One of: "completed", "in_progress", "planned"
+    """
+    from datetime import date
+
+    today = date.today()
+
+    if ms.state == "closed":
+        return "completed"
+    elif ms.created_at and ms.created_at.date() <= today:
+        return "in_progress"
+    else:
+        return "planned"
+
+
+@milestone.command("state")
+@click.argument("milestone_ref")
+@click.option(
+    "-r",
+    "--repo",
+    required=True,
+    help="Repository in owner/repo format",
+)
+@click.pass_context
+def milestone_state(
+    ctx: click.Context,
+    milestone_ref: str,
+    repo: str,
+) -> None:
+    """Get lifecycle state of a milestone.
+
+    Outputs one of: completed, in_progress, planned, not_found
+
+    State determination:
+    - completed: milestone is closed
+    - in_progress: milestone is open and created_at <= today
+    - planned: milestone is open and created_at > today
+
+    MILESTONE_REF can be an ID or title.
+
+    Examples:
+        teax milestone state "Sprint 50" -r owner/repo
+        teax milestone state 5 -r owner/repo --output simple
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            try:
+                milestone_id = client.resolve_milestone(owner, repo_name, milestone_ref)
+                ms = client.get_milestone(owner, repo_name, milestone_id)
+            except ValueError:
+                # Milestone not found
+                if output.format_type == "json":
+                    data = {
+                        "milestone": terminal_safe(milestone_ref),
+                        "state": "not_found",
+                    }
+                    click.echo(json.dumps(data, indent=2))
+                else:
+                    click.echo("not_found")
+                return
+
+            lifecycle_state = _get_milestone_lifecycle_state(ms)
+
+            if output.format_type == "json":
+                created = ms.created_at.isoformat() if ms.created_at else None
+                click.echo(
+                    json.dumps(
+                        {
+                            "id": ms.id,
+                            "title": terminal_safe(ms.title),
+                            "milestone_state": terminal_safe(ms.state),
+                            "lifecycle_state": lifecycle_state,
+                            "created_at": created,
+                        },
+                        indent=2,
+                    )
+                )
+            else:
+                click.echo(lifecycle_state)
+
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
+def _extract_sprint_number(title: str) -> int | None:
+    """Extract sprint number from milestone title.
+
+    Matches patterns like "Sprint 50", "sprint-50", "Sprint #50".
+
+    Returns:
+        Sprint number or None if not a sprint milestone.
+    """
+    match = re.match(r"sprint[\s#-]*(\d+)", title.lower())
+    if match:
+        return int(match.group(1))
+    return None
+
+
+@milestone.command("current")
+@click.option(
+    "-r",
+    "--repo",
+    required=True,
+    help="Repository in owner/repo format",
+)
+@click.pass_context
+def milestone_current(
+    ctx: click.Context,
+    repo: str,
+) -> None:
+    """Get the current in-progress sprint milestone.
+
+    Finds the lowest-numbered sprint that is in_progress (open and started).
+    Falls back to the lowest open sprint if none are in_progress.
+
+    Outputs nothing if no sprint milestones exist.
+
+    Examples:
+        teax milestone current -r owner/repo
+        CURRENT=$(teax milestone current -r owner/repo --output simple)
+    """
+    owner, repo_name = parse_repo(repo)
+    output: OutputFormat = ctx.obj["output"]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            milestones = client.list_milestones(owner, repo_name, state="open")
+
+            # Filter to sprint milestones and extract numbers
+            sprints: list[tuple[int, Any]] = []  # (sprint_number, milestone)
+            for ms in milestones:
+                num = _extract_sprint_number(ms.title)
+                if num is not None:
+                    sprints.append((num, ms))
+
+            if not sprints:
+                if output.format_type == "json":
+                    click.echo(json.dumps({"current": None}, indent=2))
+                # simple/table: output nothing
+                return
+
+            # Sort by sprint number
+            sprints.sort(key=lambda x: x[0])
+
+            # Find lowest in_progress sprint
+            current: Any = None
+            for _num, ms in sprints:
+                state = _get_milestone_lifecycle_state(ms)
+                if state == "in_progress":
+                    current = ms
+                    break
+
+            # Fallback to lowest open sprint
+            if current is None:
+                current = sprints[0][1]
+
+            if output.format_type == "json":
+                lifecycle = _get_milestone_lifecycle_state(current)
+                data = {
+                    "current": {
+                        "id": current.id,
+                        "title": terminal_safe(current.title),
+                        "sprint_number": _extract_sprint_number(current.title),
+                        "lifecycle_state": lifecycle,
+                    }
+                }
+                click.echo(json.dumps(data, indent=2))
+            elif output.format_type == "simple":
+                click.echo(terminal_safe(current.title))
+            else:
+                lifecycle = _get_milestone_lifecycle_state(current)
+                state_style = "green" if lifecycle == "in_progress" else "yellow"
+                console.print(
+                    f"Current sprint: [bold]{safe_rich(current.title)}[/bold] "
+                    f"[{state_style}]({lifecycle})[/{state_style}]"
+                )
+
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)

@@ -955,6 +955,108 @@ class GiteaClient:
 
         raise ValueError(f"Milestone '{milestone_ref}' not found in repository")
 
+    def create_milestone(
+        self,
+        owner: str,
+        repo: str,
+        title: str,
+        *,
+        description: str = "",
+        due_on: str | None = None,
+    ) -> Milestone:
+        """Create a new milestone.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            title: Milestone title
+            description: Milestone description (optional)
+            due_on: Due date in ISO 8601 format (optional, e.g., "2026-03-01T00:00:00Z")
+
+        Returns:
+            Created milestone
+        """
+        data: dict[str, Any] = {"title": title}
+        if description:
+            data["description"] = description
+        if due_on:
+            data["due_on"] = due_on
+
+        response = self._client.post(
+            f"repos/{_seg(owner)}/{_seg(repo)}/milestones",
+            json=data,
+        )
+        response.raise_for_status()
+        milestone = Milestone.model_validate(response.json())
+
+        # Update milestone cache with the new milestone (if cache exists)
+        cache_key = f"{owner}/{repo}"
+        if cache_key in self._milestone_cache:
+            self._milestone_cache[cache_key][milestone.title] = milestone.id
+
+        return milestone
+
+    def update_milestone(
+        self,
+        owner: str,
+        repo: str,
+        milestone_id: int,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        state: str | None = None,
+        due_on: str | None = None,
+    ) -> Milestone:
+        """Update an existing milestone.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            milestone_id: Milestone ID to update
+            title: New title (optional)
+            description: New description (optional)
+            state: New state - "open" or "closed" (optional)
+            due_on: New due date in ISO 8601 format, or "" to clear (optional)
+
+        Returns:
+            Updated milestone
+        """
+        data: dict[str, Any] = {}
+        if title is not None:
+            data["title"] = title
+        if description is not None:
+            data["description"] = description
+        if state is not None:
+            if state not in ("open", "closed"):
+                raise ValueError(
+                    f"Invalid state: {state!r} (must be 'open' or 'closed')"
+                )
+            data["state"] = state
+        if due_on is not None:
+            # Empty string clears the due date
+            data["due_on"] = due_on if due_on else None
+
+        response = self._client.patch(
+            f"repos/{_seg(owner)}/{_seg(repo)}/milestones/{milestone_id}",
+            json=data,
+        )
+        response.raise_for_status()
+        milestone = Milestone.model_validate(response.json())
+
+        # Update milestone cache with potential new title
+        cache_key = f"{owner}/{repo}"
+        if cache_key in self._milestone_cache:
+            # Remove old title mapping if title changed
+            old_titles = [k for k, v in self._milestone_cache[cache_key].items()
+                        if v == milestone_id]
+            for old_title in old_titles:
+                if old_title != milestone.title:
+                    del self._milestone_cache[cache_key][old_title]
+            # Add new title mapping
+            self._milestone_cache[cache_key][milestone.title] = milestone.id
+
+        return milestone
+
     # --- Actions/Runner Operations ---
 
     def _actions_base_path(

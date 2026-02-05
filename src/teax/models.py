@@ -1,5 +1,7 @@
 """Pydantic models for Gitea API responses."""
 
+from datetime import datetime
+
 from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator
 
 
@@ -67,6 +69,21 @@ class Milestone(BaseModel):
     id: int
     title: str
     state: str = "open"
+    description: str = ""
+    open_issues: int = 0
+    closed_issues: int = 0
+    due_on: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    closed_at: datetime | None = None
+
+    @field_validator("due_on", "created_at", "updated_at", "closed_at", mode="before")
+    @classmethod
+    def normalize_empty_timestamp(cls, v: str | None) -> str | None:
+        """Normalize empty string timestamps to None."""
+        if v == "":
+            return None
+        return v
 
 
 class Dependency(BaseModel):

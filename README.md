@@ -22,6 +22,7 @@ Gitea CLI companion for tea feature gaps.
 - **Workflow runs**: View workflow run status, jobs, logs, and trigger reruns
 - **Secrets & Variables**: Manage repository/org/user secrets and variables
 - **Package management**: Link/unlink packages to repositories
+- **Milestone management**: Create, edit, close milestones; determine current sprint
 
 Uses tea's configuration for authentication - no additional setup required.
 
@@ -296,6 +297,39 @@ teax -o simple token create my-token --scopes write:repository -p MY_PASSWORD
 
 Note: Token creation requires Basic authentication (username + password), not token auth. This is a Gitea API requirement.
 
+### Milestone Management
+
+Manage milestones for sprint tracking and lifecycle management.
+
+```bash
+# List all milestones
+teax milestone list -r owner/repo
+teax milestone list -r owner/repo --state open
+
+# Create a milestone
+teax milestone create "Sprint 50" -r owner/repo
+teax milestone create "Sprint 50" -r owner/repo --due-date 2026-03-01
+teax milestone create "Sprint 50" -r owner/repo -d "Sprint goals" --if-not-exists
+
+# Close a milestone
+teax milestone close "Sprint 50" -r owner/repo
+
+# Reopen a milestone
+teax milestone open "Sprint 50" -r owner/repo
+
+# Edit milestone (title, description, due date)
+teax milestone edit "Sprint 50" -r owner/repo -t "Sprint 50 (Extended)"
+teax milestone edit 5 -r owner/repo --due-date 2026-03-15
+teax milestone edit "Sprint 50" -r owner/repo --due-date ""  # Clear due date
+
+# Get lifecycle state (completed, in_progress, planned, not_found)
+teax milestone state "Sprint 50" -r owner/repo
+
+# Get current in-progress sprint
+teax milestone current -r owner/repo
+CURRENT=$(teax -o simple milestone current -r owner/repo)
+```
+
 ### Global Options
 
 ```bash
@@ -386,11 +420,14 @@ just run deps list 25 --repo owner/repo
 | Token creation | Missing | **Implemented** |
 | Label CRUD | Full | Out of scope |
 | Label ensure | Missing | **Implemented** |
-| Milestone CRUD | Full | Out of scope |
+| Milestone CRUD | Partial² | **Implemented** |
+| Milestone lifecycle | Missing | **Implemented** |
 | Milestone assign | Missing | Via issue edit |
 | PR operations | Full | Out of scope |
 
 ¹ tea's issue view breaks with `--fields` or `--comments` flags, returning a list instead of issue details.
+
+² tea supports milestone list but not create/edit/close. teax provides full milestone management including lifecycle state detection.
 
 **Note:** While tea supports some issue operations, teax provides all issue commands for semantic clarity: use `tea` for authentication, repos, and PRs; use `teax` for all issue operations.
 

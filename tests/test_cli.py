@@ -9255,3 +9255,568 @@ def test_token_create_simple_output(runner: CliRunner, monkeypatch):
         assert result.exit_code == 0
         # Simple output should just be the token value
         assert result.output.strip() == "just_the_token"
+
+
+# --- milestone tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_list(runner: CliRunner):
+    """Test listing milestones."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 1,
+                        "title": "Sprint 49",
+                        "state": "closed",
+                        "description": "",
+                        "open_issues": 0,
+                        "closed_issues": 5,
+                    },
+                    {
+                        "id": 2,
+                        "title": "Sprint 50",
+                        "state": "open",
+                        "description": "Current sprint",
+                        "open_issues": 3,
+                        "closed_issues": 2,
+                    },
+                ],
+            )
+        )
+
+        result = runner.invoke(main, ["milestone", "list", "-r", "owner/repo"])
+
+        assert result.exit_code == 0
+        assert "Sprint 49" in result.output
+        assert "Sprint 50" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_list_json(runner: CliRunner):
+    """Test listing milestones with JSON output."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 1,
+                        "title": "Sprint 50",
+                        "state": "open",
+                        "description": "Goals",
+                        "open_issues": 3,
+                        "closed_issues": 2,
+                        "due_on": "2026-03-01T00:00:00Z",
+                        "created_at": "2026-02-01T00:00:00Z",
+                        "updated_at": "",
+                        "closed_at": "",
+                    },
+                ],
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "json", "milestone", "list", "-r", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert len(data) == 1
+        assert data[0]["title"] == "Sprint 50"
+        assert data[0]["due_on"] == "2026-03-01T00:00:00+00:00"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_list_simple(runner: CliRunner):
+    """Test listing milestones with simple output."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {"id": 1, "title": "Sprint 49", "state": "closed"},
+                    {"id": 2, "title": "Sprint 50", "state": "open"},
+                ],
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "simple", "milestone", "list", "-r", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        lines = result.output.strip().split("\n")
+        assert lines == ["Sprint 49", "Sprint 50"]
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_create(runner: CliRunner):
+    """Test creating a milestone."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.post("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(
+                201,
+                json={"id": 10, "title": "Sprint 50", "state": "open"},
+            )
+        )
+
+        result = runner.invoke(
+            main, ["milestone", "create", "Sprint 50", "-r", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "Created milestone" in result.output
+        assert "Sprint 50" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_create_with_due_date(runner: CliRunner):
+    """Test creating a milestone with due date."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        route = respx.post(
+            "https://test.example.com/api/v1/repos/owner/repo/milestones"
+        ).mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 10,
+                    "title": "Sprint 50",
+                    "state": "open",
+                    "due_on": "2026-03-01T00:00:00Z",
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "milestone",
+                "create",
+                "Sprint 50",
+                "-r",
+                "owner/repo",
+                "--due-date",
+                "2026-03-01",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert route.called
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_create_invalid_date_format(runner: CliRunner):
+    """Test error with invalid date format."""
+    result = runner.invoke(
+        main,
+        [
+            "milestone",
+            "create",
+            "Sprint 50",
+            "-r",
+            "owner/repo",
+            "--due-date",
+            "invalid",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Invalid date format" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_create_if_not_exists_already_exists(runner: CliRunner):
+    """Test --if-not-exists when milestone already exists."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # First call: list milestones to check if exists
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(
+                200,
+                json=[{"id": 5, "title": "Sprint 50", "state": "open"}],
+            )
+        )
+        # Second call: get milestone details
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/milestones/5"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={"id": 5, "title": "Sprint 50", "state": "open"},
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "milestone",
+                "create",
+                "Sprint 50",
+                "-r",
+                "owner/repo",
+                "--if-not-exists",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "already exists" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_close(runner: CliRunner):
+    """Test closing a milestone."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Resolve milestone
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(
+                200,
+                json=[{"id": 5, "title": "Sprint 50", "state": "open"}],
+            )
+        )
+        # Update milestone
+        respx.patch(
+            "https://test.example.com/api/v1/repos/owner/repo/milestones/5"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={"id": 5, "title": "Sprint 50", "state": "closed"},
+            )
+        )
+
+        result = runner.invoke(
+            main, ["milestone", "close", "Sprint 50", "-r", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "Closed milestone" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_open(runner: CliRunner):
+    """Test reopening a milestone."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Resolve milestone
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(
+                200,
+                json=[{"id": 5, "title": "Sprint 50", "state": "closed"}],
+            )
+        )
+        # Update milestone
+        respx.patch(
+            "https://test.example.com/api/v1/repos/owner/repo/milestones/5"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={"id": 5, "title": "Sprint 50", "state": "open"},
+            )
+        )
+
+        result = runner.invoke(
+            main, ["milestone", "open", "Sprint 50", "-r", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert "Reopened milestone" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_edit(runner: CliRunner):
+    """Test editing a milestone title."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Resolve milestone
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(
+                200,
+                json=[{"id": 5, "title": "Sprint 50", "state": "open"}],
+            )
+        )
+        # Update milestone
+        respx.patch(
+            "https://test.example.com/api/v1/repos/owner/repo/milestones/5"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={"id": 5, "title": "Sprint 50 (Extended)", "state": "open"},
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            [
+                "milestone",
+                "edit",
+                "Sprint 50",
+                "-r",
+                "owner/repo",
+                "-t",
+                "Sprint 50 (Extended)",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Updated milestone" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_edit_no_options_error(runner: CliRunner):
+    """Test error when no edit options provided."""
+    result = runner.invoke(
+        main, ["milestone", "edit", "Sprint 50", "-r", "owner/repo"]
+    )
+
+    assert result.exit_code == 1
+    assert "At least one of" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_state_completed(runner: CliRunner):
+    """Test getting lifecycle state of a closed milestone."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Resolve milestone
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 5,
+                        "title": "Sprint 49",
+                        "state": "closed",
+                        "created_at": "2026-01-01T00:00:00Z",
+                    }
+                ],
+            )
+        )
+        # Get milestone
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/milestones/5"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 5,
+                    "title": "Sprint 49",
+                    "state": "closed",
+                    "created_at": "2026-01-01T00:00:00Z",
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["milestone", "state", "Sprint 49", "-r", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert result.output.strip() == "completed"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_state_in_progress(runner: CliRunner):
+    """Test getting lifecycle state of an in-progress milestone."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Resolve milestone
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 5,
+                        "title": "Sprint 50",
+                        "state": "open",
+                        "created_at": "2026-01-01T00:00:00Z",  # Past date
+                    }
+                ],
+            )
+        )
+        # Get milestone
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/milestones/5"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 5,
+                    "title": "Sprint 50",
+                    "state": "open",
+                    "created_at": "2026-01-01T00:00:00Z",  # Past date
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["milestone", "state", "Sprint 50", "-r", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert result.output.strip() == "in_progress"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_state_not_found(runner: CliRunner):
+    """Test lifecycle state when milestone not found."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Resolve milestone - returns empty list
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        result = runner.invoke(
+            main, ["milestone", "state", "NonExistent", "-r", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert result.output.strip() == "not_found"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_current(runner: CliRunner):
+    """Test getting current in-progress sprint."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 1,
+                        "title": "Sprint 49",
+                        "state": "open",
+                        "created_at": "2026-01-01T00:00:00Z",  # Past - in progress
+                    },
+                    {
+                        "id": 2,
+                        "title": "Sprint 50",
+                        "state": "open",
+                        "created_at": "2030-01-01T00:00:00Z",  # Future - planned
+                    },
+                ],
+            )
+        )
+
+        result = runner.invoke(main, ["milestone", "current", "-r", "owner/repo"])
+
+        assert result.exit_code == 0
+        # Sprint 49 should be current (lower number, in_progress)
+        assert "Sprint 49" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_current_simple_output(runner: CliRunner):
+    """Test getting current sprint with simple output."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 1,
+                        "title": "Sprint 50",
+                        "state": "open",
+                        "created_at": "2026-01-01T00:00:00Z",
+                    },
+                ],
+            )
+        )
+
+        result = runner.invoke(
+            main, ["-o", "simple", "milestone", "current", "-r", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        assert result.output.strip() == "Sprint 50"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_current_no_sprints(runner: CliRunner):
+    """Test getting current sprint when no sprint milestones exist."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 1,
+                        "title": "v1.0",  # Not a sprint milestone
+                        "state": "open",
+                        "created_at": "2026-01-01T00:00:00Z",
+                    },
+                ],
+            )
+        )
+
+        result = runner.invoke(main, ["milestone", "current", "-r", "owner/repo"])
+
+        assert result.exit_code == 0
+        # No output for simple/table when no sprints
+        assert result.output.strip() == ""
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_milestone_current_json_no_sprints(runner: CliRunner):
+    """Test JSON output when no sprint milestones exist."""
+    import json
+
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        result = runner.invoke(
+            main, ["-o", "json", "milestone", "current", "-r", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["current"] is None

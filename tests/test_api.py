@@ -1370,6 +1370,178 @@ def test_list_milestones_truncation_warning(client: GiteaClient):
         client.list_milestones("owner", "repo", max_pages=2)
 
 
+@respx.mock
+def test_create_milestone(client: GiteaClient):
+    """Test creating a milestone."""
+    route = respx.post(
+        "https://test.example.com/api/v1/repos/owner/repo/milestones"
+    ).mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "id": 10,
+                "title": "Sprint 50",
+                "state": "open",
+                "description": "",
+                "open_issues": 0,
+                "closed_issues": 0,
+            },
+        )
+    )
+
+    milestone = client.create_milestone("owner", "repo", "Sprint 50")
+
+    assert route.called
+    assert milestone.id == 10
+    assert milestone.title == "Sprint 50"
+    assert milestone.state == "open"
+
+
+@respx.mock
+def test_create_milestone_with_description_and_due_date(client: GiteaClient):
+    """Test creating a milestone with description and due date."""
+    route = respx.post(
+        "https://test.example.com/api/v1/repos/owner/repo/milestones"
+    ).mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "id": 10,
+                "title": "Sprint 50",
+                "state": "open",
+                "description": "Sprint goals",
+                "due_on": "2026-03-01T00:00:00Z",
+            },
+        )
+    )
+
+    milestone = client.create_milestone(
+        "owner",
+        "repo",
+        "Sprint 50",
+        description="Sprint goals",
+        due_on="2026-03-01T00:00:00Z",
+    )
+
+    assert route.called
+    # Verify request body
+    request_json = route.calls.last.request.content.decode()
+    assert "Sprint goals" in request_json
+    assert "2026-03-01T00:00:00Z" in request_json
+    assert milestone.id == 10
+    assert milestone.description == "Sprint goals"
+
+
+@respx.mock
+def test_create_milestone_updates_cache(client: GiteaClient):
+    """Test that create_milestone updates the milestone cache."""
+    # Pre-populate cache
+    client._milestone_cache["owner/repo"] = {"Existing": 1}
+
+    respx.post("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+        return_value=httpx.Response(
+            201,
+            json={"id": 10, "title": "Sprint 50", "state": "open"},
+        )
+    )
+
+    client.create_milestone("owner", "repo", "Sprint 50")
+
+    # Cache should now include the new milestone
+    assert client._milestone_cache["owner/repo"]["Sprint 50"] == 10
+    assert client._milestone_cache["owner/repo"]["Existing"] == 1
+
+
+@respx.mock
+def test_update_milestone_state(client: GiteaClient):
+    """Test updating milestone state (close/reopen)."""
+    route = respx.patch(
+        "https://test.example.com/api/v1/repos/owner/repo/milestones/5"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={"id": 5, "title": "Sprint 50", "state": "closed"},
+        )
+    )
+
+    milestone = client.update_milestone("owner", "repo", 5, state="closed")
+
+    assert route.called
+    assert milestone.state == "closed"
+
+
+@respx.mock
+def test_update_milestone_title(client: GiteaClient):
+    """Test updating milestone title."""
+    route = respx.patch(
+        "https://test.example.com/api/v1/repos/owner/repo/milestones/5"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={"id": 5, "title": "Sprint 50 (Extended)", "state": "open"},
+        )
+    )
+
+    milestone = client.update_milestone(
+        "owner", "repo", 5, title="Sprint 50 (Extended)"
+    )
+
+    assert route.called
+    assert milestone.title == "Sprint 50 (Extended)"
+
+
+@respx.mock
+def test_update_milestone_due_date_clear(client: GiteaClient):
+    """Test clearing milestone due date with empty string."""
+    route = respx.patch(
+        "https://test.example.com/api/v1/repos/owner/repo/milestones/5"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={"id": 5, "title": "Sprint 50", "state": "open", "due_on": None},
+        )
+    )
+
+    milestone = client.update_milestone("owner", "repo", 5, due_on="")
+
+    assert route.called
+    # Verify due_on is sent as null in request body
+    import json
+
+    request_body = json.loads(route.calls.last.request.content.decode())
+    assert request_body["due_on"] is None
+    assert milestone.due_on is None
+
+
+@respx.mock
+def test_update_milestone_invalid_state(client: GiteaClient):
+    """Test error when updating with invalid state."""
+    with pytest.raises(ValueError, match="Invalid state"):
+        client.update_milestone("owner", "repo", 5, state="invalid")
+
+
+@respx.mock
+def test_update_milestone_cache_on_title_change(client: GiteaClient):
+    """Test that cache is updated when milestone title changes."""
+    # Pre-populate cache
+    client._milestone_cache["owner/repo"] = {"Sprint 50": 5}
+
+    respx.patch(
+        "https://test.example.com/api/v1/repos/owner/repo/milestones/5"
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={"id": 5, "title": "Sprint 50 (Extended)", "state": "open"},
+        )
+    )
+
+    client.update_milestone("owner", "repo", 5, title="Sprint 50 (Extended)")
+
+    # Old title should be removed, new title should exist
+    assert "Sprint 50" not in client._milestone_cache["owner/repo"]
+    assert client._milestone_cache["owner/repo"]["Sprint 50 (Extended)"] == 5
+
+
 # --- Comment CRUD Tests ---
 
 
