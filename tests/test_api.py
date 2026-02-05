@@ -3035,9 +3035,7 @@ def test_create_access_token_no_scopes(client: GiteaClient):
 def test_create_access_token_auth_failure(client: GiteaClient):
     """Test 401 error when password is wrong."""
     route = respx.post("https://test.example.com/api/v1/users/testuser/tokens")
-    route.mock(
-        return_value=httpx.Response(401, json={"message": "Unauthorized"})
-    )
+    route.mock(return_value=httpx.Response(401, json={"message": "Unauthorized"}))
 
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
         client.create_access_token(
