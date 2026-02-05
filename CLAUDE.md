@@ -24,11 +24,15 @@ just run deps list 25 --repo owner/repo
 ## Scope
 
 **In Scope:**
+- `teax issue create|list|view|edit|close|reopen|labels|bulk` - All issue operations
 - `teax deps list|add|rm` - Dependency management
-- `teax issue view|edit|labels|bulk` - Issue operations (view works around tea v0.9.2 bugs)
+- `teax sprint status|ready|issues|plan` - Sprint management
+- `teax label ensure` - Idempotent label creation
 - `teax epic create|status|add` - Epic management
 
-**Out of Scope:** Anything tea does (issue create, list, PR ops, label CRUD)
+**Out of Scope:** PR operations, label CRUD (except ensure), milestone CRUD
+
+**Tool Division:** Use `tea` for auth/repos/PRs, use `teax` for all issue operations.
 
 ## Architecture
 

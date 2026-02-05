@@ -12,9 +12,11 @@ Gitea CLI companion for tea feature gaps.
 
 `teax` complements the official [tea CLI](https://gitea.com/gitea/tea) by providing commands that tea doesn't support:
 
+- **Issue lifecycle**: Create, view, close, and reopen issues
 - **Issue editing**: Modify labels, assignees, milestones on existing issues
 - **Dependency management**: Set and manage issue blockers/blocked-by relationships
 - **Bulk operations**: Apply changes to multiple issues at once
+- **Sprint management**: View sprint status, ready queue, and plan sprints
 - **Epic management**: Create and track parent issues with child issue checklists
 - **Runner management**: List, inspect, and manage Gitea Actions runners
 - **Workflow runs**: View workflow run status, jobs, logs, and trigger reruns
@@ -73,14 +75,29 @@ teax deps add 17 --repo owner/repo --blocks 25
 teax deps rm 25 --repo owner/repo --on 17
 ```
 
-### Issue Viewing
+### Issue Lifecycle
 
 ```bash
+# Create a new issue
+teax issue create -r owner/repo --title "Bug: login broken"
+teax issue create -r owner/repo -t "Feature request" -b "Description here"
+teax issue create -r owner/repo -t "Task" --labels "bug,urgent" --assignees "user1"
+
+# List issues with filtering
+teax issue list -r owner/repo --state open
+teax issue list -r owner/repo --label ready --no-label "sprint/*"
+teax -o json issue list -r owner/repo
+
 # View issue details (body, labels, assignees, milestone)
 teax issue view 25 --repo owner/repo
-
-# View issue with comments
 teax issue view 25 --repo owner/repo --comments
+
+# Close issues
+teax issue close 42 -r owner/repo
+teax issue close 42,43,44 -r owner/repo -y  # Multiple with confirmation skip
+
+# Reopen issues
+teax issue reopen 42 -r owner/repo
 ```
 
 ### Issue Editing
@@ -136,6 +153,28 @@ teax epic add 25 17 18 19 --repo owner/repo
 
 # Show epic progress
 teax epic status 25 --repo owner/repo
+```
+
+### Sprint Management
+
+```bash
+# View sprint overview (current sprint, ready queue, backlog)
+teax sprint status --repo owner/repo
+
+# List issues ready for sprint (have "ready" label, no sprint label)
+teax sprint ready --repo owner/repo
+
+# List issues in a specific sprint
+teax sprint issues 28 --repo owner/repo
+teax sprint issues 28 --repo owner/repo --state open
+
+# Plan a sprint (assign issues to sprint label)
+teax sprint plan 29 --repo owner/repo --issues 17-23,25
+teax sprint plan 29 --repo owner/repo --issues 17-23 --confirm  # Execute
+
+# Ensure a label exists (idempotent)
+teax label ensure sprint/29 --repo owner/repo
+teax label ensure ready --repo owner/repo --color 00ff00
 ```
 
 ### Runner Management
@@ -303,24 +342,28 @@ just run deps list 25 --repo owner/repo
 
 | Feature | tea Support | teax Scope |
 |---------|-------------|------------|
-| Issue create | Full | Out of scope |
-| Issue list | Full | Out of scope |
+| Issue create | Supported | **Implemented** (semantic clarity) |
+| Issue list | Supported | **Implemented** (with filtering) |
 | Issue view | Buggy¹ | **Implemented** |
+| Issue close/reopen | Supported | **Implemented** (semantic clarity) |
 | Issue edit | Missing | **Implemented** |
 | Issue dependencies | Missing | **Implemented** |
 | Issue bulk ops | Missing | **Implemented** |
+| Sprint management | Missing | **Implemented** |
 | Epic management | Missing | **Implemented** |
 | Runner management | Missing | **Implemented** |
 | Workflow runs | Missing | **Implemented** |
 | Secrets/Variables | Missing | **Implemented** |
 | Package linking | Missing | **Implemented** |
 | Label CRUD | Full | Out of scope |
-| Label assign | Missing | Via issue edit |
+| Label ensure | Missing | **Implemented** |
 | Milestone CRUD | Full | Out of scope |
 | Milestone assign | Missing | Via issue edit |
 | PR operations | Full | Out of scope |
 
 ¹ tea's issue view breaks with `--fields` or `--comments` flags, returning a list instead of issue details.
+
+**Note:** While tea supports some issue operations, teax provides all issue commands for semantic clarity: use `tea` for authentication, repos, and PRs; use `teax` for all issue operations.
 
 ## See Also
 
