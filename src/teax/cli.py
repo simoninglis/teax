@@ -5562,5 +5562,134 @@ def pkg_latest(
         sys.exit(1)
 
 
+# --- Token Commands ---
+
+
+@main.group()
+def token() -> None:
+    """Manage API access tokens."""
+    pass
+
+
+@token.command("create")
+@click.argument("name")
+@click.option(
+    "--scopes",
+    "-s",
+    help="Comma-separated scopes (e.g., write:repository,write:package)",
+)
+@click.option(
+    "--password-env",
+    "-p",
+    help="Environment variable containing password (default: prompt)",
+)
+@click.pass_context
+def token_create(
+    ctx: click.Context,
+    name: str,
+    scopes: str | None,
+    password_env: str | None,
+) -> None:
+    """Create a new API access token.
+
+    Creates a new access token for the current user. Requires password
+    authentication (Gitea does not allow creating tokens via token auth).
+
+    The token value is only shown once after creation - store it securely.
+
+    Common scopes:
+        - read:user - Read user info
+        - write:repository - Read/write repos
+        - write:package - Read/write packages
+        - write:issue - Read/write issues
+        - write:admin - Administrative access
+        - all - All permissions (default if no scopes specified)
+
+    Examples:
+        teax token create my-ci-token --scopes write:repository,write:package
+        teax token create my-token --password-env MY_PASSWORD
+        teax token create my-token  # Prompts for password
+    """
+    output: OutputFormat = ctx.obj["output"]
+
+    # Get password from environment or prompt
+    if password_env:
+        password = os.environ.get(password_env)
+        if not password:
+            err_console.print(
+                f"[red]Error:[/red] Environment variable "
+                f"{safe_rich(password_env)} not set or empty"
+            )
+            sys.exit(1)
+    else:
+        password = click.prompt("Password", hide_input=True)
+        if not password:
+            err_console.print("[red]Error:[/red] Password cannot be empty")
+            sys.exit(1)
+
+    # Parse scopes
+    scope_list: list[str] | None = None
+    if scopes:
+        scope_list = [s.strip() for s in scopes.split(",") if s.strip()]
+
+    try:
+        with GiteaClient(login_name=ctx.obj["login_name"]) as client:
+            # Get username from login config
+            username = client._login.user
+            if not username:
+                err_console.print(
+                    "[red]Error:[/red] No username in tea config. "
+                    "Run 'tea login add' to configure."
+                )
+                sys.exit(1)
+
+            token_obj = client.create_access_token(
+                username=username,
+                password=password,
+                name=name,
+                scopes=scope_list,
+            )
+
+            if output.format_type == "json":
+                token_data = {
+                    "id": token_obj.id,
+                    "name": terminal_safe(token_obj.name),
+                    "token": terminal_safe(token_obj.sha1),
+                    "scopes": [terminal_safe(s) for s in token_obj.scopes],
+                }
+                click.echo(json.dumps(token_data, indent=2))
+            elif output.format_type == "simple":
+                # Just output the token for scripting
+                click.echo(terminal_safe(token_obj.sha1))
+            else:  # table or csv
+                console.print(f"[green]✓[/green] Created token: {safe_rich(name)}")
+                console.print()
+                console.print(f"[bold]Token:[/bold] {safe_rich(token_obj.sha1)}")
+                console.print()
+                console.print(
+                    "[yellow]Warning:[/yellow] This token is only shown once. "
+                    "Store it securely."
+                )
+                if token_obj.scopes:
+                    scopes_str = ", ".join(safe_rich(s) for s in token_obj.scopes)
+                    console.print(f"[dim]Scopes: {scopes_str}[/dim]")
+
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            err_console.print(
+                "[red]Error:[/red] Authentication failed. Check username and password."
+            )
+        elif e.response.status_code == 422:
+            err_console.print(
+                f"[red]Error:[/red] Token name '{safe_rich(name)}' already exists."
+            )
+        else:
+            err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+    except CLI_ERRORS as e:
+        err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     main()

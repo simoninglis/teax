@@ -9068,3 +9068,190 @@ def test_print_issues_json_sanitizes_state_field():
     # Verify escape sequences are stripped from state field
     assert data["issues"][0]["state"] == "open"  # Not \x1b[31mopen\x1b[0m
     assert "\x1b" not in result  # No escape sequences anywhere
+
+
+# --- token create tests ---
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_token_create(runner: CliRunner):
+    """Test creating an access token with password prompt."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.post("https://test.example.com/api/v1/users/testuser/tokens").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 42,
+                    "name": "my-ci-token",
+                    "sha1": "abc123def456",
+                    "token_last_eight": "def456",
+                    "scopes": ["write:repository"],
+                },
+            )
+        )
+
+        # Simulate password input
+        result = runner.invoke(
+            main,
+            ["token", "create", "my-ci-token", "-s", "write:repository"],
+            input="mypassword\n",
+        )
+
+        assert result.exit_code == 0
+        assert "Created token" in result.output
+        assert "abc123def456" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_token_create_with_password_env(runner: CliRunner, monkeypatch):
+    """Test creating an access token with password from environment."""
+    import httpx
+    import respx
+
+    monkeypatch.setenv("MY_PASSWORD", "secretpass")
+
+    with respx.mock:
+        respx.post("https://test.example.com/api/v1/users/testuser/tokens").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 42,
+                    "name": "env-token",
+                    "sha1": "xyz789",
+                    "token_last_eight": "xyz789",
+                    "scopes": [],
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["token", "create", "env-token", "-p", "MY_PASSWORD"],
+        )
+
+        assert result.exit_code == 0
+        assert "xyz789" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_token_create_password_env_not_set(runner: CliRunner):
+    """Test error when password environment variable not set."""
+    result = runner.invoke(
+        main,
+        ["token", "create", "my-token", "-p", "NONEXISTENT_VAR"],
+    )
+
+    assert result.exit_code == 1
+    assert "not set or empty" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_token_create_auth_failure(runner: CliRunner):
+    """Test error message when authentication fails."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.post("https://test.example.com/api/v1/users/testuser/tokens").mock(
+            return_value=httpx.Response(401, json={"message": "Unauthorized"})
+        )
+
+        result = runner.invoke(
+            main,
+            ["token", "create", "my-token"],
+            input="wrongpassword\n",
+        )
+
+        assert result.exit_code == 1
+        assert "Authentication failed" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_token_create_name_exists(runner: CliRunner):
+    """Test error message when token name already exists."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        respx.post("https://test.example.com/api/v1/users/testuser/tokens").mock(
+            return_value=httpx.Response(
+                422, json={"message": "access token name has been used"}
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["token", "create", "existing-token"],
+            input="mypassword\n",
+        )
+
+        assert result.exit_code == 1
+        assert "already exists" in result.output
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_token_create_json_output(runner: CliRunner, monkeypatch):
+    """Test token create with JSON output using --password-env to avoid prompt."""
+    import json
+
+    import httpx
+    import respx
+
+    monkeypatch.setenv("TEST_PASS", "mypassword")
+
+    with respx.mock:
+        respx.post("https://test.example.com/api/v1/users/testuser/tokens").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 42,
+                    "name": "json-token",
+                    "sha1": "token123",
+                    "scopes": ["write:repository"],
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["-o", "json", "token", "create", "json-token", "-p", "TEST_PASS"],
+        )
+
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["id"] == 42
+        assert data["token"] == "token123"
+
+
+@pytest.mark.usefixtures("mock_client")
+def test_token_create_simple_output(runner: CliRunner, monkeypatch):
+    """Test token create with simple output (token value only)."""
+    import httpx
+    import respx
+
+    monkeypatch.setenv("TEST_PASS", "mypassword")
+
+    with respx.mock:
+        respx.post("https://test.example.com/api/v1/users/testuser/tokens").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "id": 42,
+                    "name": "simple-token",
+                    "sha1": "just_the_token",
+                    "scopes": [],
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main,
+            ["-o", "simple", "token", "create", "simple-token", "-p", "TEST_PASS"],
+        )
+
+        assert result.exit_code == 0
+        # Simple output should just be the token value
+        assert result.output.strip() == "just_the_token"

@@ -279,6 +279,23 @@ teax pkg unlink mypackage --owner myorg --type container
 teax pkg latest mypackage --owner myorg --type pypi
 ```
 
+### Token Management
+
+Create API access tokens programmatically (requires password).
+
+```bash
+# Create a token (prompts for password)
+teax token create my-ci-token --scopes write:repository,write:package
+
+# Create token with password from environment variable
+teax token create my-token --password-env MY_PASSWORD
+
+# Get token value only (for scripting)
+teax -o simple token create my-token --scopes write:repository -p MY_PASSWORD
+```
+
+Note: Token creation requires Basic authentication (username + password), not token auth. This is a Gitea API requirement.
+
 ### Global Options
 
 ```bash
@@ -366,6 +383,7 @@ just run deps list 25 --repo owner/repo
 | Workflow runs | Missing | **Implemented** |
 | Secrets/Variables | Missing | **Implemented** |
 | Package linking | Missing | **Implemented** |
+| Token creation | Missing | **Implemented** |
 | Label CRUD | Full | Out of scope |
 | Label ensure | Missing | **Implemented** |
 | Milestone CRUD | Full | Out of scope |

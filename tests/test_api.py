@@ -2953,3 +2953,144 @@ def test_ensure_label_from_cache(client: GiteaClient):
     assert was_created is False
     # Should have called list twice (once for initial, once for ensure_label)
     assert list_route.call_count == 2
+
+
+# --- Access Token Tests ---
+
+
+@respx.mock
+def test_create_access_token(client: GiteaClient):
+    """Test creating an access token."""
+    route = respx.post("https://test.example.com/api/v1/users/testuser/tokens")
+    route.mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "id": 42,
+                "name": "my-ci-token",
+                "sha1": "abc123def456",
+                "token_last_eight": "def456",
+                "scopes": ["write:repository", "write:package"],
+            },
+        )
+    )
+
+    token = client.create_access_token(
+        username="testuser",
+        password="mypassword",
+        name="my-ci-token",
+        scopes=["write:repository", "write:package"],
+    )
+
+    assert route.called
+    assert token.id == 42
+    assert token.name == "my-ci-token"
+    assert token.sha1 == "abc123def456"
+    assert token.scopes == ["write:repository", "write:package"]
+
+    # Verify Basic auth header was sent
+    import base64
+
+    request = route.calls[0].request
+    auth_header = request.headers["Authorization"]
+    expected = base64.b64encode(b"testuser:mypassword").decode()
+    assert auth_header == f"Basic {expected}"
+
+
+@respx.mock
+def test_create_access_token_no_scopes(client: GiteaClient):
+    """Test creating an access token without scopes (all permissions)."""
+    route = respx.post("https://test.example.com/api/v1/users/testuser/tokens")
+    route.mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "id": 43,
+                "name": "full-access",
+                "sha1": "xyz789",
+                "token_last_eight": "xyz789",
+                "scopes": [],
+            },
+        )
+    )
+
+    token = client.create_access_token(
+        username="testuser",
+        password="mypassword",
+        name="full-access",
+    )
+
+    assert token.id == 43
+    assert token.name == "full-access"
+    assert token.sha1 == "xyz789"
+
+    # Verify request body doesn't include scopes when not provided
+    import json
+
+    request_body = json.loads(route.calls[0].request.content)
+    assert request_body == {"name": "full-access"}
+
+
+@respx.mock
+def test_create_access_token_auth_failure(client: GiteaClient):
+    """Test 401 error when password is wrong."""
+    route = respx.post("https://test.example.com/api/v1/users/testuser/tokens")
+    route.mock(
+        return_value=httpx.Response(401, json={"message": "Unauthorized"})
+    )
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        client.create_access_token(
+            username="testuser",
+            password="wrongpassword",
+            name="my-token",
+        )
+
+    assert exc_info.value.response.status_code == 401
+
+
+@respx.mock
+def test_create_access_token_name_exists(client: GiteaClient):
+    """Test 422 error when token name already exists."""
+    route = respx.post("https://test.example.com/api/v1/users/testuser/tokens")
+    route.mock(
+        return_value=httpx.Response(
+            422,
+            json={"message": "access token name has been used already"},
+        )
+    )
+
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        client.create_access_token(
+            username="testuser",
+            password="mypassword",
+            name="existing-token",
+        )
+
+    assert exc_info.value.response.status_code == 422
+
+
+@respx.mock
+def test_create_access_token_encodes_username(client: GiteaClient):
+    """Test that username with special characters is properly encoded."""
+    # Use regex to match the encoded URL
+    route = respx.post(url__regex=r".*/users/user%2Fwith%2Fslash/tokens$")
+    route.mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "id": 1,
+                "name": "token",
+                "sha1": "abc",
+                "scopes": [],
+            },
+        )
+    )
+
+    client.create_access_token(
+        username="user/with/slash",
+        password="pass",
+        name="token",
+    )
+
+    assert route.called

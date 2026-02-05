@@ -1,5 +1,6 @@
 """Gitea API client for teax operations."""
 
+import base64
 import os
 import warnings
 from typing import Any
@@ -9,6 +10,7 @@ import httpx
 
 from teax.config import get_default_login, get_login_by_name
 from teax.models import (
+    AccessToken,
     Comment,
     Dependency,
     Issue,
@@ -2060,3 +2062,59 @@ class GiteaClient:
         )
         response.raise_for_status()
         return Package.model_validate(response.json())
+
+    # --- Access Token Operations ---
+
+    def create_access_token(
+        self,
+        username: str,
+        password: str,
+        name: str,
+        scopes: list[str] | None = None,
+    ) -> AccessToken:
+        """Create a new access token for a user.
+
+        IMPORTANT: This method requires Basic authentication (username + password),
+        not token authentication. The Gitea API does not allow creating tokens
+        using token auth.
+
+        Args:
+            username: Gitea username
+            password: Gitea password (for Basic auth)
+            name: Token name (must be unique per user)
+            scopes: Token scopes (e.g., ["write:repository", "write:package"]).
+                    If empty or None, creates a token with all scopes.
+
+        Returns:
+            Created access token (includes sha1 field with actual token value).
+            Note: The token value is only returned on creation and cannot be
+            retrieved later.
+
+        Raises:
+            httpx.HTTPStatusError: If authentication fails (401) or token name
+                already exists (422).
+        """
+        # Build Basic auth header (username:password base64 encoded)
+        credentials = f"{username}:{password}"
+        encoded = base64.b64encode(credentials.encode()).decode()
+
+        # Build request payload
+        payload: dict[str, Any] = {"name": name}
+        if scopes:
+            payload["scopes"] = scopes
+
+        # Make request with Basic auth (separate from the token-auth client)
+        base = _normalize_base_url(self._login.url)
+        response = httpx.post(
+            f"{base}users/{_seg(username)}/tokens",
+            json=payload,
+            headers={
+                "Authorization": f"Basic {encoded}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            timeout=30.0,
+            verify=_get_ssl_verify(),
+        )
+        response.raise_for_status()
+        return AccessToken.model_validate(response.json())

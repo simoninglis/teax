@@ -240,6 +240,16 @@ class WorkflowJob(BaseModel):
         return v
 
 
+class AccessToken(BaseModel):
+    """Gitea access token (created via API)."""
+
+    id: int
+    name: str
+    sha1: str  # The actual token value (only returned on creation)
+    token_last_eight: str = ""  # Last 8 chars of token
+    scopes: list[str] = Field(default_factory=list)
+
+
 class WorkflowRun(BaseModel):
     """Gitea Actions workflow run."""
 
