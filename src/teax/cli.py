@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import time
+from datetime import UTC
 from typing import Any
 
 import click
@@ -6155,16 +6156,18 @@ def _get_milestone_lifecycle_state(ms: Any) -> str:
     Returns:
         One of: "completed", "in_progress", "planned"
     """
-    from datetime import date
+    from datetime import datetime
 
-    today = date.today()
+    today_utc = datetime.now(UTC).date()
 
     if ms.state == "closed":
         return "completed"
-    elif ms.created_at and ms.created_at.date() <= today:
-        return "in_progress"
-    else:
-        return "planned"
+    elif ms.created_at:
+        # Normalize to UTC before comparing to handle timezone differences
+        created_utc = ms.created_at.astimezone(UTC).date()
+        if created_utc <= today_utc:
+            return "in_progress"
+    return "planned"
 
 
 @milestone.command("state")
