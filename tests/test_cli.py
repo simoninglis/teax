@@ -2632,8 +2632,16 @@ def test_issue_create_with_labels(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "-o", "simple", "issue", "create", "-r", "owner/repo",
-                "-t", "Bug", "-l", "bug",
+                "-o",
+                "simple",
+                "issue",
+                "create",
+                "-r",
+                "owner/repo",
+                "-t",
+                "Bug",
+                "-l",
+                "bug",
             ],
         )
 
@@ -5889,9 +5897,7 @@ def test_runs_status_tmux_format(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -5954,9 +5960,7 @@ def test_runs_status_tmux_spinner_for_running(runner: CliRunner):
     from teax.cli import SPINNER_FRAMES
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -6000,9 +6004,7 @@ def test_runs_status_exit_code_failure(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -6041,9 +6043,7 @@ def test_runs_status_exit_code_running(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -6082,9 +6082,7 @@ def test_runs_status_exit_code_no_runs(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={"workflow_runs": []},
@@ -6103,9 +6101,7 @@ def test_runs_status_json_includes_overall(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -6152,9 +6148,7 @@ def test_runs_status_tmux_sanitization(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -7224,10 +7218,7 @@ def test_extract_workflow_name():
         extract_workflow_name(".gitea/workflows/staging-verify.yml@refs/heads/feature")
         == "staging-verify.yml"
     )
-    assert (
-        extract_workflow_name("ci.yml@refs/tags/v1.0.0")
-        == "ci.yml"
-    )
+    assert extract_workflow_name("ci.yml@refs/tags/v1.0.0") == "ci.yml"
 
     # Edge cases
     assert extract_workflow_name("") == "unknown"
@@ -7244,9 +7235,7 @@ def test_resolve_run_id_by_run_number(runner: CliRunner):
     from teax.cli import resolve_run_id
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -7327,9 +7316,7 @@ def test_resolve_run_id_not_found_errors(runner: CliRunner):
     from teax.cli import resolve_run_id
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={"workflow_runs": []},  # Empty - no runs found
@@ -7364,9 +7351,7 @@ def test_resolve_run_id_by_number_flag_forces_large_as_run_number(runner: CliRun
     from teax.cli import resolve_run_id
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -7430,9 +7415,7 @@ def test_runs_failed_sha_sanitization(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={"workflow_runs": []},  # Empty - no failures
@@ -7459,9 +7442,7 @@ def test_runs_status_tmux_multiple_failed_jobs(runner: CliRunner):
 
     with respx.mock:
         # Mock runs list
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -7562,9 +7543,7 @@ def test_runs_status_verbose_shows_failed_jobs(runner: CliRunner):
 
     with respx.mock:
         # Mock runs list
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -7650,9 +7629,7 @@ def test_runs_status_tmux_with_failure_hint(runner: CliRunner):
 
     with respx.mock:
         # Mock runs list
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -7725,9 +7702,7 @@ def test_runs_status_json_with_verbose_includes_jobs(runner: CliRunner):
 
     with respx.mock:
         # Mock runs list
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -7801,9 +7776,7 @@ def test_runs_failed_command(runner: CliRunner):
 
     with respx.mock:
         # Mock runs list
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -7872,9 +7845,7 @@ def test_runs_failed_no_failures(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -7917,9 +7888,7 @@ def test_runs_failed_no_failures_json_output(runner: CliRunner):
 
     with respx.mock:
         # Mock runs list with no failures
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -7968,9 +7937,7 @@ def test_runs_failed_json_output(runner: CliRunner):
 
     with respx.mock:
         # Mock runs list
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -8061,9 +8028,7 @@ def test_runs_get_with_run_number(runner: CliRunner):
 
     with respx.mock:
         # Mock runs list for resolution
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -8176,9 +8141,7 @@ def test_runs_status_verbose_degrades_gracefully(runner: CliRunner):
 
     with respx.mock:
         # Mock runs list with one failed workflow
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -8231,9 +8194,7 @@ def test_runs_status_show_matching_workflow(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -8276,9 +8237,7 @@ def test_runs_status_show_workflow_not_triggered(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -8309,8 +8268,14 @@ def test_runs_status_show_workflow_not_triggered(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "-o", "tmux", "runs", "status",
-                "-r", "owner/repo", "--show", "D:deploy.yml",
+                "-o",
+                "tmux",
+                "runs",
+                "status",
+                "-r",
+                "owner/repo",
+                "--show",
+                "D:deploy.yml",
             ],
         )
 
@@ -8326,9 +8291,7 @@ def test_runs_status_show_mixed_status(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -8358,8 +8321,14 @@ def test_runs_status_show_mixed_status(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "-o", "tmux", "runs", "status", "-r", "owner/repo",
-                "--show", "C:ci.yml,D:deploy.yml"
+                "-o",
+                "tmux",
+                "runs",
+                "status",
+                "-r",
+                "owner/repo",
+                "--show",
+                "C:ci.yml,D:deploy.yml",
             ],
         )
 
@@ -8377,9 +8346,7 @@ def test_runs_status_show_failure_overrides_not_triggered(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -8409,8 +8376,14 @@ def test_runs_status_show_failure_overrides_not_triggered(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "-o", "tmux", "runs", "status", "-r", "owner/repo",
-                "--show", "C:ci.yml,D:deploy.yml"
+                "-o",
+                "tmux",
+                "runs",
+                "status",
+                "-r",
+                "owner/repo",
+                "--show",
+                "C:ci.yml,D:deploy.yml",
             ],
         )
 
@@ -8427,9 +8400,7 @@ def test_runs_status_show_running_workflow(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -8476,9 +8447,7 @@ def test_runs_status_show_json_array_format(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -8508,8 +8477,14 @@ def test_runs_status_show_json_array_format(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "-o", "json", "runs", "status", "-r", "owner/repo",
-                "--show", "C:ci.yml,D:deploy.yml"
+                "-o",
+                "json",
+                "runs",
+                "status",
+                "-r",
+                "owner/repo",
+                "--show",
+                "C:ci.yml,D:deploy.yml",
             ],
         )
 
@@ -8544,9 +8519,7 @@ def test_runs_status_show_preserves_order(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -8594,8 +8567,14 @@ def test_runs_status_show_preserves_order(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "-o", "json", "runs", "status", "-r", "owner/repo",
-                "--show", "C:ci.yml,B:build.yml"
+                "-o",
+                "json",
+                "runs",
+                "status",
+                "-r",
+                "owner/repo",
+                "--show",
+                "C:ci.yml,B:build.yml",
             ],
         )
 
@@ -8626,9 +8605,7 @@ def test_runs_status_show_csv_includes_abbrev(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -8658,8 +8635,14 @@ def test_runs_status_show_csv_includes_abbrev(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "-o", "csv", "runs", "status", "-r", "owner/repo",
-                "--show", "C:ci.yml,D:deploy.yml"
+                "-o",
+                "csv",
+                "runs",
+                "status",
+                "-r",
+                "owner/repo",
+                "--show",
+                "C:ci.yml,D:deploy.yml",
             ],
         )
 
@@ -8694,9 +8677,7 @@ def test_runs_status_show_with_verbose(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -8768,8 +8749,15 @@ def test_runs_status_show_with_verbose(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "-o", "tmux", "runs", "status", "-r", "owner/repo",
-                "--show", "C:ci.yml", "--verbose",
+                "-o",
+                "tmux",
+                "runs",
+                "status",
+                "-r",
+                "owner/repo",
+                "--show",
+                "C:ci.yml",
+                "--verbose",
             ],
         )
 
@@ -8786,9 +8774,7 @@ def test_runs_status_show_table_format(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -8834,9 +8820,7 @@ def test_runs_status_show_simple_format(runner: CliRunner):
     import respx
 
     with respx.mock:
-        respx.get(
-            "https://test.example.com/api/v1/repos/owner/repo/actions/runs"
-        ).mock(
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/actions/runs").mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -8866,8 +8850,14 @@ def test_runs_status_show_simple_format(runner: CliRunner):
         result = runner.invoke(
             main,
             [
-                "-o", "simple", "runs", "status", "-r", "owner/repo",
-                "--show", "C:ci.yml,D:deploy.yml",
+                "-o",
+                "simple",
+                "runs",
+                "status",
+                "-r",
+                "owner/repo",
+                "--show",
+                "C:ci.yml,D:deploy.yml",
             ],
         )
 
@@ -8952,9 +8942,7 @@ def test_filter_issues_by_no_labels():
     filtered = filter_issues_by_no_labels(issues, ["sprint/*"])
     assert len(filtered) == 2
     # Should include 'ready' only and empty labels
-    label_sets = [
-        [lb.name for lb in i.labels] for i in filtered
-    ]
+    label_sets = [[lb.name for lb in i.labels] for i in filtered]
     assert ["ready"] in label_sets
     assert [] in label_sets
 

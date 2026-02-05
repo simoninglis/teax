@@ -332,9 +332,7 @@ class GiteaClient:
             )
         return comments
 
-    def create_comment(
-        self, owner: str, repo: str, index: int, body: str
-    ) -> Comment:
+    def create_comment(self, owner: str, repo: str, index: int, body: str) -> Comment:
         """Create a comment on an issue.
 
         Args:
@@ -1798,7 +1796,9 @@ class GiteaClient:
                 # Client-side workflow filter (Gitea API doesn't support it)
                 # Strip @refs/... suffix before matching (Gitea may include it)
                 if workflow:
-                    path_for_match = run.path.split("@")[0] if "@" in run.path else run.path  # noqa: E501
+                    path_for_match = (
+                        run.path.split("@")[0] if "@" in run.path else run.path
+                    )  # noqa: E501
                     if not path_for_match.endswith(workflow):
                         continue
                 # Client-side SHA filter (prefix match)

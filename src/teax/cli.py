@@ -329,18 +329,14 @@ def parse_show_spec(show: str) -> list[tuple[str, str]]:
         # Validate workflow name: must end in .yml or .yaml
         if not (workflow.endswith(".yml") or workflow.endswith(".yaml")):
             safe_wf = terminal_safe(workflow)
-            raise click.BadParameter(
-                f"Workflow must end in .yml or .yaml: {safe_wf}"
-            )
+            raise click.BadParameter(f"Workflow must end in .yml or .yaml: {safe_wf}")
 
         # Check for duplicates
         abbrev_upper = abbrev.upper()
         if abbrev_upper in seen_abbrevs:
             raise click.BadParameter(f"Duplicate abbreviation: {terminal_safe(abbrev)}")
         if workflow in seen_workflows:
-            raise click.BadParameter(
-                f"Duplicate workflow: {terminal_safe(workflow)}"
-            )
+            raise click.BadParameter(f"Duplicate workflow: {terminal_safe(workflow)}")
 
         seen_abbrevs.add(abbrev_upper)
         seen_workflows.add(workflow)
@@ -415,9 +411,7 @@ def compute_issue_fields(issue: Any) -> dict[str, Any]:
     return result
 
 
-def filter_issues_by_no_labels(
-    issues: list[Any], patterns: list[str]
-) -> list[Any]:
+def filter_issues_by_no_labels(issues: list[Any], patterns: list[str]) -> list[Any]:
     """Exclude issues where any label matches any glob pattern.
 
     Uses case-insensitive matching for consistent behavior across platforms.
@@ -674,9 +668,7 @@ class OutputFormat:
                     "number": issue.number,
                     "title": terminal_safe(issue.title),
                     "state": terminal_safe(issue.state),
-                    "labels": [
-                        terminal_safe(lb.name) for lb in (issue.labels or [])
-                    ],
+                    "labels": [terminal_safe(lb.name) for lb in (issue.labels or [])],
                     "assignees": [
                         terminal_safe(a.login) for a in (issue.assignees or [])
                     ],
@@ -689,21 +681,23 @@ class OutputFormat:
                 if include_computed:
                     computed = compute_issue_fields(issue)
                     # Sanitize string fields to prevent terminal injection
-                    item.update({
-                        "sprint_number": computed["sprint_number"],
-                        "is_ready": computed["is_ready"],
-                        "is_bug": computed["is_bug"],
-                        "effort": (
-                            terminal_safe(computed["effort"])
-                            if computed["effort"]
-                            else None
-                        ),
-                        "priority": (
-                            terminal_safe(computed["priority"])
-                            if computed["priority"]
-                            else None
-                        ),
-                    })
+                    item.update(
+                        {
+                            "sprint_number": computed["sprint_number"],
+                            "is_ready": computed["is_ready"],
+                            "is_bug": computed["is_bug"],
+                            "effort": (
+                                terminal_safe(computed["effort"])
+                                if computed["effort"]
+                                else None
+                            ),
+                            "priority": (
+                                terminal_safe(computed["priority"])
+                                if computed["priority"]
+                                else None
+                            ),
+                        }
+                    )
                 output_data.append(item)
             click.echo(json.dumps(output_data, indent=2))
 
@@ -734,13 +728,15 @@ class OutputFormat:
                 ]
                 if include_computed:
                     computed = compute_issue_fields(issue)
-                    row.extend([
-                        computed["sprint_number"] or "",
-                        computed["is_ready"],
-                        computed["is_bug"],
-                        csv_safe(computed["effort"] or ""),
-                        csv_safe(computed["priority"] or ""),
-                    ])
+                    row.extend(
+                        [
+                            computed["sprint_number"] or "",
+                            computed["is_ready"],
+                            computed["is_bug"],
+                            csv_safe(computed["effort"] or ""),
+                            csv_safe(computed["priority"] or ""),
+                        ]
+                    )
                 writer.writerow(row)
             click.echo(output.getvalue().rstrip())
 
@@ -1318,8 +1314,7 @@ class OutputFormat:
         if show_map:
             # Build ordered list of (abbrev, workflow, run_or_none)
             show_workflows = [
-                (abbrev, wf, workflow_runs.get(wf))
-                for abbrev, wf in show_map
+                (abbrev, wf, workflow_runs.get(wf)) for abbrev, wf in show_map
             ]
             active_runs = [r for _, _, r in show_workflows if r is not None]
 
@@ -1329,8 +1324,7 @@ class OutputFormat:
             elif any(r.conclusion == "failure" for r in active_runs):
                 overall_status = "failure"
             elif any(
-                r.status in ("queued", "in_progress", "waiting")
-                for r in active_runs
+                r.status in ("queued", "in_progress", "waiting") for r in active_runs
             ):
                 overall_status = "running"
             elif all(r.conclusion == "success" for r in active_runs):
@@ -1370,13 +1364,15 @@ class OutputFormat:
                 for abbrev, wf, r in show_workflows:
                     if r is None:
                         # Workflow not triggered
-                        workflows_list.append({
-                            "abbrev": terminal_safe(abbrev),
-                            "workflow": terminal_safe(wf),
-                            "triggered": False,
-                            "status": None,
-                            "conclusion": None,
-                        })
+                        workflows_list.append(
+                            {
+                                "abbrev": terminal_safe(abbrev),
+                                "workflow": terminal_safe(wf),
+                                "triggered": False,
+                                "status": None,
+                                "conclusion": None,
+                            }
+                        )
                     else:
                         wf_data: dict[str, Any] = {
                             "abbrev": terminal_safe(abbrev),
@@ -1505,6 +1501,7 @@ class OutputFormat:
             click.echo(" ".join(parts))
 
         elif self.format_type == "simple":
+
             def _simple_symbol(conclusion: str) -> str:
                 """Get symbol for simple format (matches tmux/table consistency)."""
                 if conclusion == "success":
@@ -1558,9 +1555,7 @@ class OutputFormat:
 
             if show_workflows is not None:
                 # Include abbrev column when using --show
-                base_cols = [
-                    "abbrev", "workflow", "triggered", "status", "conclusion"
-                ]
+                base_cols = ["abbrev", "workflow", "triggered", "status", "conclusion"]
                 if verbose:
                     writer.writerow(
                         base_cols + ["run_number", "head_sha", "failed_jobs"]
@@ -1663,8 +1658,7 @@ class OutputFormat:
                 for _abbrev, wf, r in show_workflows:
                     if r is None:
                         console.print(
-                            f"[bold]{safe_rich(wf)}[/bold]: "
-                            "[dim]- not triggered[/dim]"
+                            f"[bold]{safe_rich(wf)}[/bold]: [dim]- not triggered[/dim]"
                         )
                     else:
                         conclusion = r.conclusion or r.status
@@ -2404,9 +2398,7 @@ def issue_bulk(
                 for issue_num in issue_nums:
                     try:
                         issue = client.get_issue(owner, repo_name, issue_num)
-                        current_labels = {
-                            lb.name for lb in (issue.labels or [])
-                        }
+                        current_labels = {lb.name for lb in (issue.labels or [])}
 
                         # Calculate expected labels after changes
                         after_labels = current_labels.copy()
@@ -2605,9 +2597,7 @@ def issue_close(
                 except CLI_ERRORS as e:
                     errors[issue_num] = str(e)
                     if output.format_type == "simple":
-                        console.print(
-                            f"[red]✗[/red] #{issue_num}: {safe_rich(str(e))}"
-                        )
+                        console.print(f"[red]✗[/red] #{issue_num}: {safe_rich(str(e))}")
                     error_count += 1
 
         # Output for non-simple formats
@@ -2689,9 +2679,7 @@ def issue_reopen(
                 except CLI_ERRORS as e:
                     errors[issue_num] = str(e)
                     if output.format_type == "simple":
-                        console.print(
-                            f"[red]✗[/red] #{issue_num}: {safe_rich(str(e))}"
-                        )
+                        console.print(f"[red]✗[/red] #{issue_num}: {safe_rich(str(e))}")
                     error_count += 1
 
         # Output for non-simple formats
@@ -2795,9 +2783,7 @@ def issue_create(
                     "title": terminal_safe(created.title),
                     "state": terminal_safe(created.state),
                     "url": terminal_safe(created.html_url),
-                    "labels": [
-                        terminal_safe(lb.name) for lb in (created.labels or [])
-                    ],
+                    "labels": [terminal_safe(lb.name) for lb in (created.labels or [])],
                     "assignees": [
                         terminal_safe(a.login) for a in (created.assignees or [])
                     ],
@@ -3464,9 +3450,7 @@ def sprint_ready(ctx: click.Context, repo: str) -> None:
     help="Filter by state (default: all)",
 )
 @click.pass_context
-def sprint_issues(
-    ctx: click.Context, sprint_num: int, repo: str, state: str
-) -> None:
+def sprint_issues(ctx: click.Context, sprint_num: int, repo: str, state: str) -> None:
     """List issues in a specific sprint.
 
     Shows all issues with the sprint/N label.
@@ -3476,9 +3460,7 @@ def sprint_issues(
         teax sprint issues 28 --repo owner/repo --state open
     """
     if sprint_num < 1:
-        raise click.BadParameter(
-            f"Sprint number must be >= 1, got: {sprint_num}"
-        )
+        raise click.BadParameter(f"Sprint number must be >= 1, got: {sprint_num}")
 
     owner, repo_name = parse_repo(repo)
     output: OutputFormat = ctx.obj["output"]
@@ -3531,9 +3513,7 @@ def sprint_plan(
         teax sprint plan 29 --repo owner/repo --create-label --confirm
     """
     if sprint_num < 1:
-        raise click.BadParameter(
-            f"Sprint number must be >= 1, got: {sprint_num}"
-        )
+        raise click.BadParameter(f"Sprint number must be >= 1, got: {sprint_num}")
 
     owner, repo_name = parse_repo(repo)
     sprint_label = f"sprint/{sprint_num}"
@@ -3580,9 +3560,7 @@ def sprint_plan(
                 labels_str = ", ".join(
                     safe_rich(lb.name) for lb in (issue.labels or [])
                 )
-                table.add_row(
-                    str(issue.number), safe_rich(issue.title), labels_str
-                )
+                table.add_row(str(issue.number), safe_rich(issue.title), labels_str)
 
             console.print(table)
 
@@ -3600,8 +3578,7 @@ def sprint_plan(
                 )
                 if was_created:
                     console.print(
-                        f"\n[green]✓[/green] Created label "
-                        f"[cyan]{esc_label}[/cyan]"
+                        f"\n[green]✓[/green] Created label [cyan]{esc_label}[/cyan]"
                     )
 
             # Add sprint label to each issue
@@ -4781,9 +4758,7 @@ def resolve_run_id(
                 return r.id
         # Not found as run_number
         if force_number:
-            raise ValueError(
-                f"Run number {ref_int} not found in recent runs."
-            )
+            raise ValueError(f"Run number {ref_int} not found in recent runs.")
         raise ValueError(
             f"Run number {ref_int} not found in recent runs. "
             f"If this is a run_id, use --by-id flag."
@@ -4935,9 +4910,7 @@ def runs_status(
 @click.option("--repo", "-r", required=True, help="Repository (owner/repo)")
 @click.option("--sha", "-s", help="Check specific commit (default: latest failure)")
 @click.option("--workflow", "-w", help="Filter to specific workflow")
-@click.option(
-    "--logs", is_flag=True, help="Fetch first 50 lines of failed job logs"
-)
+@click.option("--logs", is_flag=True, help="Fetch first 50 lines of failed job logs")
 @click.pass_context
 def runs_failed(
     ctx: click.Context,
@@ -5003,9 +4976,7 @@ def runs_failed(
                 output_data: dict[str, Any] = {
                     "run_id": failed_run.id,
                     "run_number": failed_run.run_number,
-                    "workflow": terminal_safe(
-                        extract_workflow_name(failed_run.path)
-                    ),
+                    "workflow": terminal_safe(extract_workflow_name(failed_run.path)),
                     "head_sha": terminal_safe(failed_run.head_sha),
                     "head_branch": terminal_safe(failed_run.head_branch or ""),
                     "event": terminal_safe(failed_run.event),
@@ -5039,9 +5010,7 @@ def runs_failed(
                 click.echo(json.dumps(output_data, indent=2))
 
             elif output.format_type == "simple":
-                wf_name = (
-                    extract_workflow_name(failed_run.path)
-                )
+                wf_name = extract_workflow_name(failed_run.path)
                 click.echo(
                     f"{terminal_safe(wf_name)} #{failed_run.run_number} "
                     f"({terminal_safe(failed_run.head_sha[:8])})"
@@ -5071,9 +5040,7 @@ def runs_failed(
                         "job_conclusion",
                     ]
                 )
-                wf_name = (
-                    extract_workflow_name(failed_run.path)
-                )
+                wf_name = extract_workflow_name(failed_run.path)
                 for j in failed_jobs:
                     writer.writerow(
                         [
@@ -5089,9 +5056,7 @@ def runs_failed(
                 click.echo(out.getvalue().rstrip())
 
             else:  # table (default)
-                wf_name = (
-                    extract_workflow_name(failed_run.path)
-                )
+                wf_name = extract_workflow_name(failed_run.path)
                 console.print(
                     f"[bold red]Failed:[/bold red] {safe_rich(wf_name)} "
                     f"#{failed_run.run_number}"
@@ -5117,9 +5082,7 @@ def runs_failed(
                                 for line in lines:
                                     console.print(f"    {safe_rich(line)}")
                             except CLI_ERRORS:
-                                console.print(
-                                    "[dim]  (Could not fetch logs)[/dim]"
-                                )
+                                console.print("[dim]  (Could not fetch logs)[/dim]")
     except CLI_ERRORS as e:
         err_console.print(f"[red]Error:[/red] {safe_rich(str(e))}")
         sys.exit(1)
@@ -5200,8 +5163,12 @@ def runs_get(
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
             run_id = resolve_run_id(
-                client, owner, repo_name, run_ref,
-                force_number=by_number, force_id=by_id
+                client,
+                owner,
+                repo_name,
+                run_ref,
+                force_number=by_number,
+                force_id=by_id,
             )
             jobs = client.list_run_jobs(owner, repo_name, run_id)
             output.print_jobs(jobs, errors_only=errors_only)
@@ -5242,8 +5209,12 @@ def runs_jobs(
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
             run_id = resolve_run_id(
-                client, owner, repo_name, run_ref,
-                force_number=by_number, force_id=by_id
+                client,
+                owner,
+                repo_name,
+                run_ref,
+                force_number=by_number,
+                force_id=by_id,
             )
             jobs = client.list_run_jobs(owner, repo_name, run_id)
             output.print_jobs(jobs, errors_only=errors_only)
@@ -5414,8 +5385,12 @@ def runs_rerun(
     try:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
             run_id = resolve_run_id(
-                client, owner, repo_name, run_ref,
-                force_number=by_number, force_id=by_id
+                client,
+                owner,
+                repo_name,
+                run_ref,
+                force_number=by_number,
+                force_id=by_id,
             )
             # Get run info first to show what we're rerunning
             run = client.get_run(owner, repo_name, run_id)
@@ -5470,8 +5445,12 @@ def runs_delete(
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
             # Resolve and fetch run details first for confirmation
             run_id = resolve_run_id(
-                client, owner, repo_name, run_ref,
-                force_number=by_number, force_id=by_id
+                client,
+                owner,
+                repo_name,
+                run_ref,
+                force_number=by_number,
+                force_id=by_id,
             )
             run = client.get_run(owner, repo_name, run_id)
 

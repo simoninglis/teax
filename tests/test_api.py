@@ -2801,7 +2801,8 @@ def test_list_issues_with_filters(client: GiteaClient):
     )
 
     issues = client.list_issues(
-        "owner", "repo",
+        "owner",
+        "repo",
         state="open",
         labels=["ready"],
         assignee="testuser",
@@ -2894,9 +2895,7 @@ def test_list_issues_pagination_truncation(client: GiteaClient):
 def test_ensure_label_creates_new(client: GiteaClient):
     """Test ensure_label creates label when it doesn't exist."""
     # First call: create succeeds
-    create_route = respx.post(
-        "https://test.example.com/api/v1/repos/owner/repo/labels"
-    )
+    create_route = respx.post("https://test.example.com/api/v1/repos/owner/repo/labels")
     create_route.mock(
         return_value=httpx.Response(
             201,
@@ -2914,15 +2913,11 @@ def test_ensure_label_creates_new(client: GiteaClient):
 def test_ensure_label_already_exists(client: GiteaClient):
     """Test ensure_label returns existing label on 409 conflict."""
     # Create fails with 409
-    create_route = respx.post(
-        "https://test.example.com/api/v1/repos/owner/repo/labels"
-    )
+    create_route = respx.post("https://test.example.com/api/v1/repos/owner/repo/labels")
     create_route.mock(return_value=httpx.Response(409))
 
     # List labels returns existing label
-    list_route = respx.get(
-        "https://test.example.com/api/v1/repos/owner/repo/labels"
-    )
+    list_route = respx.get("https://test.example.com/api/v1/repos/owner/repo/labels")
     list_route.mock(
         return_value=httpx.Response(
             200,
@@ -2940,9 +2935,7 @@ def test_ensure_label_already_exists(client: GiteaClient):
 def test_ensure_label_from_cache(client: GiteaClient):
     """Test ensure_label uses cache when label already known."""
     # Populate cache by listing labels
-    list_route = respx.get(
-        "https://test.example.com/api/v1/repos/owner/repo/labels"
-    )
+    list_route = respx.get("https://test.example.com/api/v1/repos/owner/repo/labels")
     list_route.mock(
         return_value=httpx.Response(
             200,

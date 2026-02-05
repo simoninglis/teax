@@ -77,7 +77,29 @@
       "Bash(git remote set-url:*)",
       "Bash(gh repo view:*)",
       "Bash(gh run list:*)",
-      "Bash(gh run view:*)"
+      "Bash(gh run view:*)",
+      "Bash(gh run watch:*)",
+      "Bash(pip index versions:*)",
+      "Bash(twine upload:*)",
+      "Bash(just lint:*)",
+      "Bash(just --show publish:*)",
+      "Bash(just release minor:*)",
+      "Bash(teax runs --help:*)",
+      "Bash(teax runs status --help:*)",
+      "Bash(teax --version:*)",
+      "Bash(pip install:*)",
+      "Bash(pipx install:*)",
+      "Bash(teax issue --help:*)",
+      "Bash(teax deps --help:*)",
+      "Bash(TEAX_INSECURE=1 teax deps add:*)",
+      "Bash(TEAX_INSECURE=1 teax epic add:*)",
+      "Bash(TEAX_INSECURE=1 teax epic:*)",
+      "Bash(wc:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(TEAX_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt teax secrets list:*)",
+      "Bash(TEAX_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt teax vars list:*)",
+      "Bash(TEAX_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt teax secrets set:*)",
+      "Bash(TEAX_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt teax:*)"
     ]
   }
 }
