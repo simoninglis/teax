@@ -97,7 +97,12 @@ jobs:
           poetry config http-basic.gitea "__token__" "${CI_GITEA_TOKEN}"
 
       - name: Publish to Gitea PyPI
-        run: poetry publish -r gitea --no-interaction
+        env:
+          REQUESTS_CA_BUNDLE: /etc/ssl/certs/ca-certificates.crt
+        run: |
+          # Debug: test connectivity first
+          curl -sSf "${{ env.GITEA_PYPI_URL }}" -o /dev/null && echo "PyPI endpoint reachable"
+          poetry publish -r gitea --no-interaction
 
       - name: Push commit and tag
         run: |
