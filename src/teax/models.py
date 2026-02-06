@@ -79,8 +79,13 @@ class Milestone(BaseModel):
 
     @field_validator("due_on", "created_at", "updated_at", "closed_at", mode="before")
     @classmethod
-    def normalize_empty_timestamp(cls, v: str | None) -> str | None:
-        """Normalize empty string timestamps to None."""
+    def normalize_empty_timestamp(
+        cls, v: str | datetime | None
+    ) -> str | datetime | None:
+        """Normalize empty string timestamps to None.
+
+        Pydantic will convert valid strings to datetime after this validator runs.
+        """
         if v == "":
             return None
         return v

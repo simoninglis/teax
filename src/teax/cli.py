@@ -6236,7 +6236,11 @@ def _get_milestone_lifecycle_state(ms: Any) -> str:
         return "completed"
     elif ms.created_at:
         # Normalize to UTC before comparing to handle timezone differences
-        created_utc = ms.created_at.astimezone(UTC).date()
+        # Handle both tz-aware and naive datetimes (assume UTC if naive)
+        if ms.created_at.tzinfo is None:
+            created_utc = ms.created_at.replace(tzinfo=UTC).date()
+        else:
+            created_utc = ms.created_at.astimezone(UTC).date()
         if created_utc <= today_utc:
             return "in_progress"
     return "planned"
