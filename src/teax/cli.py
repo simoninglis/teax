@@ -3418,6 +3418,7 @@ def sprint_status(ctx: click.Context, repo: str) -> None:
 
     Displays the current sprint (highest sprint/N with open issues),
     counts of open/closed issues, ready queue size, and backlog size.
+    Includes milestone lifecycle state when milestones exist.
 
     Examples:
         teax sprint status --repo owner/repo
@@ -3428,6 +3429,14 @@ def sprint_status(ctx: click.Context, repo: str) -> None:
         with GiteaClient(login_name=ctx.obj["login_name"]) as client:
             # Fetch all issues (both open and closed for counting)
             all_issues = client.list_issues(owner, repo_name, state="all")
+
+            # Fetch milestones for lifecycle state info
+            milestones = client.list_milestones(owner, repo_name, state="all")
+            milestone_by_sprint: dict[int, Any] = {}
+            for ms in milestones:
+                sprint_num = _extract_sprint_number(ms.title)
+                if sprint_num is not None:
+                    milestone_by_sprint[sprint_num] = ms
 
             # Group issues by sprint number
             sprint_issues: dict[int, list[Any]] = {}
@@ -3458,19 +3467,56 @@ def sprint_status(ctx: click.Context, repo: str) -> None:
             # Display output
             esc_repo = safe_rich(repo)
             console.print(f"\n[bold]Sprint Status: {esc_repo}[/bold]")
-            console.print("━" * 30)
+            console.print("━" * 40)
 
             if current_sprint is not None:
                 issues_in_current = sprint_issues[current_sprint]
                 open_count = sum(1 for i in issues_in_current if i.state == "open")
                 closed_count = sum(1 for i in issues_in_current if i.state == "closed")
-                console.print(f"\nCurrent Sprint: [cyan]{current_sprint}[/cyan]")
+
+                # Get milestone state if available
+                ms_info = ""
+                if current_sprint in milestone_by_sprint:
+                    ms = milestone_by_sprint[current_sprint]
+                    state = _get_milestone_lifecycle_state(ms)
+                    state_color = {
+                        "in_progress": "green",
+                        "planned": "yellow",
+                        "completed": "dim",
+                    }.get(state, "white")
+                    ms_info = f" [{state_color}]({state})[/{state_color}]"
+
+                console.print(
+                    f"\nCurrent Sprint: [cyan]{current_sprint}[/cyan]{ms_info}"
+                )
                 console.print(
                     f"  Open: [yellow]{open_count}[/yellow] | "
                     f"Closed: [green]{closed_count}[/green]"
                 )
             else:
                 console.print("\n[dim]No active sprint found[/dim]")
+
+            # Show planned sprints (sprints with higher numbers than current)
+            planned_sprints = []
+            for snum in sorted(sprint_issues.keys()):
+                if current_sprint is None or snum > current_sprint:
+                    issues_in_sprint = sprint_issues[snum]
+                    open_count = sum(1 for i in issues_in_sprint if i.state == "open")
+                    if open_count > 0:
+                        ms_state = ""
+                        if snum in milestone_by_sprint:
+                            ms = milestone_by_sprint[snum]
+                            state = _get_milestone_lifecycle_state(ms)
+                            ms_state = f" ({state})"
+                        planned_sprints.append((snum, open_count, ms_state))
+
+            if planned_sprints:
+                console.print("\nPlanned Sprints:")
+                for snum, count, ms_state in planned_sprints:
+                    console.print(
+                        f"  Sprint {snum}: [cyan]{count}[/cyan] issues"
+                        f"[dim]{ms_state}[/dim]"
+                    )
 
             console.print(f"\nReady Queue: [cyan]{len(ready_queue)}[/cyan] issues")
             console.print(f"Backlog: [dim]{len(backlog)}[/dim] issues")
@@ -3525,7 +3571,8 @@ def sprint_ready(ctx: click.Context, repo: str) -> None:
 def sprint_issues(ctx: click.Context, sprint_num: int, repo: str, state: str) -> None:
     """List issues in a specific sprint.
 
-    Shows all issues with the sprint/N label.
+    Shows all issues with the sprint/N label. Includes milestone
+    lifecycle state and due date when a matching milestone exists.
 
     Examples:
         teax sprint issues 28 --repo owner/repo
@@ -3542,6 +3589,31 @@ def sprint_issues(ctx: click.Context, sprint_num: int, repo: str, state: str) ->
             issues = client.list_issues(
                 owner, repo_name, state=state, labels=[f"sprint/{sprint_num}"]
             )
+
+            # Look up milestone for this sprint (table output only)
+            if output.format_type == "table":
+                milestones = client.list_milestones(owner, repo_name, state="all")
+                sprint_milestone = None
+                for ms in milestones:
+                    ms_num = _extract_sprint_number(ms.title)
+                    if ms_num == sprint_num:
+                        sprint_milestone = ms
+                        break
+
+                # Print header with milestone info
+                header_parts = [f"[bold]Sprint {sprint_num} Issues[/bold]"]
+                if sprint_milestone:
+                    ms_state = _get_milestone_lifecycle_state(sprint_milestone)
+                    state_color = {
+                        "in_progress": "green",
+                        "planned": "yellow",
+                        "completed": "dim",
+                    }.get(ms_state, "white")
+                    header_parts.append(f"[{state_color}]({ms_state})[/{state_color}]")
+                    if sprint_milestone.due_on:
+                        due_str = sprint_milestone.due_on.strftime("%Y-%m-%d")
+                        header_parts.append(f"[dim]due: {due_str}[/dim]")
+                console.print(" ".join(header_parts))
 
             output.print_issue_list(issues, include_computed=True)
     except CLI_ERRORS as e:
