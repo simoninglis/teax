@@ -8,8 +8,8 @@ import os
 import re
 import sys
 import time
-from datetime import UTC
-from typing import Any
+from datetime import UTC, date
+from typing import Any, Literal
 
 import click
 import httpx
@@ -6222,8 +6222,39 @@ def milestone_edit(
         sys.exit(1)
 
 
-def _get_milestone_lifecycle_state(ms: Any) -> str:
-    """Determine lifecycle state of a milestone.
+def _parse_start_date_from_description(description: str) -> date | None:
+    """Parse start_date from milestone description per ADR-0017.
+
+    Looks for 'start_date: YYYY-MM-DD' at the beginning of a line.
+    This anchoring prevents false matches in prose or code blocks.
+
+    Returns:
+        Parsed date or None if not found/invalid.
+    """
+    if not description:
+        return None
+
+    # Match 'start_date: YYYY-MM-DD' at line start (case-insensitive)
+    # Anchored to prevent matching mid-line mentions in prose
+    match = re.search(
+        r"^start_date:\s*(\d{4}-\d{2}-\d{2})",
+        description,
+        re.IGNORECASE | re.MULTILINE,
+    )
+    if match:
+        try:
+            return date.fromisoformat(match.group(1))
+        except ValueError:
+            pass
+    return None
+
+
+def _get_milestone_lifecycle_state(
+    ms: Any,
+) -> Literal["completed", "in_progress", "planned"]:
+    """Determine lifecycle state of a milestone per ADR-0017.
+
+    Uses start_date from description if present, falls back to created_at.
 
     Returns:
         One of: "completed", "in_progress", "planned"
@@ -6234,8 +6265,17 @@ def _get_milestone_lifecycle_state(ms: Any) -> str:
 
     if ms.state == "closed":
         return "completed"
+
+    # Try to get start_date from description (ADR-0017)
+    start_date = _parse_start_date_from_description(ms.description or "")
+
+    if start_date:
+        # Use explicit start_date from description
+        if start_date <= today_utc:
+            return "in_progress"
+        return "planned"
     elif ms.created_at:
-        # Normalize to UTC before comparing to handle timezone differences
+        # Fall back to created_at if no start_date specified
         # Handle both tz-aware and naive datetimes (assume UTC if naive)
         if ms.created_at.tzinfo is None:
             created_utc = ms.created_at.replace(tzinfo=UTC).date()
@@ -6264,10 +6304,13 @@ def milestone_state(
 
     Outputs one of: completed, in_progress, planned, not_found
 
-    State determination:
+    State determination (per ADR-0017):
     - completed: milestone is closed
-    - in_progress: milestone is open and created_at <= today
-    - planned: milestone is open and created_at > today
+    - in_progress: milestone is open and start_date <= today
+    - planned: milestone is open and start_date > today
+
+    The start_date is parsed from 'start_date: YYYY-MM-DD' in the milestone
+    description. If not present, falls back to created_at timestamp.
 
     MILESTONE_REF can be an ID or title.
 
