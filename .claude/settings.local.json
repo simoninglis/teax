@@ -102,7 +102,8 @@
       "Bash(TEAX_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt teax:*)",
       "Bash(TEAX_INSECURE=1 teax runs:*)",
       "Bash(TEAX_INSECURE=1 teax:*)",
-      "Bash(ssh vm-gitea-runner-01:*)"
+      "Bash(ssh vm-gitea-runner-01:*)",
+      "Bash(TEAX_SSL_INSECURE=1 teax issue view:*)"
     ]
   }
 }

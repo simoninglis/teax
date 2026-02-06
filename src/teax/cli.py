@@ -3416,9 +3416,10 @@ def sprint() -> None:
 def sprint_status(ctx: click.Context, repo: str) -> None:
     """Show sprint overview.
 
-    Displays the current sprint (highest sprint/N with open issues),
-    counts of open/closed issues, ready queue size, and backlog size.
-    Includes milestone lifecycle state when milestones exist.
+    Displays the current sprint using milestone-based detection (ADR-0017).
+    The current sprint is the lowest-numbered open sprint milestone with
+    start_date <= today (in_progress state). Falls back to label-based
+    detection only if no sprint milestones exist.
 
     Examples:
         teax sprint status --repo owner/repo
@@ -3438,7 +3439,7 @@ def sprint_status(ctx: click.Context, repo: str) -> None:
                 if sprint_num is not None and sprint_num not in milestone_by_sprint:
                     milestone_by_sprint[sprint_num] = ms  # Keep first match
 
-            # Group issues by sprint number
+            # Group issues by sprint number (from labels)
             sprint_issues: dict[int, list[Any]] = {}
             ready_queue: list[Any] = []
             backlog: list[Any] = []
@@ -3456,13 +3457,45 @@ def sprint_status(ctx: click.Context, repo: str) -> None:
                 elif issue.state == "open":
                     backlog.append(issue)
 
-            # Find current sprint (highest sprint with open issues)
-            current_sprint = None
-            for snum in sorted(sprint_issues.keys(), reverse=True):
-                issues_in_sprint = sprint_issues[snum]
-                if any(i.state == "open" for i in issues_in_sprint):
-                    current_sprint = snum
-                    break
+            # Find current sprint using milestone-based detection (ADR-0017)
+            # Priority: lowest in_progress milestone, then fall back to labels
+            current_sprint: int | None = None
+            current_ms_state: Literal["completed", "in_progress", "planned"] | None = (
+                None
+            )
+
+            # Try milestone-based detection first (SSOT per ADR-0017)
+            open_sprint_milestones = [
+                (num, ms)
+                for num, ms in milestone_by_sprint.items()
+                if ms.state == "open"
+            ]
+            if open_sprint_milestones:
+                # Sort by sprint number (lowest first)
+                open_sprint_milestones.sort(key=lambda x: x[0])
+
+                # Find lowest in_progress sprint
+                for num, ms in open_sprint_milestones:
+                    state = _get_milestone_lifecycle_state(ms)
+                    if state == "in_progress":
+                        current_sprint = num
+                        current_ms_state = state
+                        break
+
+                # Fallback: if no in_progress, use lowest open milestone
+                if current_sprint is None and open_sprint_milestones:
+                    current_sprint = open_sprint_milestones[0][0]
+                    current_ms_state = _get_milestone_lifecycle_state(
+                        open_sprint_milestones[0][1]
+                    )
+
+            # Fallback to label-based detection only if no milestones exist
+            if current_sprint is None and sprint_issues:
+                for snum in sorted(sprint_issues.keys(), reverse=True):
+                    issues_in_sprint = sprint_issues[snum]
+                    if any(i.state == "open" for i in issues_in_sprint):
+                        current_sprint = snum
+                        break
 
             # Display output
             esc_repo = safe_rich(repo)
@@ -3470,13 +3503,22 @@ def sprint_status(ctx: click.Context, repo: str) -> None:
             console.print("━" * 40)
 
             if current_sprint is not None:
-                issues_in_current = sprint_issues[current_sprint]
+                # Get issue counts for current sprint
+                issues_in_current = sprint_issues.get(current_sprint, [])
                 open_count = sum(1 for i in issues_in_current if i.state == "open")
                 closed_count = sum(1 for i in issues_in_current if i.state == "closed")
 
-                # Get milestone state if available
+                # Get milestone state (may already be set from milestone detection)
                 ms_info = ""
-                if current_sprint in milestone_by_sprint:
+                if current_ms_state:
+                    state = current_ms_state
+                    state_color = {
+                        "in_progress": "green",
+                        "planned": "yellow",
+                        "completed": "dim",
+                    }.get(state, "white")
+                    ms_info = f" [{state_color}]({state})[/{state_color}]"
+                elif current_sprint in milestone_by_sprint:
                     ms = milestone_by_sprint[current_sprint]
                     state = _get_milestone_lifecycle_state(ms)
                     state_color = {
@@ -6254,35 +6296,34 @@ def _get_milestone_lifecycle_state(
 ) -> Literal["completed", "in_progress", "planned"]:
     """Determine lifecycle state of a milestone per ADR-0017.
 
-    Uses start_date from description if present, falls back to created_at.
+    State derivation rules:
+    - closed milestone → completed
+    - open milestone with start_date <= today → in_progress
+    - open milestone with start_date > today OR no start_date → planned
+
+    The start_date must be explicitly set in the milestone description.
+    Milestones without a start_date are considered planned (not yet started).
 
     Returns:
         One of: "completed", "in_progress", "planned"
     """
     from datetime import datetime
 
-    today_utc = datetime.now(UTC).date()
-
     if ms.state == "closed":
         return "completed"
 
-    # Try to get start_date from description (ADR-0017)
+    # Get start_date from description (ADR-0017)
+    # If no start_date is present, milestone is planned (not started)
     start_date = _parse_start_date_from_description(ms.description or "")
 
-    if start_date:
-        # Use explicit start_date from description
-        if start_date <= today_utc:
-            return "in_progress"
+    if start_date is None:
+        # No start_date means not yet started → planned
         return "planned"
-    elif ms.created_at:
-        # Fall back to created_at if no start_date specified
-        # Handle both tz-aware and naive datetimes (assume UTC if naive)
-        if ms.created_at.tzinfo is None:
-            created_utc = ms.created_at.replace(tzinfo=UTC).date()
-        else:
-            created_utc = ms.created_at.astimezone(UTC).date()
-        if created_utc <= today_utc:
-            return "in_progress"
+
+    # Compare start_date to today (using UTC for consistency)
+    today_utc = datetime.now(UTC).date()
+    if start_date <= today_utc:
+        return "in_progress"
     return "planned"
 
 

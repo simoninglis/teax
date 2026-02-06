@@ -9661,7 +9661,8 @@ def test_milestone_state_in_progress(runner: CliRunner):
                         "id": 5,
                         "title": "Sprint 50",
                         "state": "open",
-                        "created_at": "2026-01-01T00:00:00Z",  # Past date
+                        "description": "start_date: 2026-01-01",  # Past start_date
+                        "created_at": "2026-01-01T00:00:00Z",
                     }
                 ],
             )
@@ -9676,7 +9677,8 @@ def test_milestone_state_in_progress(runner: CliRunner):
                     "id": 5,
                     "title": "Sprint 50",
                     "state": "open",
-                    "created_at": "2026-01-01T00:00:00Z",  # Past date
+                    "description": "start_date: 2026-01-01",  # Past start_date
+                    "created_at": "2026-01-01T00:00:00Z",
                 },
             )
         )
@@ -9710,6 +9712,53 @@ def test_milestone_state_not_found(runner: CliRunner):
 
 
 @pytest.mark.usefixtures("mock_client")
+def test_milestone_state_planned_no_start_date(runner: CliRunner):
+    """Test that milestone without start_date returns planned."""
+    import httpx
+    import respx
+
+    with respx.mock:
+        # Resolve milestone
+        respx.get("https://test.example.com/api/v1/repos/owner/repo/milestones").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 5,
+                        "title": "Sprint 50",
+                        "state": "open",
+                        "description": "",  # No start_date
+                        "created_at": "2026-01-01T00:00:00Z",
+                    }
+                ],
+            )
+        )
+        # Get milestone
+        respx.get(
+            "https://test.example.com/api/v1/repos/owner/repo/milestones/5"
+        ).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "id": 5,
+                    "title": "Sprint 50",
+                    "state": "open",
+                    "description": "",  # No start_date
+                    "created_at": "2026-01-01T00:00:00Z",
+                },
+            )
+        )
+
+        result = runner.invoke(
+            main, ["milestone", "state", "Sprint 50", "-r", "owner/repo"]
+        )
+
+        assert result.exit_code == 0
+        # Per ADR-0017: no start_date means planned
+        assert result.output.strip() == "planned"
+
+
+@pytest.mark.usefixtures("mock_client")
 def test_milestone_current(runner: CliRunner):
     """Test getting current in-progress sprint."""
     import httpx
@@ -9724,13 +9773,15 @@ def test_milestone_current(runner: CliRunner):
                         "id": 1,
                         "title": "Sprint 49",
                         "state": "open",
-                        "created_at": "2026-01-01T00:00:00Z",  # Past - in progress
+                        "description": "start_date: 2026-01-01",  # Started
+                        "created_at": "2026-01-01T00:00:00Z",
                     },
                     {
                         "id": 2,
                         "title": "Sprint 50",
                         "state": "open",
-                        "created_at": "2030-01-01T00:00:00Z",  # Future - planned
+                        "description": "",  # No start_date - planned
+                        "created_at": "2026-01-01T00:00:00Z",
                     },
                 ],
             )
