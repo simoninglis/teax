@@ -3435,8 +3435,8 @@ def sprint_status(ctx: click.Context, repo: str) -> None:
             milestone_by_sprint: dict[int, Any] = {}
             for ms in milestones:
                 sprint_num = _extract_sprint_number(ms.title)
-                if sprint_num is not None:
-                    milestone_by_sprint[sprint_num] = ms
+                if sprint_num is not None and sprint_num not in milestone_by_sprint:
+                    milestone_by_sprint[sprint_num] = ms  # Keep first match
 
             # Group issues by sprint number
             sprint_issues: dict[int, list[Any]] = {}
