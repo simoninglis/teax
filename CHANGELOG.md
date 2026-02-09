@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-02-09
+
+### Fixed
+
+- Prevent crash when comparing timezone-aware vs timezone-naive commit status timestamps (#40)
+- Unknown CI statuses now treated as running (not no_runs) for correct exit codes (#40)
+- Keep full context for non-Woodpecker CI providers to avoid status collisions (#40)
+- Output `no_runs` message in simple format and header in CSV when no commit statuses (#40)
+
 ## [0.6.7] - 2026-02-09
 
 ### Added
@@ -124,7 +133,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Secrets and variables management
 - Package management commands
 
-[Unreleased]: https://github.com/simoninglis/teax/compare/v0.6.7...HEAD
+[Unreleased]: https://github.com/simoninglis/teax/compare/v0.6.8...HEAD
+[0.6.8]: https://github.com/simoninglis/teax/compare/v0.6.7...v0.6.8
 [0.6.7]: https://github.com/simoninglis/teax/compare/v0.6.6...v0.6.7
 [0.6.6]: https://github.com/simoninglis/teax/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/simoninglis/teax/compare/v0.6.4...v0.6.5
