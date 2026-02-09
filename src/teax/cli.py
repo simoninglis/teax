@@ -20,6 +20,7 @@ from rich.table import Table
 
 from teax import __version__
 from teax.api import GiteaClient
+from teax.models import CombinedCommitStatus, CommitStatusEntry
 
 # Pattern to match terminal escape sequences and control characters
 # Handles: CSI (\x1b[), OSC (\x1b]), DCS (\x1bP), APC (\x1b_), PM (\x1b^), SOS (\x1bX)
@@ -152,29 +153,36 @@ def extract_workflow_from_context(context: str) -> str:
     """Extract workflow name from commit status context string.
 
     Handles various CI provider formats:
-    - Woodpecker: "ci/woodpecker/push/build" -> "build"
+    - Woodpecker: "ci/woodpecker/push/build" -> "push/build"
+    - Woodpecker with extra: "ci/woodpecker/push/build/step" -> "push/build/step"
     - Generic: "workflow-name" -> "workflow-name"
 
     Args:
         context: Context string from commit status API
 
     Returns:
-        Workflow name extracted from context
+        Workflow name extracted from context (includes event for Woodpecker
+        to avoid collisions between push/build and pull_request/build)
     """
+    # Normalize whitespace
+    context = context.strip() if context else ""
     if not context:
         return "unknown"
 
-    # Woodpecker format: ci/woodpecker/{event}/{workflow}
+    # Woodpecker format: ci/woodpecker/{event}/{workflow}[/{extra}...]
+    # Return "{event}/{workflow}[/{extra}...]" to avoid collisions
     if context.startswith("ci/woodpecker/"):
         parts = context.split("/")
         if len(parts) >= 4:
-            return parts[-1] or "unknown"
+            # parts: [ci, woodpecker, event, workflow, ...extra]
+            event = parts[2] or "unknown"
+            # Join all remaining parts to handle future extensions
+            workflow = "/".join(parts[3:]) or "unknown"
+            return f"{event}/{workflow}"
 
-    # Generic format: just use last path component or full string
-    if "/" in context:
-        return context.split("/")[-1] or "unknown"
-
-    return context
+    # Generic format: keep full context to avoid collisions
+    # Only Woodpecker has a known format we can safely simplify
+    return context or "unknown"
 
 
 def abbreviate_workflow_name(workflow: str) -> str:
@@ -1820,13 +1828,13 @@ class OutputFormat:
 
     def print_commit_status(
         self,
-        status: Any,
+        status: CombinedCommitStatus,
         commit_sha: str | None = None,
     ) -> str:
-        """Print commit status from CI providers (e.g., Woodpecker).
+        """Print commit status from CI providers.
 
         Args:
-            status: CombinedCommitStatus object
+            status: CombinedCommitStatus object from commit status API
             commit_sha: Optional commit SHA being queried (for display)
 
         Returns:
@@ -1835,23 +1843,51 @@ class OutputFormat:
         statuses = status.statuses or []
 
         # Group statuses by workflow name (extracted from context)
-        workflow_statuses: dict[str, Any] = {}
+        # Keep the most recent status per workflow (prefer updated_at, then created_at)
+        workflow_statuses: dict[str, CommitStatusEntry] = {}
         for s in statuses:
             wf_name = extract_workflow_from_context(s.context)
             if wf_name not in workflow_statuses:
                 workflow_statuses[wf_name] = s
+            else:
+                # Prefer the status with more recent timestamp (datetime comparison)
+                existing = workflow_statuses[wf_name]
+                existing_ts = existing.updated_at or existing.created_at
+                new_ts = s.updated_at or s.created_at
+                # Compare datetimes; treat None as older than any datetime
+                if existing_ts is None or (new_ts is not None and new_ts > existing_ts):
+                    workflow_statuses[wf_name] = s
 
-        # Calculate overall status
+        # Calculate overall status from the displayed workflows (not server state)
+        # This ensures the exit code matches what the user sees in output
         if not workflow_statuses:
             overall_status = "no_runs"
-        elif status.state == "failure" or status.state == "error":
-            overall_status = "failure"
-        elif status.state == "pending":
-            overall_status = "running"
-        elif status.state == "success":
-            overall_status = "success"
         else:
-            overall_status = "pending"
+            # Check statuses from the deduplicated workflow list
+            # Known statuses: success, pending, failure, error
+            known_statuses = {"success", "pending", "failure", "error"}
+            has_failure = any(
+                s.status in ("failure", "error") for s in workflow_statuses.values()
+            )
+            has_pending = any(
+                s.status == "pending" for s in workflow_statuses.values()
+            )
+            has_success = any(
+                s.status == "success" for s in workflow_statuses.values()
+            )
+            has_unknown = any(
+                s.status not in known_statuses for s in workflow_statuses.values()
+            )
+
+            if has_failure:
+                overall_status = "failure"
+            elif has_pending or has_unknown:
+                # Treat unknown statuses as running/pending (not no_runs)
+                overall_status = "running"
+            elif has_success:
+                overall_status = "success"
+            else:
+                overall_status = "pending"
 
         if self.format_type == "json":
             output_data: dict[str, Any] = {
@@ -1866,10 +1902,10 @@ class OutputFormat:
                         "description": terminal_safe(s.description),
                         "target_url": terminal_safe(s.target_url),
                     }
-                    for wf, s in workflow_statuses.items()
+                    for wf, s in sorted(workflow_statuses.items())
                 },
             }
-            click.echo(json.dumps(output_data, indent=2))
+            click.echo(json.dumps(output_data, indent=2, sort_keys=True))
 
         elif self.format_type == "tmux":
             # Compact format for tmux status bars: C:✓ B:✓ D:✓
@@ -1892,22 +1928,27 @@ class OutputFormat:
             click.echo(" ".join(parts))
 
         elif self.format_type == "simple":
-            for wf, s in workflow_statuses.items():
-                if s.status == "success":
-                    symbol = "✓"
-                elif s.status in ("failure", "error"):
-                    symbol = "✗"
-                elif s.status == "pending":
-                    symbol = "●"
-                else:
-                    symbol = "○"
-                click.echo(f"{terminal_safe(wf)}: {symbol} {terminal_safe(s.status)}")
+            if not workflow_statuses:
+                click.echo("no_runs")
+            else:
+                for wf, s in sorted(workflow_statuses.items()):
+                    if s.status == "success":
+                        symbol = "✓"
+                    elif s.status in ("failure", "error"):
+                        symbol = "✗"
+                    elif s.status == "pending":
+                        symbol = "●"
+                    else:
+                        symbol = "○"
+                    wf_safe = terminal_safe(wf)
+                    status_safe = terminal_safe(s.status)
+                    click.echo(f"{wf_safe}: {symbol} {status_safe}")
 
         elif self.format_type == "csv":
             output = io.StringIO()
             writer = csv.writer(output)
             writer.writerow(["workflow", "status", "context", "description"])
-            for wf, s in workflow_statuses.items():
+            for wf, s in sorted(workflow_statuses.items()):
                 writer.writerow(
                     [
                         csv_safe(wf),
@@ -1916,6 +1957,7 @@ class OutputFormat:
                         csv_safe(s.description),
                     ]
                 )
+            # Always output header even if no workflows
             click.echo(output.getvalue().rstrip())
 
         else:  # table (default)
@@ -1923,8 +1965,15 @@ class OutputFormat:
             if commit_sha:
                 console.print(f"[dim]Commit: {safe_rich(commit_sha[:8])}[/dim]")
 
-            # Show source
-            console.print("[dim]Source: Commit Status API (Woodpecker CI)[/dim]")
+            # Show source (detect Woodpecker from context prefixes)
+            has_woodpecker = any(
+                s.context.startswith("ci/woodpecker/")
+                for s in workflow_statuses.values()
+            )
+            if has_woodpecker:
+                console.print("[dim]Source: Commit Status API (Woodpecker CI)[/dim]")
+            else:
+                console.print("[dim]Source: Commit Status API[/dim]")
 
             # Show overall status
             if overall_status == "success":
@@ -1938,7 +1987,7 @@ class OutputFormat:
                 return overall_status
             console.print()
 
-            for wf, s in workflow_statuses.items():
+            for wf, s in sorted(workflow_statuses.items()):
                 if s.status == "success":
                     status_str = "[green]✓ success[/green]"
                 elif s.status in ("failure", "error"):
@@ -5186,6 +5235,7 @@ def runs_status(
             sys.exit(4)
 
     # Resolve HEAD to actual SHA if requested
+    # Keep full SHA for API calls (some endpoints may not accept prefixes)
     head_sha = sha
     if sha and sha.upper() == "HEAD":
         try:
@@ -5195,7 +5245,7 @@ def runs_status(
                 text=True,
                 check=True,
             )
-            head_sha = result.stdout.strip()[:12]
+            head_sha = result.stdout.strip()  # Full SHA for API calls
         except (subprocess.CalledProcessError, FileNotFoundError):
             err_console.print(
                 "[red]Error:[/red] Could not resolve HEAD (not in git repo?)"
@@ -5216,24 +5266,37 @@ def runs_status(
                     commit_status = client.get_commit_status(
                         owner, repo_name, head_sha
                     )
-                    if commit_status.statuses:
-                        # Use commit status display
-                        overall_status = output.print_commit_status(
-                            commit_status,
-                            commit_sha=head_sha,
-                        )
+                    # Always show commit status output when API succeeds
+                    # (even if empty, to distinguish "no statuses" from API failure)
+                    overall_status = output.print_commit_status(
+                        commit_status,
+                        commit_sha=head_sha,
+                    )
 
-                        # Exit codes based on overall status
-                        if overall_status == "success":
-                            sys.exit(0)
-                        elif overall_status == "failure":
-                            sys.exit(1)
-                        elif overall_status == "running":
-                            sys.exit(2)
-                        else:  # no_runs or pending
-                            sys.exit(3)
-                except CLI_ERRORS:
-                    pass  # Fall through to Actions API result (no_runs)
+                    # Exit codes based on overall status
+                    if overall_status == "success":
+                        sys.exit(0)
+                    elif overall_status == "failure":
+                        sys.exit(1)
+                    elif overall_status == "running":
+                        sys.exit(2)
+                    else:  # no_runs or pending
+                        sys.exit(3)
+                except httpx.HTTPStatusError as e:
+                    # Log 404 silently (commit may not exist), warn on other errors
+                    if e.response.status_code != 404:
+                        err_console.print(
+                            f"[yellow]Warning:[/yellow] Commit status API failed: "
+                            f"{safe_rich(str(e))}"
+                        )
+                    # Fall through to Actions API result
+                except CLI_ERRORS as e:
+                    # Warn about other errors (network, auth, validation)
+                    err_console.print(
+                        f"[yellow]Warning:[/yellow] Commit status API failed: "
+                        f"{safe_rich(str(e))}"
+                    )
+                    # Fall through to Actions API result
 
             # Pre-fetch jobs for failed workflows when verbose
             workflow_jobs: dict[int, list[Any]] = {}

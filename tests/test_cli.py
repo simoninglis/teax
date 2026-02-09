@@ -6217,12 +6217,13 @@ def test_runs_status_sha_head_resolution(runner: CliRunner, monkeypatch):
 
     # Mock subprocess.run to return a fake SHA
     original_run = subprocess.run
+    full_sha = "abc12345def67890abcdef1234567890abcdef12"
 
     def mock_subprocess_run(args, **kwargs):
         if args == ["git", "rev-parse", "HEAD"]:
-            # Return a mock CompletedProcess
+            # Return a mock CompletedProcess with full SHA
             result = subprocess.CompletedProcess(
-                args=args, returncode=0, stdout="abc12345def67890abcd\n", stderr=""
+                args=args, returncode=0, stdout=f"{full_sha}\n", stderr=""
             )
             return result
         return original_run(args, **kwargs)
@@ -6244,7 +6245,7 @@ def test_runs_status_sha_head_resolution(runner: CliRunner, monkeypatch):
                             "run_attempt": 1,
                             "status": "completed",
                             "conclusion": "success",
-                            "head_sha": "abc12345def6",
+                            "head_sha": full_sha,  # Use full SHA to match
                             "head_branch": "main",
                             "event": "push",
                             "display_title": "CI",

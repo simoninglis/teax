@@ -1,6 +1,6 @@
 """Pydantic models for Gitea API responses."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator
 
@@ -310,8 +310,38 @@ class CommitStatusEntry(BaseModel):
     context: str  # e.g., "ci/woodpecker/push/build"
     description: str = ""
     target_url: str = ""
-    created_at: str | None = None
-    updated_at: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    @field_validator("description", "target_url", mode="before")
+    @classmethod
+    def normalize_none_to_empty(cls, v: str | None) -> str:
+        """Normalize null to empty string."""
+        return v or ""
+
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def normalize_empty_timestamp(
+        cls, v: str | datetime | None
+    ) -> str | datetime | None:
+        """Normalize empty string timestamps to None.
+
+        Pydantic will convert valid strings to datetime after this validator runs.
+        """
+        if v == "":
+            return None
+        return v
+
+    @field_validator("created_at", "updated_at", mode="after")
+    @classmethod
+    def ensure_timezone_aware(cls, v: datetime | None) -> datetime | None:
+        """Ensure datetimes are timezone-aware for safe comparisons.
+
+        Naive datetimes are assumed to be UTC.
+        """
+        if v is not None and v.tzinfo is None:
+            return v.replace(tzinfo=UTC)
+        return v
 
 
 class CombinedCommitStatus(BaseModel):
@@ -325,7 +355,11 @@ class CombinedCommitStatus(BaseModel):
     @field_validator("statuses", mode="before")
     @classmethod
     def normalize_statuses(
-        cls, v: list[CommitStatusEntry] | None
-    ) -> list[CommitStatusEntry]:
-        """Convert null or missing statuses to empty list."""
+        cls, v: list[dict] | None  # type: ignore[type-arg]
+    ) -> list[dict]:  # type: ignore[type-arg]
+        """Convert null or missing statuses to empty list.
+
+        Note: In mode="before", v is raw JSON (list of dicts), not parsed models.
+        Pydantic will convert to CommitStatusEntry after this validator.
+        """
         return v if v is not None else []
