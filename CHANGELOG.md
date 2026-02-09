@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-02-09
+
+### Added
+
+- `runs status` now supports Woodpecker CI via commit status API fallback (#40)
+- When no Gitea Actions runs found for a SHA, automatically tries commit status API
+- Extracts workflow names from `ci/woodpecker/push/{workflow}` context strings
+
 ## [0.6.6] - 2026-02-06
 
 ### Fixed
@@ -116,7 +124,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Secrets and variables management
 - Package management commands
 
-[Unreleased]: https://github.com/simoninglis/teax/compare/v0.6.6...HEAD
+[Unreleased]: https://github.com/simoninglis/teax/compare/v0.6.7...HEAD
+[0.6.7]: https://github.com/simoninglis/teax/compare/v0.6.6...v0.6.7
 [0.6.6]: https://github.com/simoninglis/teax/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/simoninglis/teax/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/simoninglis/teax/compare/v0.6.3...v0.6.4

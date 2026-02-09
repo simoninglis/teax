@@ -11,6 +11,7 @@ import httpx
 from teax.config import get_default_login, get_login_by_name
 from teax.models import (
     AccessToken,
+    CombinedCommitStatus,
     Comment,
     Dependency,
     Issue,
@@ -1925,6 +1926,31 @@ class GiteaClient:
             )
 
         return runs
+
+    def get_commit_status(
+        self,
+        owner: str,
+        repo: str,
+        sha: str,
+    ) -> CombinedCommitStatus:
+        """Get combined commit status for a SHA.
+
+        This retrieves status from all CI providers (Woodpecker, GitHub Actions,
+        etc.) that report status via the commit status API.
+
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            sha: Commit SHA (full or prefix)
+
+        Returns:
+            Combined commit status with individual statuses from all providers
+        """
+        response = self._client.get(
+            f"repos/{_seg(owner)}/{_seg(repo)}/commits/{_seg(sha)}/status",
+        )
+        response.raise_for_status()
+        return CombinedCommitStatus.model_validate(response.json())
 
     def get_run(
         self,

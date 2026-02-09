@@ -300,3 +300,32 @@ class WorkflowRun(BaseModel):
         if v == "":
             return None
         return v
+
+
+class CommitStatusEntry(BaseModel):
+    """Individual commit status entry (e.g., from Woodpecker CI)."""
+
+    id: int
+    status: str  # success, pending, failure, error
+    context: str  # e.g., "ci/woodpecker/push/build"
+    description: str = ""
+    target_url: str = ""
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class CombinedCommitStatus(BaseModel):
+    """Combined commit status from all CI providers."""
+
+    state: str  # Combined state: success, pending, failure, error
+    sha: str
+    total_count: int = 0
+    statuses: list[CommitStatusEntry] = Field(default_factory=list)
+
+    @field_validator("statuses", mode="before")
+    @classmethod
+    def normalize_statuses(
+        cls, v: list[CommitStatusEntry] | None
+    ) -> list[CommitStatusEntry]:
+        """Convert null or missing statuses to empty list."""
+        return v if v is not None else []

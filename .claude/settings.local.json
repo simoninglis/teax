@@ -103,7 +103,8 @@
       "Bash(TEAX_INSECURE=1 teax runs:*)",
       "Bash(TEAX_INSECURE=1 teax:*)",
       "Bash(ssh vm-gitea-runner-01:*)",
-      "Bash(TEAX_SSL_INSECURE=1 teax issue view:*)"
+      "Bash(TEAX_SSL_INSECURE=1 teax issue view:*)",
+      "Bash(TEAX_INSECURE=1 poetry run python3:*)"
     ]
   }
 }

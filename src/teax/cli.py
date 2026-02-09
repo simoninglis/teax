@@ -148,6 +148,35 @@ def extract_workflow_name(path: str | None) -> str:
     return path.split("/")[-1] or "unknown"
 
 
+def extract_workflow_from_context(context: str) -> str:
+    """Extract workflow name from commit status context string.
+
+    Handles various CI provider formats:
+    - Woodpecker: "ci/woodpecker/push/build" -> "build"
+    - Generic: "workflow-name" -> "workflow-name"
+
+    Args:
+        context: Context string from commit status API
+
+    Returns:
+        Workflow name extracted from context
+    """
+    if not context:
+        return "unknown"
+
+    # Woodpecker format: ci/woodpecker/{event}/{workflow}
+    if context.startswith("ci/woodpecker/"):
+        parts = context.split("/")
+        if len(parts) >= 4:
+            return parts[-1] or "unknown"
+
+    # Generic format: just use last path component or full string
+    if "/" in context:
+        return context.split("/")[-1] or "unknown"
+
+    return context
+
+
 def abbreviate_workflow_name(workflow: str) -> str:
     """Get single-char abbreviation for workflow name.
 
@@ -1786,6 +1815,140 @@ class OutputFormat:
                         ]
                         for j in failed:
                             console.print(f"  [red]✗ {safe_rich(j.name)}[/red]")
+
+        return overall_status
+
+    def print_commit_status(
+        self,
+        status: Any,
+        commit_sha: str | None = None,
+    ) -> str:
+        """Print commit status from CI providers (e.g., Woodpecker).
+
+        Args:
+            status: CombinedCommitStatus object
+            commit_sha: Optional commit SHA being queried (for display)
+
+        Returns:
+            Overall status: "success", "failure", "running", "no_runs", or "pending"
+        """
+        statuses = status.statuses or []
+
+        # Group statuses by workflow name (extracted from context)
+        workflow_statuses: dict[str, Any] = {}
+        for s in statuses:
+            wf_name = extract_workflow_from_context(s.context)
+            if wf_name not in workflow_statuses:
+                workflow_statuses[wf_name] = s
+
+        # Calculate overall status
+        if not workflow_statuses:
+            overall_status = "no_runs"
+        elif status.state == "failure" or status.state == "error":
+            overall_status = "failure"
+        elif status.state == "pending":
+            overall_status = "running"
+        elif status.state == "success":
+            overall_status = "success"
+        else:
+            overall_status = "pending"
+
+        if self.format_type == "json":
+            output_data: dict[str, Any] = {
+                "commit": terminal_safe(commit_sha[:8]) if commit_sha else None,
+                "commit_full": terminal_safe(commit_sha) if commit_sha else None,
+                "overall_status": overall_status,
+                "source": "commit_status",
+                "workflows": {
+                    wf: {
+                        "status": terminal_safe(s.status),
+                        "context": terminal_safe(s.context),
+                        "description": terminal_safe(s.description),
+                        "target_url": terminal_safe(s.target_url),
+                    }
+                    for wf, s in workflow_statuses.items()
+                },
+            }
+            click.echo(json.dumps(output_data, indent=2))
+
+        elif self.format_type == "tmux":
+            # Compact format for tmux status bars: C:✓ B:✓ D:✓
+            if not workflow_statuses:
+                click.echo("CI:?")
+                return overall_status
+
+            parts = []
+            for wf, s in sorted(workflow_statuses.items()):
+                abbrev = abbreviate_workflow_name(wf)
+                if s.status == "success":
+                    parts.append(f"{terminal_safe(abbrev)}:✓")
+                elif s.status in ("failure", "error"):
+                    parts.append(f"{terminal_safe(abbrev)}:✗")
+                elif s.status == "pending":
+                    spinner = SPINNER_FRAMES[int(time.time()) % len(SPINNER_FRAMES)]
+                    parts.append(f"{terminal_safe(abbrev)}:{spinner}")
+                else:
+                    parts.append(f"{terminal_safe(abbrev)}:-")
+            click.echo(" ".join(parts))
+
+        elif self.format_type == "simple":
+            for wf, s in workflow_statuses.items():
+                if s.status == "success":
+                    symbol = "✓"
+                elif s.status in ("failure", "error"):
+                    symbol = "✗"
+                elif s.status == "pending":
+                    symbol = "●"
+                else:
+                    symbol = "○"
+                click.echo(f"{terminal_safe(wf)}: {symbol} {terminal_safe(s.status)}")
+
+        elif self.format_type == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["workflow", "status", "context", "description"])
+            for wf, s in workflow_statuses.items():
+                writer.writerow(
+                    [
+                        csv_safe(wf),
+                        csv_safe(s.status),
+                        csv_safe(s.context),
+                        csv_safe(s.description),
+                    ]
+                )
+            click.echo(output.getvalue().rstrip())
+
+        else:  # table (default)
+            # Show commit SHA if available
+            if commit_sha:
+                console.print(f"[dim]Commit: {safe_rich(commit_sha[:8])}[/dim]")
+
+            # Show source
+            console.print("[dim]Source: Commit Status API (Woodpecker CI)[/dim]")
+
+            # Show overall status
+            if overall_status == "success":
+                console.print("[green]Pipeline Status: ✅ All passed[/green]")
+            elif overall_status == "failure":
+                console.print("[red]Pipeline Status: ❌ Failed[/red]")
+            elif overall_status == "running":
+                console.print("[blue]Pipeline Status: ⏳ Running[/blue]")
+            elif overall_status == "no_runs":
+                console.print("[dim]No commit statuses found[/dim]")
+                return overall_status
+            console.print()
+
+            for wf, s in workflow_statuses.items():
+                if s.status == "success":
+                    status_str = "[green]✓ success[/green]"
+                elif s.status in ("failure", "error"):
+                    status_str = "[red]✗ failure[/red]"
+                elif s.status == "pending":
+                    status_str = "[blue]● pending[/blue]"
+                else:
+                    status_str = f"[dim]○ {safe_rich(s.status)}[/dim]"
+
+                console.print(f"[bold]{safe_rich(wf)}[/bold]: {status_str}")
 
         return overall_status
 
@@ -4986,7 +5149,11 @@ def runs_status(
 ) -> None:
     """Show workflow health status (latest run per workflow).
 
-    Quick overview of CI/CD health for all workflows.
+    Quick overview of CI/CD health for all workflows. Supports both
+    Gitea Actions and Woodpecker CI (via commit status API fallback).
+
+    When a SHA is specified and no Gitea Actions runs are found, falls
+    back to the commit status API which shows Woodpecker pipeline status.
 
     Exit codes:
       0 = All triggered workflows succeeded (not-triggered are neutral)
@@ -5040,6 +5207,33 @@ def runs_status(
             runs_list = client.list_runs(
                 owner, repo_name, head_sha=head_sha, limit=50, max_pages=5
             )
+
+            # Fallback to commit status API if no Actions runs found for SHA
+            # This supports Woodpecker CI and other providers that report via
+            # commit status API instead of Gitea Actions
+            if not runs_list and head_sha:
+                try:
+                    commit_status = client.get_commit_status(
+                        owner, repo_name, head_sha
+                    )
+                    if commit_status.statuses:
+                        # Use commit status display
+                        overall_status = output.print_commit_status(
+                            commit_status,
+                            commit_sha=head_sha,
+                        )
+
+                        # Exit codes based on overall status
+                        if overall_status == "success":
+                            sys.exit(0)
+                        elif overall_status == "failure":
+                            sys.exit(1)
+                        elif overall_status == "running":
+                            sys.exit(2)
+                        else:  # no_runs or pending
+                            sys.exit(3)
+                except CLI_ERRORS:
+                    pass  # Fall through to Actions API result (no_runs)
 
             # Pre-fetch jobs for failed workflows when verbose
             workflow_jobs: dict[int, list[Any]] = {}
